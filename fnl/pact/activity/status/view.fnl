@@ -70,12 +70,12 @@
       [:clone
        plugin.id
        (fmt "(%s)" plugin.pin)
-       (fmt "clone %s/%s%s" ref hash latest)]
+       (fmt "clone %s%s" ref latest)]
       [nil :hold {:sync [[hash ref]]}]
       [:hold
        plugin.id
        (fmt "(%s)" plugin.pin)
-       (fmt "can-clone %s/%s%s" ref hash latest)]
+       (fmt "can-clone %s%s" ref latest)]
       ;; current checkout and a target checkout,
       ;; adjust message by user action.
       [[c-hash c-ref] action {:sync [[t-hash t-ref]]}]
@@ -83,14 +83,14 @@
        plugin.id
        (fmt "(%s)" plugin.pin)
        (match action
-         :sync (fmt "will-sync %s/%s (at %s)%s" t-ref t-hash c-ref latest)
-         :hold (fmt "can-sync  %s/%s (at %s)%s" t-ref t-hash c-ref latest))]
+         :sync (fmt "will-sync %s (at %s)%s" t-ref c-ref latest)
+         :hold (fmt "can-sync %s (at %s)%s" t-ref c-ref latest))]
       ;; no sync option, so it's only hold and in sync
       [[c-hash c-ref] :hold {:hold [] :sync nil}]
       [:hold
        plugin.id
        (fmt "(%s)" plugin.pin)
-       (fmt "in-sync (%s %s)%s" c-ref c-hash latest)]
+       (fmt "in-sync %s%s" c-ref latest)]
       ;; catch all else
       any
       (let [{: view} (require :fennel)]
