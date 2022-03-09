@@ -4,7 +4,7 @@
 (local {: run} (require :pact.process))
 (import-macros {: async : await} :pact.async_await)
 
-(local const {:ENV {:GIT_TERMINAL_PROMPT 0}})
+(local const {:ENV [:GIT_TERMINAL_PROMPT=0]})
 
 (fn dump-err [code err]
   (fmt "git-error: [%d] %s" code (table.concat err)))
