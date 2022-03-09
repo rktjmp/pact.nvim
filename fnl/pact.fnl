@@ -1,7 +1,6 @@
 (import-macros {: raise : expect} :pact.error)
 (import-macros {: struct} :pact.struct)
 
-(local co (require :pact.coroutine))
 (local uv vim.loop)
 (local {: fmt : inspect : pathify} (require :pact.common))
 (local providers (let [{: git} (require :pact.provider.git)
@@ -10,11 +9,6 @@
                        {: path} (require :pact.provider.path)]
                    {: git : github : path : sourcehut}))
 (local {: send} (require :pact.pubsub))
-
-(local state {:plugin-groups {}})
-
-; (local config {:package-root })
-; (local config {:package-root :/home/soup/projects/scratch/fake-pack})
 
 (local config (struct pact/config
                       ;; pact puts each group inside its own pack folder, so this points
@@ -33,24 +27,9 @@
   (when (= (vim.fn.has :nvim-0.7) 0)
     (error "pact.nvim needs nvim v0.7.0-dev+1212-gbce1fd221 or later")))
 
-(fn has? [group-name]
-  (not (= nil (. state :plugin-groups group-name))))
-
-(fn get [group-name ?plugin-id]
-  (let [group (. state :plugin-groups group-name)]
-    (match [group ?plugin-id]
-      [nil nil] (values nil)
-      [group nil] (values group)
-      [group id] (accumulate [found nil _ plugin (ipairs group.plugins) :until found]
-                   (when (= id plugin.id)
-                     plugin)))))
-
 (fn define [group-name ...]
-  ;; TODO check that all plugins have unique id
-  (match (has? group-name)
-    true (error (fmt "attempt to redefine group %s" group-name))
-    false (tset state.plugin-groups group-name
-                {:name group-name :plugins [...]})))
+  (let [{: define-plugin-group} (require :pact.runtime)]
+    (define-plugin-group runtime group-name ...)))
 
 (fn command [input]
   "Process user input from the vim command line"
@@ -72,6 +51,4 @@
  :srht providers.sourcehut
  :sourcehut providers.sourcehut
  ;; group and plugin access
- : define
- : has?
- : get}
+ : define}
