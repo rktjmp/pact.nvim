@@ -70,12 +70,14 @@
       [:clone
        plugin.id
        (fmt "(%s)" plugin.pin)
-       (fmt "clone %s%s" ref latest)]
+       :clone
+       (fmt "(%s)%s" ref latest)]
       [nil :hold {:sync [[hash ref]]}]
       [:hold
        plugin.id
        (fmt "(%s)" plugin.pin)
-       (fmt "can-clone %s%s" ref latest)]
+       :can-clone
+       (fmt "(%s)%s" ref latest)]
       ;; current checkout and a target checkout,
       ;; adjust message by user action.
       [[c-hash c-ref] action {:sync [[t-hash t-ref]]}]
@@ -83,14 +85,18 @@
        plugin.id
        (fmt "(%s)" plugin.pin)
        (match action
-         :sync (fmt "will-sync %s (at %s)%s" t-ref c-ref latest)
-         :hold (fmt "can-sync %s (at %s)%s" t-ref c-ref latest))]
+         :sync :will-sync
+         :hold :can-sync
+         _ action
+         )
+       (fmt "(%s) (at %s)%s" t-ref c-ref latest)]
       ;; no sync option, so it's only hold and in sync
       [[c-hash c-ref] :hold {:hold [] :sync nil}]
       [:hold
        plugin.id
        (fmt "(%s)" plugin.pin)
-       (fmt "in-sync %s%s" c-ref latest)]
+       :in-sync
+       (fmt "(%s)%s" c-ref latest)]
       ;; catch all else
       any
       (let [{: view} (require :fennel)]
@@ -99,8 +105,8 @@
 (fn path-result->line [plugin result]
   (let [{: plugin : action} result]
     (match action
-      :hold [:hold plugin.id "(link)" (fmt "has-link %s" plugin.path)]
-      :sync [:link plugin.id "(link)" (fmt "create-link %s" plugin.path)])))
+      :hold [:hold plugin.id "(link)" :has-link  plugin.path]
+      :sync [:link plugin.id "(link)" :create-link plugin.path])))
 
 (fn result->line [plugin result]
   (match result
@@ -112,8 +118,8 @@
   (let [pact-view (require :pact.activity.view)
         tuples (icollect [_ [workflow tag [plugin data]] (ipairs results)]
                  (match tag
-                   :incomplete [:busy plugin.id (fmt "(%s)" plugin.pin) data]
-                   :error [:error plugin.id (fmt "(%s)" plugin.pin) data]
+                   :incomplete [:busy plugin.id (fmt "(%s)" plugin.pin) data ""]
+                   :error [:error plugin.id (fmt "(%s)" plugin.pin) data ""]
                    :complete (result->line plugin data)))]
     (pact-view.columnise-data tuples)))
 
