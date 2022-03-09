@@ -1,0 +1,85 @@
+(import-macros {: raise : expect} :pact.error)
+(import-macros {: struct} :pact.struct)
+
+(local uv vim.loop)
+(local {: inspect : monotonic-id} (require :pact.common))
+(local {: subscribe : broadcast} (require :pact.pubsub))
+
+(fn make-idle-loop [scheduler]
+  (fn tick-workflow [workflow]
+    ;; Run the workflow and inspect its return value. It may request to be
+    ;; de/re-scheduled and may return an event or final value.
+    (let [{: run :const {: reply}} (require :pact.workflow)]
+      (match [(run workflow)]
+        [nil err] [:halt :error err]
+        (where [reply.CONT thread] (= (type thread) :thread)) [:cont]
+        [reply.CONT event] [:cont :event event]
+        [reply.CONT] [:cont]
+        [reply.HALT value] [:halt value]
+        other (do
+                (inspect :tick-workflow :unhandled other)
+                ;; temp? TODO
+                (raise internal other)
+                [:halt]))))
+
+  (fn []
+    ;; can we add an additional task to the active list?
+    (while (and (< (length scheduler.active) scheduler.concurrency-limit)
+                (< 0 (length scheduler.queue)))
+      ;; activate workflow
+      (let [workflow (table.remove scheduler.queue 1)]
+        (table.insert scheduler.active 1 workflow)))
+    ;; tick all active workflows and collect their results, then dispatch
+    ;; any events they have generated. finally cull the active list.
+    (let [updates (collect [_ workflow (ipairs scheduler.active)]
+                    workflow
+                    (tick-workflow workflow))
+          ;; dispatch any messages
+          _ (each [workflow reply (pairs updates)]
+              (match reply
+                [:cont :event event] (broadcast scheduler workflow :info event)
+                [:halt :error err] (broadcast scheduler workflow :error err)
+                [:halt val] (broadcast scheduler workflow :complete val)))
+          still-active (icollect [workflow [act & rest] (pairs updates)]
+                         (when (= :cont act)
+                           workflow))]
+      ;; replace old active with still active list
+      (tset scheduler :active still-active))
+    ;; stop or nah?
+    (when (= 0 (length scheduler.queue) (length scheduler.active))
+      (uv.idle_stop scheduler.handle)
+      (uv.close scheduler.handle)
+      (tset scheduler :handle nil))))
+
+(fn new [opts]
+  "Create a new scheduler.
+  Options:
+  - concurrency-limit: 10"
+  (let [opts (or opts {})
+        uv vim.loop] 
+    (struct pact/scheduler
+            (attr broadcast broadcast-fn)
+            (attr concurrency-limit (or opts.concurrency-limit 5)) ; 10 seemed do choke ls-remote?
+            (attr queue [])
+            (attr active [] mutable)
+            (attr handle nil mutable))))
+
+
+(fn add-workflow [scheduler workflow]
+  "Enqueue a workflow with on-event and on-complete callbacks.
+  Starts scheduler loop if it's not currently running"
+  (table.insert scheduler.queue workflow)
+  (when (= nil scheduler.handle)
+    (let [h (uv.new_idle)]
+      (tset scheduler :handle h)
+      (uv.idle_start h (make-idle-loop scheduler)))))
+
+(fn stop [scheduler]
+  "Force halt a scheduler, in-progress workflows may be lost."
+  (uv.idle_stop scheduler.handle)
+  ;; TODO decide on whether we close/open the idle handle or if we're ok
+  ;; holding one open.
+  ;; (uv.close scheduler.handle)
+  )
+
+{: new : schedule-workflows : add-workflow}
