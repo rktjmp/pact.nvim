@@ -39,7 +39,7 @@
   ;; return *something* but really control flow is dictated by raising errors
   (values true))
 
-(fn checkout [repo-path plugin sha]
+(fn checkout [repo-path sha]
   ;; preflight
   (event "validating target path")
   (match (absolute-path? repo-path)
@@ -72,7 +72,7 @@
 
 (fn git-get [repo-path plugin sha]
   (create-local-repo repo-path plugin)
-  (checkout repo-path plugin sha))
+  (checkout repo-path sha))
 
 (fn git-update [repo-path plugin sha]
   (checkout repo-path sha))
