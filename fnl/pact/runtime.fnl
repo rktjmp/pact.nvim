@@ -21,6 +21,10 @@
 
 ;;; Plugin and Plugin Accessories
 
+(fn get-plugin-group [runtime group-name]
+  "Get defined group from runtime"
+  (. runtime :groups group-name))
+
 (fn define-plugin-group [runtime group-name ...]
   "Collect given providers (under ...) under a group name"
   (expect (= :string (type group-name))
@@ -35,18 +39,13 @@
                                     argument (fmt "%s group has duplicate plugin %s"
                                                   group-name plugin.id))
                             (tset duplcate-check plugin.id true)
-                            (values plugin)))]
-    (struct plugin-group
-            (attr name group-name show)
-            (attr plugins plugins show))))
-
-(fn get-plugin-group [runtime group-name]
-  "Get defined group from runtime"
-  (. runtime :groups group-name))
-
-(fn plugin-group-dir [runtime group]
-  "Get on-disk path to plugin group root folder"
-  (pathify :/home/soup/projects/scratch/fake-pack group.name :start))
+                            (values plugin)))
+        package-root runtime.config.package-root
+        group (struct plugin-group
+                      (attr path (pathify package-root group-name :start) show)
+                      (attr name group-name show)
+                      (attr plugins plugins show))]
+    (tset runtime.groups group-name group)))
 
 ;;; UI control
 
@@ -55,7 +54,10 @@
           "Could not transition runtime %s->%s, in %s" states.READY
           states.STATUS runtime.state)
   (let [{: new} (require :pact.activity.status)
-        activity (new runtime group-name)]
+        group (get-plugin-group runtime group-name)
+        _ (expect (not (= nil group))
+                  argument (fmt "could not status group %q, not found" group-name))
+        activity (new runtime group)]
     (doto runtime
       (tset :active-activity activity)
       (subscribe activity activity)
@@ -136,9 +138,11 @@
 
 (fn new [config]
   (actor pact/runtime
+         (attr groups [] show)
          (attr scheduler (let [{: new} (require :pact.workflow.scheduler)]
-                           (new))) (attr config config)
+                           (new config)))
+         (attr config config)
          (attr active-activity nil mutable)
          (attr state states.READY mutable show) (receive receive)))
 
-{: new : define-plugin-group : plugin-group-dir}
+{: new : define-plugin-group : plugin-group-dir : get-plugin-group}
