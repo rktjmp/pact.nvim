@@ -1,14 +1,11 @@
 (import-macros {: raise : expect} :pact.error)
 (import-macros {: struct} :pact.struct)
 
-(local uv vim.loop)
-(local {: fmt : inspect : pathify} (require :pact.common))
 (local providers (let [{: git} (require :pact.provider.git)
                        {: github} (require :pact.provider.github)
                        {: sourcehut} (require :pact.provider.sourcehut)
                        {: path} (require :pact.provider.path)]
                    {: git : github : path : sourcehut}))
-(local {: send} (require :pact.pubsub))
 
 
 ;; will be set in setup
@@ -40,6 +37,7 @@
 
 (fn command [input]
   "Process user input from the vim command line"
+  (local {: send} (require :pact.pubsub))
   ;; very dirty tricks for now but write this as an eater later
   (if (or (string.match input "^st ")
             (string.match input "^status "))
