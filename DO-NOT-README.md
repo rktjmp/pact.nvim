@@ -8,33 +8,45 @@
 >
 > An agreement, covenant, or compact.
 
-`pact` is a *semver focused*, *pessimistic* package manager for Neovim.
+`pact` is a *semver focused*, *pessimistic* plugin manager for Neovim.
 
-**You probably should use `pact` (yet?), you will probably enjoy `paq`,
-`packer`, `vim-plug` more.**
+**You probably shouldn't use `pact` (ever? yet?), you will probably enjoy
+`paq`, `packer`, `mini-pac`, `vim-plug`, etc more.**
 
 ## Goals
 
-`pact` aims to avoid updates :drum: & heartbreak :broken_heart: by never
-updating a plugin unless explicitly instructed and supporting
-[semver](https://semver.org) version specifications, compatible with
-Mix/NPM styles.
+- `pact` aims to avoid updates :drum: & heartbreak :broken_heart: when managing
+  Neovim plugins.
 
-`pact` also snapshots your plugin versions before any operation, ~~allowing you
-to rollback if an undate has unfortunate side effects.~~ (Rollback interface TODO.)
+- `pact` focuses on [SemVer](https://semver.org) constraints as the primary
+  target specification with support for (most of) Mix/NPMs notation.
 
-## Constraints
+- `pact` will never update any plugins without explicit instructions to do so
+  via a `status -> snapshot -> sync` workflow, with an interface vaguely
+  inspired by `git rebase -i`.
 
-`pact` uses git tags to detect plugin versions. Remote repositories must
-correctly tag their releases with as either `v<major>.<minor>.<patch>` or
-`<major>.<minor>.<patch>`, partial versioning is not supported (i.e
-`<major>.<minor>`).
+- `pact` will snapshot your plugin versions before any operation, ~~allowing
+  you to rollback if an undate has unfortunate side effects.~~ (Automatic
+  rollback interface TODO.)
 
-Pinned `hash`es must be given in full, as we are unable to fetch or
-remotely inspect partial hashes.
+- Maybe make semver and semver dependencies more normal in the Neovim
+  community, *maybe*.
 
-`pact` can not guess a repositories "primary branch" (i.e `main` or `master`),
-you must explicitly define it when pinning to a branch.
+## Anti Goals
+
+- Becoming the next packer.nvim
+
+
+## Limitations
+
+- `pact` uses git tags to detect plugin versions. Remote repositories must
+  correctly tag their releases with as either `v<major>.<minor>.<patch>` or
+  `<major>.<minor>.<patch>`, [partial versioning is not
+  supported](https://semver.org/#spec-item-2) (i.e `<major>.<minor>`).
+- Pinned `hash`es must be given in full, as we are unable to fetch or remotely
+  inspect partial hashes.
+- `pact` can not guess a repositories "primary branch" (i.e `main` or
+  `master`), you must explicitly define it when pinning to a branch.
 
 ## TODO
 
@@ -42,35 +54,42 @@ you must explicitly define it when pinning to a branch.
 
 ## Configuration
 
-```fnl
+```fennel
 (let [{: setup : define : github : gitlab : srht : git} (require :pact)]
   (setup {:concurrency-limit 5}) ;; number of jobs to run in parallel
-                                 ;; or call (setup)
+                                 ;; or just call (setup). You do not
+                                 ;; have to call setup at the same place
+                                 ;; you define groups.
   (define :base
-    (github :feline-nvim/feline.nvim "~ 0.4.0") ;; defaults to semver spec
-    (github :rktjmp/hotpot.nvim {:branch :master}) ;; but you can specify a branch
-    (github :ggandor/lightspeed.nvim {:tag :warp-drive}) ;; or a tag
-    (gitlab :a-plugin/hosted-elsewhere {:hash "DEADBEEF..."}) ;; hash
-    (srht   :sourcehut/support "~ 1.0.0"))
+    (github :feline-nvim/feline.nvim "~ 0.4.0")               ;; defaults to semver spec
+    (github :rktjmp/hotpot.nvim {:branch :master})            ;; but you can specify a branch
+    (github :ggandor/lightspeed.nvim {:tag :warp-drive})      ;; or a tag
+    (gitlab :a-plugin/hosted-elsewhere {:hash "DEADBEEF..."}) ;; or hash
+    (srht   :sourcehut/support {:version "~ 1.0.0"}))
 
-  (define :lsp ;; You can define separate groups to operate independently
+  (define :lsp
+    ;; You can define separate groups to operate independently, perhaps some groups
+    ;; are "low impact" and you're quite happy to just update them all, often, to
+    ;; the edge, or maybe you have a core set of plugins you *never* want to accidentally
+    ;; update.
     (git :https://my-host.net/secret-plugin.nvim, {:branch :develop}))
 
-  (when (= os :haiku) ;; or conditionally define groups
+  (when (= os :haiku)
+    ;; or maybe you only want some groups to conditionally exist
     (define :haiku-only
       (github :some-platform/plugin.nvim ">= 0.0.0"))) ;; version can be any of
                                                        ;; >, >=, =, <, <=, ^ and ~.
 
-  (let [plugins []] ;; or get your hands real dirty
+  (let [plugins []]
+    ;; or you can get your hands real dirty
     (table.insert plugins (github :a/b "= 1.0.0"))
     (if (<= 0.6 nvim-version)
       (table.insert plugins (github :your/plugin ">= 1.2.0")) ;; 0.6+ compat
       (table.insert plugins (github :your/plugin "= 1.1.0"))) ;; last 0.5 compat version
     (define :conditional (unpack plugins))))
-
 ```
 
-## Usage
+## Usage (estimated)
 
 **Defining Pacts**
 
