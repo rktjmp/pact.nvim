@@ -16,6 +16,8 @@
      (error e# 0)))
 
 (fn expect [assertion kind message ?context]
+  ;; TODO: context is never really used, so could instead automatically
+  ;; fmt message with any extra arguments?
   (check-error-type kind)
   `(when (not ,assertion)
      (let [context# (or ,?context {})
