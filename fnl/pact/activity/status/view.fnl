@@ -71,6 +71,11 @@
        plugin.id
        (fmt "(%s)" plugin.pin)
        (fmt "clone %s/%s%s" ref hash latest)]
+      [nil :hold {:sync [[hash ref]]}]
+      [:hold
+       plugin.id
+       (fmt "(%s)" plugin.pin)
+       (fmt "can-clone %s/%s%s" ref hash latest)]
       ;; current checkout and a target checkout,
       ;; adjust message by user action.
       [[c-hash c-ref] action {:sync [[t-hash t-ref]]}]
