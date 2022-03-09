@@ -68,7 +68,8 @@
           "Could not transition runtime %s->%s, in %s" states.STATUS
           states.SNAPSHOT runtime.state)
   (let [{: new} (require :pact.activity.snapshot)
-        activity (new runtime group-name actions)]
+        group (get-plugin-group runtime group-name)
+        activity (new runtime group actions)]
     (doto runtime
       (tset :active-activity activity)
       (subscribe activity activity)
@@ -79,7 +80,8 @@
           "Could not transition runtime %s->%s, in %s" states.SNAPSHOT
           states.SYNC runtime.state)
   (let [{: new} (require :pact.activity.sync)
-        activity (new runtime group-name actions)]
+        group (get-plugin-group runtime group-name)
+        activity (new runtime group actions)]
     (doto runtime
       (tset :active-activity activity)
       (subscribe activity activity)
@@ -122,8 +124,7 @@
                       _
                       nil))]
       (unsubscribe runtime activity)
-      (STATUS->SNAPSHOT runtime group-name actions)
-      )
+      (STATUS->SNAPSHOT runtime group-name actions))
     [states.SNAPSHOT [activity _ :commit & args]]
     (let [[group-name actions] args]
       (unsubscribe runtime activity)

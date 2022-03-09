@@ -55,16 +55,13 @@
              (let [{: view} (require :fennel)]
                (view any)))))
 
-(fn new [runtime group-name actions]
+(fn new [runtime group actions]
   ;; ensure we have all files compiled (see file)
   (require :pact.vim.hotpot)
   (let [{: plugin-group-dir} (require :pact.runtime)
-        pact (require :pact)
-        group (pact.get group-name)
-        group-dir (plugin-group-dir runtime group)
         workflows (let [{: new} (require :pact.activity.sync.workflow)]
                     (icollect [_ action (ipairs actions)]
-                              [(new group-dir action) action]))
+                              [(new group.path action) action]))
         activity (actor pact/activity/status
                         ;; HACK for responder subscriptions
                         (attr runtime runtime)

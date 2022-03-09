@@ -35,17 +35,15 @@
              (let [{: view} (require :fennel)]
                (view any)))))
 
-(fn new [runtime group-name actions]
+(fn new [runtime group actions]
   ;; ensure we have all files compiled (see file)
   (require :pact.vim.hotpot)
-  (let [{: plugin-group-dir} (require :pact.runtime)
-        pact (require :pact)
-        ;; default the snapshot message to a timestamp and group name
-        default-message (fmt "%s %s" (vim.fn.strftime "%Y-%m-%d %H:%M:%S") group-name)
+  (let [;; default the snapshot message to a timestamp and group name
+        default-message (fmt "%s %s" (vim.fn.strftime "%Y-%m-%d %H:%M:%S") group.name)
         activity (actor pact/activity/status
                         ;; HACK for responder subscriptions
                         (attr runtime runtime)
-                        (attr group-name group-name)
+                        (attr group-name group.name)
                         (attr cache-dir (pathify (vim.fn.stdpath :cache) :pact))
                         (attr actions actions)
                         (attr snapshot-message default-message mutable)

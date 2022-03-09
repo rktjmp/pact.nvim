@@ -64,9 +64,9 @@
           nil (values nil)
           any (values (. any 1)))))))
 
-(fn new [keys]
+(fn new [opts]
   (let [pact-view (require :pact.activity.view)
-        view (pact-view.new {:n-keys keys})]
+        view (pact-view.new opts)]
 
     (actor pact/activity/sync/view
            (attr view view show)

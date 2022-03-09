@@ -73,9 +73,11 @@
                           (table.insert lines l))
                         (pact-view.set-content view lines)))))
 
-(fn new [keys]
+(fn new [opts]
   (let [pact-view (require :pact.activity.view)
-        view (pact-view.new {:n-keys keys})]
-    (actor pact/activity/snapshot/view (attr view view show) (receive receive))))
+        view (pact-view.new opts)]
+    (actor pact/activity/snapshot/view
+           (attr view view show)
+           (receive receive))))
 
 {: new}
