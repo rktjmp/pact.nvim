@@ -75,7 +75,6 @@
                               repo-path msg))
     (nil msg) (raise internal msg))
   ;; repo origin must match plugin origin
-  (inspect :get-origin (git.get-origin repo-path))
   (match (git.get-origin repo-path)
     origin (if (not (= origin plugin.url))
                       (raise internal
