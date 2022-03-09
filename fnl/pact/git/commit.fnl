@@ -25,10 +25,19 @@
 (fn ref-line->commit [ref]
   ;; We want to match "<sha> refs/[head|tag]/name".
   ;; Name can have special characters in it such as othes slashes or dashes, etc
-  ;; Some tags will have ^{} which indicates it's a pointer to another sha and
-  ;; this should be safe to discard.
+  ;;
+  ;; Some tags will have ^{} appended, AFAIK these always come in pairs, with a
+  ;; "tag" and "peeled tag" (with ^{}). Not all repos/tags have these pairs.
+  ;;
+  ;; So this function will match either, a tag or peeled tag, but when calcutating
+  ;; to solve version constraints, you must either look for duplicate tags names
+  ;; with different shas and treat both as valid, or drop the dulpicate that is
+  ;; missing the deref indicator (^{}). When checking out the NON deref tag, you
+  ;; will end up at the deref'd commit, so future status checks will show that
+  ;; the checkout needs updating, even though it is technically equal.
+  ;;
   ;; see https://git-scm.com/docs/git-check-ref-format
-  ;; Parse *expects* the input to be from `ls-remote --tags --heads --ref url`
+  ;; Parse *expects* the input to be from `ls-remote --tags --heads url`
   ;; for best results.
   (match (string.match ref "(%x+)%s+refs/(.+)/(.+)")
     (sha :heads name) (new-branch name sha)

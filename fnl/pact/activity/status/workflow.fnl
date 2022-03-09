@@ -17,16 +17,23 @@
 
 (fn find-best-commit-by-version [commits pin]
   "Search commits for version that satisfies given pin"
-  ;; we need a list of versions to check the pin against, but we want to return
-  ;; a commit, which is two parts [version commit], so we need to juggle some lists.
+  ;; Some times ls-remote will give us multiple hashes for the same version tag
+  ;; (peeled and unpeeled). We should return all commits that satisfy the pin
+  ;; so we can accurately check whether the current sha is *any* of them.
+
+  ;; first we will filter out all versions and map them version -> commit
   (let [versions->commits (collect [_ [hash btv] (ipairs commits)]
                             (if (= :version (constraint.type btv))
                                 (values btv [hash btv])
                                 (values nil nil)))
+        ;; extract just the version numbers to solve for
         versions (icollect [version _ (pairs versions->commits)]
                    version)
-        best (constraint.version.solve [pin] versions)]
-    (. versions->commits best)))
+        best (constraint.version.solve [pin] versions)
+        ;; now find all commits that match the best version
+        viable (icollect [version commit (pairs versions->commits)]
+                       (when (= version best) commit))]
+    (values viable)))
 
 (fn find-commit-by-branch-or-tag [commits branch-or-tag]
   "Search commits for any branch or tag that satisfies given pin"
@@ -35,7 +42,10 @@
       [hash btv])))
 
 (fn maybe-latest-version [commits]
-  (find-best-commit-by-version commits (constraint.version.new "> 0.0.0")))
+  (-?> commits
+    (find-best-commit-by-version (constraint.version.new "> 0.0.0"))
+    ;; just get first value if any, we only really want the version number
+    (. 1)))
 
 (fn fetch-remote-refs [from]
   (let [lines (match (git.ls-remote from)
@@ -97,10 +107,19 @@
         latest (maybe-latest-version remote-commits)
         via (constraint.type plugin.pin)
         _ (event "verifying pin against commit")]
-    (match commit
-      nil (raise argument (fmt "could not resolve %s (%s)" via plugin.pin))
-      [hash btv] (match (= hash current-hash)
-                   ;; curernt hash is equal to commit, so we can send that back
+    (match [via commit]
+      [_ nil] (raise argument (fmt "could not resolve %s (%s)" via plugin.pin))
+      ;; version may return multiple commits that match given version, so check
+      ;; if we match any of them.
+      [:version commit] (let [found (accumulate [found nil _ [hash btv] (ipairs commit) :until found]
+                                              (when (= hash current-hash) [hash btv]))
+                              first-option (. commit 1)]
+                        (match found
+                          nil (git-result plugin [current-hash current-hash] :hold
+                                      {:hold [] :sync [first-option]} latest)
+                          found (git-result plugin found :hold {:hold []} latest)))
+      [_ [hash btv]] (match (= hash current-hash)
+                   ;; current hash is equal to commit, so we can send that back
                    ;; as the current checkout
                    true
                    (git-result plugin commit :hold {:hold []} latest)
@@ -120,10 +139,13 @@
         commit (find-commit-for-constraint remote-commits plugin.pin)
         latest (maybe-latest-version remote-commits)
         via (constraint.type plugin.pin)]
-    (match commit
-      nil (raise argument (fmt "could not resolve %s (%s) %s" via plugin.pin
+    (match [via commit]
+      [_ nil] (raise argument (fmt "could not resolve %s (%s) %s" via plugin.pin
                                latest))
-      [hash btv] (git-result plugin nil :sync {:sync [commit]} latest))))
+      ;; version may return multiple commits that match given version, any will do.
+      [:version commit] (let [first-option (. commit 1)]
+                          (git-result plugin nil :sync {:hold [] :sync [first-option]} latest))
+      [_ [hash btv]] (git-result plugin nil :sync {:hold [] :sync [commit]} latest))))
 
 (fn git-status [repo-path plugin]
   (match (fs.what-is-at repo-path)

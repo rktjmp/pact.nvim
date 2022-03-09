@@ -7,7 +7,9 @@
 (local const {:ENV [:GIT_TERMINAL_PROMPT=0]})
 
 (fn dump-err [code err]
-  (fmt "git-error: [%d] %s" code (table.concat err)))
+  (let [{: view} (require :fennel)
+        msg (view err {:one-line? true})]
+    (fmt "git-error: [%d] %s" code msg)))
 
 (fn HEAD-sha [repo-root]
   ;; TODO handle case where git repo exists but has no commits and so
@@ -16,7 +18,7 @@
     (0 [line] _) (match (string.match line "([%x]+)")
                    nil (values "could not find SHA in command output")
                    sha (values sha))
-    (code _ err) (values nil (dump-err code err))))
+    (code lines err) (values nil (dump-err code [lins err]))))
 
 (fn ls-remote [repo-path-or-url]
   "Get refs for an existing clone or url and parse them into refs types"
@@ -30,15 +32,13 @@
                            true (await (run :git
                                             [:ls-remote
                                              :--tags
-                                             :--head
-                                             :--ref
+                                             :--heads
                                              repo-path-or-url]
                                             "." const.ENV))
                            false (await (run :git
                                              [:ls-remote
                                               :--tags
-                                              :--head
-                                              :--ref]
+                                              :--heads]
                                              repo-path-or-url const.ENV)))]
     (match [code lines err]
       [0 lines _] (values lines)
