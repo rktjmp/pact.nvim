@@ -10,24 +10,31 @@
                    {: git : github : path : sourcehut}))
 (local {: send} (require :pact.pubsub))
 
-(local config (struct pact/config
-                      ;; pact puts each group inside its own pack folder, so this points
-                      ;; to nvims "package root" not any kind of "pact root".
-                      ;; (attr package-root (.. (vim.fn.stdpath :data) :/site/pack) show)
-                      (attr package-root :/home/soup/projects/scratch/fake-pack show)
-                      ;; 10 seemed to cause git ls-remote failures, maybe rate limit
-                      ;; events from gh?
-                      (attr concurrency-limit 5 mutable show)))
 
-(local runtime (let [{: new} (require :pact.runtime)]
-                 (new config)))
+;; will be set in setup
+(var runtime nil)
+
 
 (fn setup [opts]
   "Configure pact, currently accepts no configurable options."
   (when (= (vim.fn.has :nvim-0.7) 0)
-    (error "pact.nvim needs nvim v0.7.0-dev+1212-gbce1fd221 or later")))
+    (error "pact.nvim needs nvim v0.7.0-dev+1212-gbce1fd221 or later"))
+  (local opts (or opts {}))
+
+  (let [{: new} (require :pact.runtime)
+        config (struct pact/config
+                       ;; pact puts each group inside its own pack folder, so this points
+                       ;; to nvims "package root" not any kind of "pact root".
+                       (attr package-root (or opts.package-root (.. (vim.fn.stdpath :data) :/site/pack)) show)
+                       ;; 10 seemed to cause git ls-remote failures, maybe rate limit
+                       ;; events from gh?
+                       (attr concurrency-limit (or opts.concurrency-limit 5) show))]
+    (set runtime (new config))))
 
 (fn define [group-name ...]
+  (expect (not (= nil runtime))
+          internal "runtime was nil, did you call setup?")
+
   (let [{: define-plugin-group} (require :pact.runtime)]
     (define-plugin-group runtime group-name ...)))
 
@@ -44,6 +51,8 @@
 
 {;; required for :Pact ...
  : command
+ ;; ... setup
+ : setup
  ;; ergonomic access to providers
  :git providers.git
  :github providers.github

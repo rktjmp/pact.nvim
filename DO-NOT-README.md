@@ -33,6 +33,9 @@ correctly tag their releases with as either `v<major>.<minor>.<patch>` or
 Pinned `commit` hashes must be given in full, as we are unable to fetch or
 remotely inspect partial hashes.
 
+`pact` can not guess a repositories "primary branch" (i.e `main` or `master`),
+you must explicitly define it when pinning to a branch.
+
 ## TODO
 
 [https://github.com/rktjmp/pact.nvim/issues/1](https://github.com/rktjmp/pact.nvim/issues/1)
@@ -40,13 +43,15 @@ remotely inspect partial hashes.
 ## Configuration
 
 ```fnl
-(let [{: define : github : gitlab : git} (require :pact)]
-
+(let [{: setup : define : github : gitlab : srht : git} (require :pact)]
+  (setup {:concurrency-limit 5}) ;; number of jobs to run in parallel
+                                 ;; or call (setup)
   (define :base
     (github :feline-nvim/feline.nvim "~ 0.4.0") ;; defaults to semver spec
     (github :rktjmp/hotpot.nvim {:branch :master}) ;; but you can specify a branch
     (github :ggandor/lightspeed.nvim {:tag :warp-drive}) ;; or a tag
-    (gitlab :a-plugin/hosted-elsewhere {:commit "DEADBEEF..."})) ;; or commit
+    (gitlab :a-plugin/hosted-elsewhere {:commit "DEADBEEF..."}) ;; commit
+    (srht   :sourcehut/support "~ 1.0.0"))
 
   (define :lsp ;; You can define separate groups to operate independently
     (git :https://my-host.net/secret-plugin.nvim, {:branch :develop}))
@@ -73,7 +78,7 @@ See above.
 
 **Installing and Updating**
 
-Run `Pact st[atus] <group-name>` or `Pact status *` (for all) (TODO).
+Run `Pact st[atus] <group-name>`.
 
 `pact` will examine your local repository against the remote and show if you
 are able to update. **`pact` will not set any plugin to `update` default.**
@@ -83,11 +88,10 @@ are able to update. **`pact` will not set any plugin to `update` default.**
 Given the following:
 
 ```fnl
-(let [{: define : github : run-sync : receive-event} (require :pact)]
-  (define :default
-    (github :rktjmp/hotpot.nvim {:branch :master})
-    (github :feline-nvim/feline.nvim {:version "~ 0.4.0"})
-    (github :ggandor/lightspeed.nvim {:branch :main})))
+(define :default
+  (github :rktjmp/hotpot.nvim {:branch :master})
+  (github :feline-nvim/feline.nvim {:version "~ 0.4.0"})
+  (github :ggandor/lightspeed.nvim {:branch :main}))
 ```
 
 You will see the following UI:
