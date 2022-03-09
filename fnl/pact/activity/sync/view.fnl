@@ -15,9 +15,11 @@
 ;;
 ;; # bindings:
 ;; # gq        = close, cancel, give up, dispair
+;; # gq        = close, cancel, give up, dispair
 
-(local help-text [ "# bindings:"
-                  "# gq = close, cancel, give up, dispair" ])
+(local help-text ["# bindings:"
+                  "# gc = gq"
+                  "# gq = close, cancel, give up, dispair"])
 
 (fn result->line [action result]
   (let [{: plugin : method} action]

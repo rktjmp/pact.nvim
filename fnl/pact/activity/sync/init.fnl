@@ -79,7 +79,9 @@
                         (receive receive-message))
         view (let [{: new} (require :pact.activity.sync.view)]
                view (new {:on-close [activity :quit]
-                          :keymap {:normal {:gq [activity :quit]}}}))]
+                          :keymap {:normal {:gq [activity :quit]
+                                            ;; ergo
+                                            :gc [activity :quit] }}}))]
     (tset activity :view view)
     (start-timer activity)
     ;; sub to all workflow events
