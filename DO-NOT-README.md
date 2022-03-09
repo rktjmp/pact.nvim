@@ -20,8 +20,8 @@ updating a plugin unless explicitly instructed and supporting
 [semver](https://semver.org) version specifications, compatible with
 Mix/NPM styles.
 
-`pact` also snapshots your plugin versions before any operation, allowing you
-to rollback if an undate has unfortunate side effects. (Rollback interface TODO.)
+`pact` also snapshots your plugin versions before any operation, ~~allowing you
+to rollback if an undate has unfortunate side effects.~~ (Rollback interface TODO.)
 
 ## Constraints
 
@@ -30,7 +30,7 @@ correctly tag their releases with as either `v<major>.<minor>.<patch>` or
 `<major>.<minor>.<patch>`, partial versioning is not supported (i.e
 `<major>.<minor>`).
 
-Pinned `commit` hashes must be given in full, as we are unable to fetch or
+Pinned `hash`es must be given in full, as we are unable to fetch or
 remotely inspect partial hashes.
 
 `pact` can not guess a repositories "primary branch" (i.e `main` or `master`),
@@ -50,7 +50,7 @@ you must explicitly define it when pinning to a branch.
     (github :feline-nvim/feline.nvim "~ 0.4.0") ;; defaults to semver spec
     (github :rktjmp/hotpot.nvim {:branch :master}) ;; but you can specify a branch
     (github :ggandor/lightspeed.nvim {:tag :warp-drive}) ;; or a tag
-    (gitlab :a-plugin/hosted-elsewhere {:commit "DEADBEEF..."}) ;; commit
+    (gitlab :a-plugin/hosted-elsewhere {:hash "DEADBEEF..."}) ;; hash
     (srht   :sourcehut/support "~ 1.0.0"))
 
   (define :lsp ;; You can define separate groups to operate independently
