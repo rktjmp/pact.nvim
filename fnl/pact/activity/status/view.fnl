@@ -94,8 +94,8 @@
 (fn path-result->line [plugin result]
   (let [{: plugin : action} result]
     (match action
-      :hold [:hold plugin.id "(link)" (fmt "linked: %s" plugin.path)]
-      :sync [:link plugin.id "(link)" (fmt "create link %s" plugin.path)])))
+      :hold [:hold plugin.id "(link)" (fmt "has-link %s" plugin.path)]
+      :sync [:link plugin.id "(link)" (fmt "create-link %s" plugin.path)])))
 
 (fn result->line [plugin result]
   (match result

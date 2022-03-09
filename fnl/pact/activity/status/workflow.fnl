@@ -98,8 +98,7 @@
         via (constraint.type plugin.pin)
         _ (event "verifying pin against commit")]
     (match commit
-      nil (raise argument (fmt "could not resolve %s (%s) %s" via plugin.pin
-                               latest))
+      nil (raise argument (fmt "could not resolve %s (%s)" via plugin.pin))
       [hash btv] (match (= hash current-hash)
                    ;; curernt hash is equal to commit, so we can send that back
                    ;; as the current checkout

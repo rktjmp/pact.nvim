@@ -12,8 +12,8 @@ syn match pactCommandHold "^hold"
 syn match pactCommandSync "^sync"
 syn match pactCommandClone "^clone"
 syn match pactCanSync "can-sync"
-syn match pactWillSync "will-sync"
-syn match pactInSync "in-sync"
+syn match pactWillSync "\(will-sync\|create-link\)"
+syn match pactInSync "\(in-sync\|has-link\)"
 
 let b:current_syntax = "pact"
 
