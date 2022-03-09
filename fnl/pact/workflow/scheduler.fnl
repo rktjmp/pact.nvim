@@ -55,11 +55,12 @@
   "Create a new scheduler.
   Options:
   - concurrency-limit: 10"
-  (let [opts (or opts {})
-        uv vim.loop] 
+  (expect (not (= nil opts))
+          argument "scheduler requires opts")
+  (let [uv vim.loop]
     (struct pact/scheduler
             (attr broadcast broadcast-fn)
-            (attr concurrency-limit (or opts.concurrency-limit 5)) ; 10 seemed do choke ls-remote?
+            (attr concurrency-limit opts.concurrency-limit)
             (attr queue [])
             (attr active [] mutable)
             (attr handle nil mutable))))
