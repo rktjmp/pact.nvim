@@ -38,24 +38,15 @@
   (find-best-commit-by-version commits (constraint.version.new "> 0.0.0")))
 
 (fn fetch-remote-refs [from]
-  (let [lines (git.ls-remote from)
+  (let [lines (match (git.ls-remote from)
+                lines lines
+                (nil err) (raise internal (fmt "ls-remote failed: %q %q" from err)))
         commits (icollect [_ line (ipairs lines)]
                   (git-commit.ref-line->commit line))]
     (match commits
       (where t (= 0 (length t)))
       (raise internal (fmt "ls-remote returned no commits %q" from))
       _ (values commits))))
-
-(fn validate-origin [repo-path plugin]
-  (match (git.get-origin repo-path)
-    (true origin) (match (= origin plugin.url)
-                    true true
-                    false (raise internal
-                                 (fmt "plugin origin does not match repo origin %q %q %q %q"
-                                      plugin.id plugin.url repo-path origin)))
-    (false err) (raise internal
-                       (fmt "could not check origin for plugin %q %q: %q"
-                            plugin.id repo-path err))))
 
 (fn find-commit-for-constraint [commits pin]
   (match pin
@@ -84,12 +75,13 @@
                               repo-path msg))
     (nil msg) (raise internal msg))
   ;; repo origin must match plugin origin
+  (inspect :get-origin (git.get-origin repo-path))
   (match (git.get-origin repo-path)
-    (true origin) (if (not (= origin plugin.url))
+    origin (if (not (= origin plugin.url))
                       (raise internal
                              (fmt "plugin origin does not match repo origin %q %q %q %q"
                                   plugin.id plugin.url repo-path origin)))
-    (false err) (raise internal
+    (nil err) (raise internal
                        (fmt "could not check origin for plugin %q %q: %q"
                             plugin.id repo-path err)))
   ;; proceed with status checking
