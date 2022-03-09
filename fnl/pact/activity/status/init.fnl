@@ -85,7 +85,7 @@
              (let [{: view} (require :fennel)]
                (view any)))))
 
-(fn new [runtime group-name]
+(fn new [runtime group]
   ;; Get all plugins in given group, check each plugin against disk to check
   ;; git-sync status or link status.
   ;; Allows user to pick desired action against each plugin (sync, hold, etc)
@@ -94,10 +94,8 @@
 
   ;; ensure we have all files compiled (see file)
   (require :pact.vim.hotpot)
-  (let [{: plugin-group-dir} (require :pact.runtime)
-        pact (require :pact)
-        group (pact.get group-name)
-        group-dir (plugin-group-dir runtime group)
+  (let [{: get-plugin-group} (require :pact.runtime)
+        group-dir group.path
         ;; create a status workflow for each plugin
         workflows (let [{: new} (require :pact.activity.status.workflow)]
                     (icollect [_ plugin (ipairs group.plugins)]
