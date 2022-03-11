@@ -48,9 +48,9 @@
                 [:halt val] (broadcast scheduler workflow :complete val)))]
       ;; stop or nah?
       (when (= 0 (length scheduler.queue) (length scheduler.active))
-        (uv.idle_stop scheduler.handle)
-        (uv.close scheduler.handle)
-        (tset scheduler :handle nil)))))
+        (uv.idle_stop scheduler.idle-handle)
+        (uv.close scheduler.idle-handle)
+        (tset scheduler :idle-handle nil)))))
 
 (fn new [opts]
   "Create a new scheduler.
@@ -60,28 +60,27 @@
           argument "scheduler requires opts")
   (let [uv vim.loop]
     (struct pact/scheduler
-            (attr broadcast broadcast-fn)
             (attr concurrency-limit opts.concurrency-limit)
             (attr queue [])
             (attr active [] mutable)
-            (attr handle nil mutable))))
+            (attr idle-handle nil mutable))))
 
 
 (fn add-workflow [scheduler workflow]
   "Enqueue a workflow with on-event and on-complete callbacks.
   Starts scheduler loop if it's not currently running"
   (table.insert scheduler.queue workflow)
-  (when (= nil scheduler.handle)
+  (when (= nil scheduler.idle-handle)
     (let [h (uv.new_idle)]
-      (tset scheduler :handle h)
+      (tset scheduler :idle-handle h)
       (uv.idle_start h (make-idle-loop scheduler)))))
 
 (fn stop [scheduler]
   "Force halt a scheduler, in-progress workflows may be lost."
-  (uv.idle_stop scheduler.handle))
+  (uv.idle_stop scheduler.idle-handle))
   ;; TODO decide on whether we close/open the idle handle or if we're ok
   ;; holding one open.
-  ;; (uv.close scheduler.handle)
+  ;; (uv.close scheduler.idle-handle)
   
 
 {: new : schedule-workflows : add-workflow}
