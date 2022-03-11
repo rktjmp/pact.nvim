@@ -55,7 +55,8 @@
         format (accumulate [s "" i width (ipairs widths)]
                  (if (= i (length widths))
                      (.. s "%s")
-                     (.. s (fmt "%%-%ds " width))))]
+                     ;; format string cant do 99+ alignment
+                     (.. s (fmt "%%-%ds " (if (< 99 width) 99 width)))))]
     (icollect [_ line (ipairs data)]
       (fmt format (unpack line)))))
 
