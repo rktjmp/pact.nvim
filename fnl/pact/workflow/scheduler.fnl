@@ -2,7 +2,7 @@
 (import-macros {: struct} :pact.struct)
 
 (local uv vim.loop)
-(local {: inspect : monotonic-id} (require :pact.common))
+(local {: inspect} (require :pact.common))
 (local {: subscribe : broadcast} (require :pact.pubsub))
 
 (fn make-idle-loop [scheduler]
@@ -29,27 +29,28 @@
       ;; activate workflow
       (let [workflow (table.remove scheduler.queue 1)]
         (table.insert scheduler.active 1 workflow)))
-    ;; tick all active workflows and collect their results, then dispatch
-    ;; any events they have generated. finally cull the active list.
+    ;; tick every running workflow
     (let [updates (collect [_ workflow (ipairs scheduler.active)]
-                    workflow
-                    (tick-workflow workflow))
+                           (values workflow (tick-workflow workflow)))
+          ;; collect anything that wants to be scheduled again, and update the
+          ;; currently active list. Do this before dispatching any messaages so
+          ;; any error in that occurs in dispatching doesn't leave zombie workflows.
+          still-active (icollect [workflow [act & rest] (pairs updates)]
+                         (when (= :cont act)
+                           (values workflow)))
+          ;; replace old active with still active list
+          _ (tset scheduler :active still-active)
           ;; dispatch any messages
           _ (each [workflow reply (pairs updates)]
               (match reply
                 [:cont :event event] (broadcast scheduler workflow :info event)
                 [:halt :error err] (broadcast scheduler workflow :error err)
-                [:halt val] (broadcast scheduler workflow :complete val)))
-          still-active (icollect [workflow [act & rest] (pairs updates)]
-                         (when (= :cont act)
-                           workflow))]
-      ;; replace old active with still active list
-      (tset scheduler :active still-active))
-    ;; stop or nah?
-    (when (= 0 (length scheduler.queue) (length scheduler.active))
-      (uv.idle_stop scheduler.handle)
-      (uv.close scheduler.handle)
-      (tset scheduler :handle nil))))
+                [:halt val] (broadcast scheduler workflow :complete val)))]
+      ;; stop or nah?
+      (when (= 0 (length scheduler.queue) (length scheduler.active))
+        (uv.idle_stop scheduler.handle)
+        (uv.close scheduler.handle)
+        (tset scheduler :handle nil)))))
 
 (fn new [opts]
   "Create a new scheduler.
@@ -77,10 +78,10 @@
 
 (fn stop [scheduler]
   "Force halt a scheduler, in-progress workflows may be lost."
-  (uv.idle_stop scheduler.handle)
+  (uv.idle_stop scheduler.handle))
   ;; TODO decide on whether we close/open the idle handle or if we're ok
   ;; holding one open.
   ;; (uv.close scheduler.handle)
-  )
+  
 
 {: new : schedule-workflows : add-workflow}
