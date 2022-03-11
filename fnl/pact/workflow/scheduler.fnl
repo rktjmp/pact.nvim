@@ -59,6 +59,8 @@
   (expect (not (= nil opts))
           argument "scheduler requires opts")
   (let [uv vim.loop]
+    ;; TODO this could / should? be an actor so we can message it in
+    ;; the standard way.
     (struct pact/scheduler
             (attr concurrency-limit opts.concurrency-limit)
             (attr queue [])
@@ -77,10 +79,14 @@
 
 (fn stop [scheduler]
   "Force halt a scheduler, in-progress workflows may be lost."
-  (uv.idle_stop scheduler.idle-handle))
-  ;; TODO decide on whether we close/open the idle handle or if we're ok
-  ;; holding one open.
-  ;; (uv.close scheduler.idle-handle)
-  
+  (uv.idle_stop scheduler.idle-handle)
+  ;; in-flight workflows may still have open processes, but those processes
+  ;; will end, resolve their future, but the scheduler will no longer care
+  ;; about the containing thread, so *I think* that wont leak.
+  ;; TODO think about memory here when less tired.
+  (each [i _ (ipairs scheduler.queue)]
+    (tset scheduler.queue i nil))
+  (tset scheduler :active nil)
+  (uv.close scheduler.idle-handle))
 
 {: new : schedule-workflows : add-workflow}
