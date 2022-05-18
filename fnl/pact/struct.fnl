@@ -46,4 +46,11 @@
                               (tset context# key# val#))}]
        (setmetatable {} mt#))))
 
-{: struct}
+(fn typeof [x]
+  ;; return structs type if given a struct, or normal type for other values.
+  `(match [(type ,x) (?. ,x :is-a)]
+     [:table nil] :table
+     [:table is-a#] is-a#
+     [t# _#] t#))
+
+{: struct : typeof}
