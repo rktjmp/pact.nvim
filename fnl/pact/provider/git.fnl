@@ -1,8 +1,7 @@
 (import-macros {: raise : expect} :pact.error)
-(local provider (require :pact.provider.base))
+(import-macros {: struct} :pact.struct)
 (local constraint (require :pact.constraint))
 (local {: fmt : has-any-key?} (require :pact.common))
-(local provider-type :git)
 
 (fn e-ctx [reason]
   {:git-provider reason})
@@ -14,19 +13,16 @@
        (string.match "([^/]+)/.+")
        (string.reverse)))
 
-(fn is-a? [given]
-  (provider.is-a? given provider-type))
-
 (fn new [url opts]
   ;; assumes all arguments are correct
-  (provider.new {:id opts.id
-                 :provider provider-type
-                 : url
-                 :pin (match opts
+  (struct pact/provider/git
+          (attr id opts.id show)
+          (attr url url show)
+          (attr pin (match opts
                         {: hash} (constraint.hash.new hash)
                         {: tag} (constraint.tag.new tag)
                         {: branch} (constraint.branch.new branch)
-                        {: version} (constraint.version.new version))}))
+                        {: version} (constraint.version.new version)) show)))
 
 (fn enforce-url [url]
   (when (or (not url) (= url ""))
