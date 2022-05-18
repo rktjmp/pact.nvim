@@ -7,10 +7,8 @@
                        {: path} (require :pact.provider.path)]
                    {: git : github : path : sourcehut}))
 
-
 ;; will be set in setup
 (var runtime nil)
-
 
 (fn setup [opts]
   "Configure pact, currently accepts no configurable options."
@@ -40,15 +38,45 @@
   (local {: send} (require :pact.pubsub))
   ;; very dirty tricks for now but write this as an eater later
   (if (or (string.match input "^st ")
-            (string.match input "^status "))
+          (string.match input "^status "))
     (let [group-name (string.match input "^st.* (.+)")]
       (if group-name
         (send runtime :command :status group-name)
         (vim.notify "could not extract group name")))
     (vim.notify (.. "dont know how to " input))))
 
+; (fn access [tree key rest]
+;   (let [val (. tree key)]
+;     (match (type val)
+;       :function (values val)
+;       :table (let [[head & rest] rest]
+;                 (access val head rest))
+
+
+;   (match (. tree key)
+
+;   (if (. tree key)
+
+(fn command-completion [arg-lead cmd-line cursor-pos]
+  ;; we're going to be simple and only provide completions on the
+  ;; final section of the command line.
+  ;; First we split the command line by spaces, anything but the last
+  ;; value will be used as an access path.
+  ; (let [parts (let [tail & path (-> (icollect [p (string.gmatch cmd-line "%S+")] p)
+  ;                                   (table.reverse)
+  ;                                   (#(let [[tail & r_path] $1]
+  ;                                       (values tail (table.reverse r_path)))))
+  ;       tree {:Pact {:status (fn [] [:a :b])}}
+  ;       fennel (require :fennel)]
+  ;   (access tree head rest)
+                
+  ;   (print (fennel.view [arg-lead cmd-line cursor-pos parts]))))
+  (icollect [name _ (pairs runtime.groups)]
+           (values name)))
+
 {;; required for :Pact ...
  : command
+ : command-completion
  ;; ... setup
  : setup
  ;; ergonomic access to providers
