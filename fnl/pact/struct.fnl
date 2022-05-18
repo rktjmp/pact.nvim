@@ -29,8 +29,8 @@
                 :__fennelview to-string#
                 :__index (fn [_# key#]
                            (match key#
-                             :id id#
-                             :is-a is-a#
+                             :__id id#
+                             :is-a is-a# ;; TODO: deprecate for (typeof x)
                              other# (do
                                       (if (= nil (. attrs# key#))
                                           (error (common#.fmt "%s does not have attr %s"

@@ -6,7 +6,7 @@
 (fn send [to ...]
   (expect (not (= nil to)) argument
           "send to argument must not be nil")
-  (expect (= (is-a to.id) :monotonic-id) argument
+  (expect (= (is-a to.__id) :monotonic-id) argument
           "send to argument must have id")
   (expect (and (not (= nil to.thread)) (= :thread (type to.thread))) argument
           "send to must have thread attr")
@@ -36,29 +36,29 @@
       (table.insert subs new-sub))))
 
 (fn subscribe-channel-topic [subscriber channel topic]
-  (expect (= (is-a channel.id) :monotonic-id) argument
+  (expect (= (is-a channel.__id) :monotonic-id) argument
           "subscribe channel argument must have id")
-  (expect (= (is-a topic.id) :monotonic-id) argument
+  (expect (= (is-a topic.__id) :monotonic-id) argument
           "subscribe topic argument must have id")
-  (add-sub channel.id topic.id subscriber))
+  (add-sub channel.__id topic.__id subscriber))
 
 (fn subscribe-channel [subscriber channel]
-  (expect (= (is-a channel.id) :monotonic-id) argument
+  (expect (= (is-a channel.__id) :monotonic-id) argument
           "subscribe channel argument must have id")
-  (add-sub channel.id true subscriber))
+  (add-sub channel.__id true subscriber))
 
 (fn subscribe [subscriber channel topic]
   ;; TODO maybe add extra type info to actor to check for?
   ;; aka (is-a sub) :actor, but still have (is-a sub) :pact/status...
   (expect (= :table (type subscriber)) argument
           (fmt "subscribe %s must be table" subscriber))
-  (expect (= :monotonic-id (is-a subscriber.id)) argument
+  (expect (= :monotonic-id (is-a subscriber.__id)) argument
           "subscribe subscriber must have id")
   (expect (= :thread (type subscriber.thread)) argument
           (fmt "subscribe %s must be an actor" subscriber))
   (match [channel topic]
     [nil nil] (raise argument (fmt "must give at least channel %s"
-                                   subscriber.id))
+                                   subscriber.__id))
     [channel nil] (subscribe-channel subscriber channel)
     [channel topic] (subscribe-channel-topic subscriber channel topic)
     _ (raise internal "could not match subscribe request")))
@@ -96,7 +96,7 @@
 (fn unsubscribe [subscriber channel topic]
   (expect (= :table (type subscriber)) argument
           (fmt "subscribe %s must be table" subscriber))
-  (expect (= :monotonic-id (is-a subscriber.id)) argument
+  (expect (= :monotonic-id (is-a subscriber.__id)) argument
           "subscribe subscriber must have id")
   (expect (= :thread (type subscriber.thread)) argument
           (fmt "subscribe %s must be an actor" subscriber))
@@ -104,24 +104,24 @@
   (match [channel topic]
     [nil nil] (unsubscribe-all subscriber)
     [channel nil] (do
-                    (expect (= (is-a channel.id) :monotonic-id) argument
+                    (expect (= (is-a channel.__id) :monotonic-id) argument
                             "unsubscribe channel argument must have id")
-                    (unsubscribe-channel subscriber channel.id))
+                    (unsubscribe-channel subscriber channel.__id))
     [channel topic] (do
-                      (expect (= (is-a channel.id) :monotonic-id) argument
+                      (expect (= (is-a channel.__id) :monotonic-id) argument
                               "unsubscribe channel argument must have id")
-                      (expect (= (is-a topic.id) :monotonic-id) argument
+                      (expect (= (is-a topic.__id) :monotonic-id) argument
                               "unsubscribe topic argument must have id")
-                      (unsubscribe-channel-topic subscriber channel.id topic.id))))
+                      (unsubscribe-channel-topic subscriber channel.__id topic.__id))))
 
 ;; TODO: allow nil/true topic? Ok to just blast out a channel?
 (fn broadcast [channel topic ...]
-  (expect (= (is-a channel.id) :monotonic-id) argument
+  (expect (= (is-a channel.__id) :monotonic-id) argument
           "broadcast channel argument must have id")
-  (expect (= (is-a topic.id) :monotonic-id) argument
+  (expect (= (is-a topic.__id) :monotonic-id) argument
           "broadcast topic argument must have id")
-  (let [topic-subs (channel-topic-subscribers channel.id topic.id)
-        channel-subs (channel-topic-subscribers channel.id true)]
+  (let [topic-subs (channel-topic-subscribers channel.__id topic.__id)
+        channel-subs (channel-topic-subscribers channel.__id true)]
     (each [_ sub (ipairs topic-subs)]
       (do
         (send sub channel topic ...)))
