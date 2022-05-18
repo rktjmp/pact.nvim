@@ -1,20 +1,36 @@
 ;; TODO it would be nicer if is-a is a string, because we can
 ;; just pass the is-a type from the module context
 ;; also just use direct strings when definining attrs
+
+
 (fn struct [is-a ...]
-  "(struct my/struct (attr name :my-name mutable show)) ;; can tset, will appear in tostring"
-  (let [processed (icollect [_ attr (ipairs [...])]
-                    (let [[call name val & flags] attr]
-                      (when (not (= :attr (tostring call)))
-                        (error "struct only accepts attr call"))
-                      {:name (tostring name)
-                       :value val
-                       :flags (collect [_ flag (ipairs flags)]
-                                (values (tostring flag) true))}))
+  "A very weakly typed struct type. Really only exists to wrap asserts around
+  field access and some immutability, though that's never going to flow down to
+  plain old lua tables.
+
+  (struct my-struct-name
+           (const :id forever-value :show) ;; shown in (print my-struct)
+           (const :foo :bar)
+           (mutable :counter 0)) ;; can (tset my-struct :counter 10)
+  (= :my-struct-name (typeof my-struct))"
+  (let [processed (icollect [_ attr  (ipairs [...])]
+                            (let [[call name value & flags] attr
+                                  call (tostring call)
+                                  flags (collect [_ flag (ipairs flags)]
+                                                 (values (tostring flag) true))]
+                              (assert (or (= :attr call)
+                                          (= :const call)
+                                          (= :mutable call))
+                                      "struct only accepts attr/const/mutable call")
+                              (tset flags call true)
+                              {:name (tostring name)
+                               :value value
+                               :flags flags}))
+        _ (print (view processed))
         attrs (collect [_ {: name : flags} (ipairs processed)]
-                (values name flags))
+                       (values name flags))
         context (collect [_ {: name : value} (ipairs processed)]
-                  (values name value))]
+                         (values name value))]
     `(let [common# (require :pact.common)
            is-a# ,(tostring is-a)
            id# (common#.monotonic-id is-a#)
@@ -30,7 +46,7 @@
                 :__index (fn [_# key#]
                            (match key#
                              :__id id#
-                             :is-a is-a# ;; TODO: deprecate for (typeof x)
+                             :is-a is-a#
                              other# (do
                                       (if (= nil (. attrs# key#))
                                           (error (common#.fmt "%s does not have attr %s"
