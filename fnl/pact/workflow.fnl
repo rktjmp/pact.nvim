@@ -6,6 +6,8 @@
 ;; should call (run workflow).
 
 (import-macros {: raise : expect : error->string} :pact.error)
+(import-macros {: struct} :pact.struct)
+
 (local uv vim.loop)
 (local {: inspect : fmt : monotonic-id} (require :pact.common))
 (local co (require :pact.coroutine))
@@ -176,16 +178,14 @@
   (result ...))
 
 (fn new [id work-fn]
-  (let [{: view} (require :fennel)
-        workflow {:id (monotonic-id :pact/workflow)
-                   :thread (coroutine.create work-fn)
-                   :events []
-                   :state const.state.READY
-                   :timer -1}
-        tos (fn [] (fmt "%s::%s{%s}" is-a-type workflow.id workflow.state))
-        mt {:__tostring tos
-            :__fennelview tos}]
-    ;; TODO this could wrap correctly, need dispatch on __newindex, maybe type macro/fn
-  (setmetatable workflow mt)))
+  (struct pact/workflow
+          (attr id id show)
+          (attr thread (coroutine.create work-fn))
+          (attr future nil mutable)
+          (attr result nil mutable)
+          (attr error nil mutable)
+          (attr events [])
+          (attr state const.state.READY mutable show)
+          (attr timer -1 mutable)))
 
 {: new : run : halt : event : result : const}
