@@ -123,10 +123,10 @@
       (values nil err))
     ;; "Awaited" portions of a workflow should yield the future/thread.
     ;; We instruct the scheduler to return to us later.
-    (where [true thread] (= (type thread) :thread))
+    (where [true future] (= (type future) :thread))
     (do
-      (RUNNING->WAITING workflow thread)
-      (values const.reply.CONT thread))
+      (RUNNING->WAITING workflow future)
+      (values const.reply.CONT future))
     (where [true const.reply.CONT event] (is-a-event? event))
     (do
       (RUNNING->READY workflow event)
