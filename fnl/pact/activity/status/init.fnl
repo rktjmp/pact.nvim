@@ -48,17 +48,17 @@
     ;; scheduler handlers
     [runtime.scheduler workflow :info event]
     (do
-      (update-workflow-activity activity workflow :incomplete event.message)
+      (update-workflow-state activity workflow :incomplete event.message)
       (stop-timer-when-all-finished activity)
       (send view :redraw activity))
     [runtime.scheduler workflow :error err]
     (do
-      (update-workflow-activity activity workflow :error err)
+      (update-workflow-state activity workflow :error err)
       (stop-timer-when-all-finished activity)
       (send view :redraw activity))
     [runtime.scheduler workflow :complete result]
     (do
-      (update-workflow-activity activity workflow :complete result)
+      (update-workflow-state activity workflow :complete result)
       (stop-timer-when-all-finished activity)
       (send view :redraw activity))
     ;; input handlers, sent directly, no channel+topic
@@ -127,13 +127,12 @@
                                            :gh [activity :hold]
                                            :gq [activity :quit]
                                            :gc [activity :commit]}}})]
-    (print activity view)
-    (tset activity :view view)
-    (start-timer activity)
-    ;; sub to all workflow events
+    (doto activity
+          (tset :view view)
+          (start-timer)
+          (subscribe runtime.scheduler))
     (let [{: add-workflow} (require :pact.workflow.scheduler)]
       (each [_ [workflow plugin] (ipairs activity.workflows)]
-        (subscribe activity runtime.scheduler)
         (add-workflow runtime.scheduler workflow)))
     (values activity)))
 
