@@ -97,7 +97,10 @@
         fields (collect [_ field (ipairs fields)] (values (tostring field) {:mutable false}))
         ;; update any mutable field flags
         mutable-fields (each [_ field (ipairs (or opts.mutable []))]
-                         (tset fields (tostring field) :mutable true))
+                         (do
+                           (assert (. fields (tostring field))
+                                   (.. struct-name " cant mark mutable, field does not exist: " (tostring field)))
+                           (tset fields (tostring field) :mutable true)))
         ;; extract descriptor field names
         describe-by-fields (icollect [_ field (ipairs (or opts.describe-by []))] (tostring field))]
     `(let [common# (require :pact.common)

@@ -6,12 +6,11 @@
 ;; should call (run workflow).
 
 (import-macros {: raise : expect : error->string} :pact.error)
-(import-macros {: struct} :pact.struct)
+(import-macros {: struct : defstruct} :pact.struct)
 
 (local uv vim.loop)
-(local {: inspect : fmt : monotonic-id} (require :pact.common))
+(local {: inspect : fmt} (require :pact.common))
 (local co (require :pact.coroutine))
-(local is-a-type :pact.workflow)
 
 (local const {:state {;; created but scheduler has not prepared
                       :CREATED :pact.workflow.state.CREATED
@@ -178,14 +177,17 @@
   (result ...))
 
 (fn new [id work-fn]
-  (struct pact/workflow
-          (attr id id show)
-          (attr thread (coroutine.create work-fn))
-          (attr future nil mutable)
-          (attr result nil mutable)
-          (attr error nil mutable)
-          (attr events [])
-          (attr state const.state.READY mutable show)
-          (attr timer -1 mutable)))
+  ((defstruct pact/workflow
+    [id thread future result error events state timer]
+    :mutable [future result error state timer]
+    :describe-by [id state result error])
+   :id id
+   :thread (coroutine.create work-fn)
+   :future nil
+   :result nil
+   :error nil
+   :events []
+   :state const.state.READY
+   :timer -1))
 
 {: new : run : halt : event : result : const}

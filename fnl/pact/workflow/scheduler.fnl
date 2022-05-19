@@ -1,5 +1,5 @@
 (import-macros {: raise : expect} :pact.error)
-(import-macros {: struct} :pact.struct)
+(import-macros {: struct : defstruct} :pact.struct)
 
 (local uv vim.loop)
 (local {: inspect} (require :pact.common))
@@ -61,12 +61,13 @@
   (let [uv vim.loop]
     ;; TODO this could / should? be an actor so we can message it in
     ;; the standard way.
-    (struct pact/scheduler
-            (attr concurrency-limit opts.concurrency-limit)
-            (attr queue [])
-            (attr active [] mutable)
-            (attr idle-handle nil mutable))))
-
+    ((defstruct pact/scheduler
+       [concurrency-limit queue active idle-handle]
+       :mutable [active idle-handle])
+     :concurrency-limit opts.concurrency-limit
+     :queue []
+     :active []
+     :idle-handle nil)))
 
 (fn add-workflow [scheduler workflow]
   "Enqueue a workflow with on-event and on-complete callbacks.
