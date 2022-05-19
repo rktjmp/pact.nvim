@@ -67,11 +67,7 @@
           any (values (. any 1)))))))
 
 (fn new [opts]
-  (let [pact-view (require :pact.activity.view)
-        view (pact-view.new opts)]
-
-    (actor pact/activity/sync/view
-           (attr view view show)
-           (receive receive))))
+  (let [pact-view (require :pact.activity.view)]
+    (pact-view.new receive opts)))
 
 {: new}

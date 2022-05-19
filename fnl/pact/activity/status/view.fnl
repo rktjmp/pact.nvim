@@ -1,5 +1,5 @@
 (import-macros {: raise : expect} :pact.error)
-(import-macros {: actor} :pact.actor)
+(import-macros {: defactor : actor} :pact.actor)
 (local {: fmt : inspect : pathify} (require :pact.common))
 (local uv vim.loop)
 
@@ -152,11 +152,7 @@
           any (values (. any 1)))))))
 
 (fn new [opts]
-  (let [pact-view (require :pact.activity.view)
-        view (pact-view.new opts)]
-
-    (actor pact/activity/status/view
-           (attr view view show)
-           (receive receive))))
+  (let [pact-view (require :pact.activity.view)]
+    (pact-view.new receive opts)))
 
 {: new :send receive}

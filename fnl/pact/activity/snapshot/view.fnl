@@ -74,10 +74,7 @@
                         (pact-view.set-content view lines)))))
 
 (fn new [opts]
-  (let [pact-view (require :pact.activity.view)
-        view (pact-view.new opts)]
-    (actor pact/activity/snapshot/view
-           (attr view view show)
-           (receive receive))))
+  (let [pact-view (require :pact.activity.view)]
+    (pact-view.new receive opts)))
 
 {: new}
