@@ -151,8 +151,4 @@
           nil (values nil)
           any (values (. any 1)))))))
 
-(fn new [opts]
-  (let [pact-view (require :pact.activity.view)]
-    (pact-view.new receive opts)))
-
-{: new :send receive}
+{: receive}

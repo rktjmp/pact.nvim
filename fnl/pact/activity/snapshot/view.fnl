@@ -73,8 +73,4 @@
                           (table.insert lines l))
                         (pact-view.set-content view lines)))))
 
-(fn new [opts]
-  (let [pact-view (require :pact.activity.view)]
-    (pact-view.new receive opts)))
-
-{: new}
+{: receive}

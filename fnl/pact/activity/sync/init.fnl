@@ -1,10 +1,15 @@
 (import-macros {: raise : expect} :pact.error)
 (import-macros {: struct} :pact.struct)
-(import-macros {: actor} :pact.actor)
+(import-macros {: defactor} :pact.actor)
 
 (local {: fmt : inspect : pathify} (require :pact.common))
 (local {: subscribe : broadcast : unsubscribe : send} (require :pact.pubsub))
 (local uv vim.loop)
+
+(local actor-type (defactor pact/activity/sync
+                    [runtime group-name plugins workflows view results elapsed timer]
+                    :mutable [view elapsed]))
+
 
 (fn maybe-stop-timer [state]
   (let [{: workflows : timer} state]
@@ -59,29 +64,28 @@
   ;; ensure we have all files compiled (see file)
   (require :pact.vim.hotpot)
   (let [{: plugin-group-dir} (require :pact.runtime)
+        {:new pact-view} (require :pact.activity.view)
+        {: receive} (require :pact.activity.sync.view)
         workflows (let [{: new} (require :pact.activity.sync.workflow)]
                     (icollect [_ action (ipairs actions)]
                               [(new group.path action) action]))
-        activity (actor pact/activity/status
-                        ;; HACK for responder subscriptions
-                        (attr runtime runtime)
-                        (attr group-name group.name)
-                        (attr plugins group.plugins)
-                        (attr workflows workflows)
-                        (attr view nil mutable)
-                        (attr results
-                              (icollect [i [workflow action] (ipairs workflows)]
-                                        [workflow
-                                         :incomplete
-                                         [action :working]]))
-                        (attr elapsed 0 mutable)
-                        (attr timer (uv.new_timer))
-                        (receive receive-message))
-        view (let [{: new} (require :pact.activity.sync.view)]
-               view (new {:on-close [activity :quit]
+        activity (actor-type
+                   :runtime runtime
+                   :group-name group.name
+                   :plugins group.plugins
+                   :workflows workflows
+                   :view nil
+                   :results (icollect [i [workflow action] (ipairs workflows)]
+                                      [workflow :incomplete [action :working]])
+                   :elapsed 0
+                   :timer (uv.new_timer)
+                   :receive receive-message)
+        view (pact-view receive
+                        {:on-close [activity :quit]
                           :keymap {:normal {:gq [activity :quit]
                                             ;; ergo
-                                            :gc [activity :quit] }}}))]
+                                            :gc [activity :quit] }}})]
+    (print view activity)
     (tset activity :view view)
     (start-timer activity)
     ;; sub to all workflow events

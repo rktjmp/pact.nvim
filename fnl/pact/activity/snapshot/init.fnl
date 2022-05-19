@@ -1,6 +1,6 @@
 (import-macros {: raise : expect} :pact.error)
 (import-macros {: struct} :pact.struct)
-(import-macros {: actor} :pact.actor)
+(import-macros {: defactor} :pact.actor)
 
 (local {: fmt : inspect : pathify} (require :pact.common))
 (local {: subscribe : broadcast : unsubscribe : send} (require :pact.pubsub))
@@ -35,25 +35,30 @@
              (let [{: view} (require :fennel)]
                (view any)))))
 
+(local actor (defactor pact/activity/snapshot
+               [runtime group-name cache-dir actions snapshot-message workflows view]
+               :mutable [snapshot-message view]))
+
 (fn new [runtime group actions]
   ;; ensure we have all files compiled (see file)
   (require :pact.vim.hotpot)
-  (let [;; default the snapshot message to a timestamp and group name
+  (let [{:new pact-view} (require :pact.activity.view)
+        {: receive} (require :pact.activity.snapshot.view)
+        ;; default the snapshot message to a timestamp and group name
         default-message (fmt "%s %s" (vim.fn.strftime "%Y-%m-%d %H:%M:%S") group.name)
-        activity (actor pact/activity/status
-                        ;; HACK for responder subscriptions
-                        (attr runtime runtime)
-                        (attr group-name group.name)
-                        (attr cache-dir (pathify (vim.fn.stdpath :cache) :pact))
-                        (attr actions actions)
-                        (attr snapshot-message default-message mutable)
-                        (attr workflows workflows)
-                        (attr view nil mutable)
-                        (receive receive-message))
-        view (let [{: new} (require :pact.activity.snapshot.view)]
-               view (new {:on-close [activity :quit]
-                          :keymap {:normal {:gq [activity :quit]
-                                            :gc [activity :commit]}}}))]
+        activity (actor :runtime runtime
+                        :group-name group.name
+                        :cache-dir (pathify (vim.fn.stdpath :cache) :pact)
+                        :actions actions
+                        :snapshot-message default-message
+                        :workflows workflows
+                        :view nil
+                        :receive receive-message)
+        view (pact-view receive
+                        {:on-close [activity :quit]
+                         :keymap {:normal {:gq [activity :quit]
+                                           :gc [activity :commit]}}})]
+    (print activity view)
     (tset activity :view view)
     (send activity.view :redraw activity)
     (values activity)))

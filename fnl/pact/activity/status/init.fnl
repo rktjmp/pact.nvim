@@ -1,10 +1,14 @@
 (import-macros {: raise : expect} :pact.error)
-(import-macros {: struct} :pact.struct)
-(import-macros {: actor} :pact.actor)
+(import-macros {: struct : typeof} :pact.struct)
+(import-macros {: actor : defactor} :pact.actor)
 
 (local {: fmt : inspect : pathify} (require :pact.common))
 (local {: subscribe : broadcast : unsubscribe : send} (require :pact.pubsub))
 (local uv vim.loop)
+
+(local actor-type (defactor pact/activity/status
+                    [runtime group-name plugins workflows view results elapsed timer]
+                    :mutable [view elapsed]))
 
 (fn maybe-stop-timer [state]
   (let [{: workflows : timer} state]
@@ -95,33 +99,36 @@
   ;; ensure we have all files compiled (see file)
   (require :pact.vim.hotpot)
   (let [{: get-plugin-group} (require :pact.runtime)
+        {:new pact-view} (require :pact.activity.view)
+        {: receive} (require :pact.activity.status.view)
         group-dir group.path
         ;; create a status workflow for each plugin
         workflows (let [{: new} (require :pact.activity.status.workflow)]
                     (icollect [_ plugin (ipairs group.plugins)]
                       [(new group-dir plugin) plugin]))
-        activity (actor pact/activity/status
-                        ;; HACK for responder subscriptions
-                        (attr runtime runtime)
-                        (attr group-name group.name)
-                        (attr plugins group.plugins)
-                        (attr workflows workflows)
-                        ;; need to set view after actor creation for input target
-                        (attr view nil mutable)
-                        (attr results
-                              (icollect [i [workflow plugin] (ipairs workflows)]
-                                        [workflow
-                                         :incomplete
-                                         [plugin :working]]))
-                        (attr elapsed 0 mutable)
-                        (attr timer (uv.new_timer))
-                        (receive receive-message))
-        view (let [{: new} (require :pact.activity.status.view)]
-                   view (new {:on-close [activity :quit]
-                              :keymap {:normal {:gs [activity :sync]
-                                                :gh [activity :hold]
-                                                :gq [activity :quit]
-                                                :gc [activity :commit]}}}))]
+        activity (actor-type
+                   ;; attach runtime so we can match on it to be sure we're getting
+                   ;; messages from the correct scheduler. this can probably be done cleaner.
+                   :runtime runtime
+                   :group-name group.name
+                   :plugins group.plugins
+                   :workflows workflows
+                   ;; need to set view after actor creation for input target
+                   :view nil
+                   :results (icollect [i [workflow plugin] (ipairs workflows)]
+                                      [workflow
+                                       :incomplete
+                                       [plugin :working]])
+                   :elapsed 0
+                   :timer (uv.new_timer)
+                   :receive receive-message)
+        view (pact-view receive
+                        {:on-close [activity :quit]
+                         :keymap {:normal {:gs [activity :sync]
+                                           :gh [activity :hold]
+                                           :gq [activity :quit]
+                                           :gc [activity :commit]}}})]
+    (print activity view)
     (tset activity :view view)
     (start-timer activity)
     ;; sub to all workflow events
