@@ -10,7 +10,6 @@
                     [runtime group-name plugins workflows view results elapsed timer]
                     :mutable [view elapsed]))
 
-
 (fn maybe-stop-timer [state]
   (let [{: workflows : timer} state]
     (when (accumulate [done true _ [workflow _] (ipairs workflows)]

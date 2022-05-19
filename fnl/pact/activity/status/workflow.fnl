@@ -1,4 +1,5 @@
 (import-macros {: raise : expect} :pact.error)
+(import-macros {: typeof} :pact.struct)
 
 (local uv vim.loop)
 (local {: fmt : inspect : pathify} (require :pact.common))
@@ -171,13 +172,17 @@
     (nil err) (raise internal err)))
 
 (fn work [plugin-group-root plugin]
-  (let [repo-path (pathify plugin-group-root plugin.id)
+  (let [git-plugin-type (-> (require :pact.provider.git)
+                            (. :type)
+                            (typeof))
+        path-plugin-type (-> (require :pact.provider.path)
+                             (. :type)
+                             (typeof))
+        repo-path (pathify plugin-group-root plugin.id)
         _ (fs.ensure-directory-exists plugin-group-root)
-        result (match plugin
-                 (where (plugin) (git-provider.is-a? plugin)) (git-status repo-path
-                                                                          plugin)
-                 (where (plugin) (path-provider.is-a? plugin)) (path-status repo-path
-                                                                            plugin))]
+        result (match (typeof plugin)
+                 git-plugin-type (git-status repo-path plugin)
+                 path-plugin-type (path-status repo-path plugin))]
     (halt result)))
 
 (fn new [plugin-group-root plugin]

@@ -26,6 +26,7 @@
                (.. path sep part))]
     path))
 
+;; TODO: deprecate for typeof
 (fn is-a [given]
   (match (type given)
     :table (match given.is-a
@@ -36,15 +37,15 @@
 (fn set-mt [id ?prefix]
   (let [fmt string.format
         t {: id}
-        tos #(fmt "%s#%d" (or ?prefix "mt") id)
+        tos #(fmt "%s#%d" (or ?prefix "monotonic-id") id)
         mt {:__tostring tos
             :__fennelview tos
             :__call #(values id)
             :__index #(match $2
                         :is-a :monotonic-id
                         :value id
-                        _ (error "mt-id only has value attribute"))
-            :__newindex #(error "cant set mt attributes")}]
+                        _ (error "monotonic-id only has value attribute"))
+            :__newindex #(error "cant set monotonic-id attributes")}]
     (setmetatable {} mt)))
 
 (fn gen [fix]

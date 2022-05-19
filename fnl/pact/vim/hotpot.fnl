@@ -23,6 +23,7 @@
                   (let [modname (-> (.. req-path "." name)
                                     (string.sub 2 -5))]
                     (when (and (string.match modname "^pact")
+                               (not (= :pact.vendor.cljlib.init-macros modname))
                                (not (= :pact.vim.hotpot modname))
                                (not (= :pact.struct modname))
                                (not (= :pact.actor modname))

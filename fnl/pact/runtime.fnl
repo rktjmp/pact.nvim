@@ -1,21 +1,23 @@
 (import-macros {: raise : expect} :pact.error)
-(import-macros {: struct} :pact.struct)
-(import-macros {: actor} :pact.actor)
+(import-macros {: defstruct} :pact.struct)
+(import-macros {: defactor} :pact.actor)
 
 (local uv vim.loop)
 (local is-a-type :pact.runtime)
-(local states (struct pact/runtime/states
-                      (attr READY :pact.runtime.state.READY)
-                      (attr STATUS :pact.runtime.state.STATUS)
-                      (attr SNAPSHOT :pact.runtime.state.SNAPSHOT)
-                      (attr SYNC :pact.runtime.state.SYNC)))
+(local states ((defstruct pact/runtime/states
+                 [READY STATUS SNAPSHOT SYNC])
+               :READY :pact.runtime.state.READY
+               :STATUS :pact.runtime.state.STATUS
+               :SNAPSHOT :pact.runtime.state.SNAPSHOT
+               :SYNC :pact.runtime.state.SYNC))
 
 (local {: fmt : inspect : pathify} (require :pact.common))
 (local {: subscribe : unsubscribe : send : broadcast} (require :pact.pubsub))
 
 ;; The Pact runtime manages transitions between activities and some glue
-;; components. Most of the actual work (view, workflow creation, etc) is done
-;; in each separate activity.
+;; components.
+;; Most of the actual work (view, workflow creation, etc) is done in each
+;; separate activity.
 ;;
 ;; The runtime also maintains the plugin table.
 
@@ -24,6 +26,10 @@
 (fn get-plugin-group [runtime group-name]
   "Get defined group from runtime"
   (. runtime :groups group-name))
+
+(local plugin-group-type (defstruct plugin-group
+                           [path name plugins]
+                           :describe-by [path name plugins]))
 
 (fn define-plugin-group [runtime group-name ...]
   "Collect given providers (under ...) under a group name"
@@ -41,10 +47,10 @@
                             (tset duplcate-check plugin.id true)
                             (values plugin)))
         package-root runtime.config.package-root
-        group (struct plugin-group
-                      (attr path (pathify package-root group-name :start) show)
-                      (attr name group-name show)
-                      (attr plugins plugins show))]
+        group (plugin-group-type
+               :path (pathify package-root group-name :start)
+               :name group-name
+               :plugins plugins)]
     (tset runtime.groups group-name group)))
 
 ;;; UI control
@@ -109,18 +115,20 @@
                     (match result
                       ;; strip result down to useful data
                       {:action :sync}
-                      (struct pact/action
-                              (attr plugin result.plugin show)
-                              (attr method tag show)
-                              ;; TODO naming this action means you do a lot of
-                              ;; action.action destructuring, so better name?
-                              (attr action :sync show)
-                              (attr args result.actions.sync show)
-                              ;; TODO: this is used with :sync to work out if we
-                              ;; want to clone or update. Would be better to have
-                              ;; unique actions but they should apply to git and path,
-                              ;; so :sync, :create?
-                              (attr current-checkout result.current-checkout show))
+                      ((defstruct pact/action
+                         [plugin method action args current-checkout]
+                         :describe-by [plugin method action args current-checkout])
+                       :plugin result.plugin
+                       :method tag
+                       ;; TODO naming this action means you do a lot of
+                       ;; action.action destructuring, so better name?
+                       :action :sync
+                       :args result.actions.sync
+                       ;; TODO: this is used with :sync to work out if we
+                       ;; want to clone or update. Would be better to have
+                       ;; unique actions but they should apply to git and path,
+                       ;; so :sync, :create?
+                       :current-checkout result.current-checkout)
                       _
                       nil))]
       (unsubscribe runtime activity)
@@ -135,15 +143,21 @@
       (unsubscribe runtime activity)
       (*->READY runtime))))
 
+
 ;;; ... New
 
 (fn new [config]
-  (actor pact/runtime
-         (attr groups [] show)
-         (attr scheduler (let [{: new} (require :pact.workflow.scheduler)]
-                           (new config)))
-         (attr config config)
-         (attr active-activity nil mutable)
-         (attr state states.READY mutable show) (receive receive)))
+  (let [scheduler (let [{: new} (require :pact.workflow.scheduler)]
+                    (new config))]
+    ((defactor pact/runtime
+       [groups scheduler config active-activity state]
+       :mutable [state active-activity]
+       :describe-by [state])
+     :groups []
+     :scheduler scheduler
+     :config config
+     :active-activity nil
+     :state states.READY
+     :receive receive)))
 
 {: new : define-plugin-group : plugin-group-dir : get-plugin-group}

@@ -10,7 +10,7 @@
                     [runtime group-name plugins workflows view results elapsed timer]
                     :mutable [view elapsed]))
 
-(fn maybe-stop-timer [state]
+(fn stop-timer-when-all-finished [state]
   (let [{: workflows : timer} state]
     (when (accumulate [done true _ [workflow _] (ipairs workflows)]
             (and done (or workflow.result workflow.error)))
@@ -42,48 +42,48 @@
     (if (= workflow target-wf)
         (tset state.results i [workflow tag [plugin data]]))))
 
-(fn receive-message [state ...]
-  (local {: runtime : view} state)
+(fn receive-message [activity ...]
+  (local {: runtime : view} activity)
   (match [...]
     ;; scheduler handlers
     [runtime.scheduler workflow :info event]
     (do
-      (update-workflow-state state workflow :incomplete event.message)
-      (maybe-stop-timer state)
-      (send view :redraw state))
+      (update-workflow-activity activity workflow :incomplete event.message)
+      (stop-timer-when-all-finished activity)
+      (send view :redraw activity))
     [runtime.scheduler workflow :error err]
     (do
-      (update-workflow-state state workflow :error err)
-      (maybe-stop-timer state)
-      (send view :redraw state))
+      (update-workflow-activity activity workflow :error err)
+      (stop-timer-when-all-finished activity)
+      (send view :redraw activity))
     [runtime.scheduler workflow :complete result]
     (do
-      (update-workflow-state state workflow :complete result)
-      (maybe-stop-timer state)
-      (send view :redraw state))
+      (update-workflow-activity activity workflow :complete result)
+      (stop-timer-when-all-finished activity)
+      (send view :redraw activity))
     ;; input handlers, sent directly, no channel+topic
     [:sync]
-    (let [workflow (send view :workflow-at-cursor state)]
-      (set-workflow-action state workflow :sync)
-      (send view :redraw state))
+    (let [workflow (send view :workflow-at-cursor activity)]
+      (set-workflow-action activity workflow :sync)
+      (send view :redraw activity))
     [:hold]
-    (let [workflow (send view :workflow-at-cursor state)]
-      (set-workflow-action state workflow :hold)
-      (send view :redraw state))
+    (let [workflow (send view :workflow-at-cursor activity)]
+      (set-workflow-action activity workflow :hold)
+      (send view :redraw activity))
     [:commit]
-    (let [actions (icollect [_ [_ tag [_ data]] (ipairs state.results)]
+    (let [actions (icollect [_ [_ tag [_ data]] (ipairs activity.results)]
                     (when (= :complete tag)
                       data))]
       ;; TODO kill any running workflows & timers
-      (unsubscribe state)
+      (unsubscribe activity)
       (send view :close)
-      (broadcast state state :commit state.group-name actions))
+      (broadcast activity activity :commit activity.group-name actions))
     [:quit]
     (do
       ;; TODO kill any running workflows & timers
-      (unsubscribe state)
+      (unsubscribe activity)
       (send view :close)
-      (broadcast state state :quit))
+      (broadcast activity activity :quit))
     any
     (inspect :status-activity-unmatched-event
              (let [{: view} (require :fennel)]
@@ -98,8 +98,7 @@
 
   ;; ensure we have all files compiled (see file)
   (require :pact.vim.hotpot)
-  (let [{: get-plugin-group} (require :pact.runtime)
-        {:new pact-view} (require :pact.activity.view)
+  (let [{:new pact-view} (require :pact.activity.view)
         {: receive} (require :pact.activity.status.view)
         group-dir group.path
         ;; create a status workflow for each plugin

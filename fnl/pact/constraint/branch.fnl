@@ -2,8 +2,9 @@
 
 (fn eq? [a b]
   (match [a b]
-    [{:operator ca :branch ba} {:operator cb :branch bb}] (and (= ca cb)
-                                                             (= ba bb))
+    [{:operator ca :branch ba}
+     {:operator cb :branch bb}] (and (= ca cb)
+                                     (= ba bb))
     _ false))
 
 (fn refuse []

@@ -1,5 +1,5 @@
 (import-macros {: raise : expect} :pact.error)
-(import-macros {: struct} :pact.struct)
+(import-macros {: struct : defstruct} :pact.struct)
 
 (local providers (let [{: git} (require :pact.provider.git)
                        {: github} (require :pact.provider.github)
@@ -17,13 +17,15 @@
   (local opts (or opts {}))
 
   (let [{: new} (require :pact.runtime)
-        config (struct pact/config
-                       ;; pact puts each group inside its own pack folder, so this points
-                       ;; to nvims "package root" not any kind of "pact root".
-                       (attr package-root (or opts.package-root (.. (vim.fn.stdpath :data) :/site/pack)) show)
-                       ;; 10 seemed to cause git ls-remote failures, maybe rate limit
-                       ;; events from gh?
-                       (attr concurrency-limit (or opts.concurrency-limit 5) show))]
+        config ((defstruct pact/config
+                  [package-root concurrency-limit]
+                  :describe-by [package-root concurrency-limit])
+                ;; pact puts each group inside its own pack folder, so this points
+                ;; to nvims "package root" not any kind of "pact root".
+                :package-root (or opts.package-root (.. (vim.fn.stdpath :data) :/site/pack))
+                ;; 10 seemed to cause git ls-remote failures, maybe rate limit
+                ;; events from gh?
+                :concurrency-limit (or opts.concurrency-limit 5))]
     (set runtime (new config))))
 
 (fn define [group-name ...]
