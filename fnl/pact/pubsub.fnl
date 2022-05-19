@@ -13,7 +13,7 @@
   (expect (or (and (= :table (type topic))
                    (not (= nil topic.__id)))
               (= :string (type topic)))
-          argument "subscribe topic must have __id or be a string"))
+          argument (fmt "pubsub topic must have __id or be a string, got %s" topic)))
 
 (fn topic->id [topic]
   (match (type topic)
