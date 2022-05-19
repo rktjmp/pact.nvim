@@ -1,11 +1,5 @@
 (local {: inspect} (require :pact.common))
 
-; (macro expect [form]
-;   `(when (not ,form)
-;      (local {:raise-internal raise-internal#} (require :pact.error))
-;      (raise-internal# "expection failed"
-;                      {:expect ,(view form) :trace (debug.traceback)})))
-
 (fn async-wrap [func]
   ;; Wraps given function in a coroutine so it can be suspended by inner awaits.
   ;;

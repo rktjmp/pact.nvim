@@ -47,18 +47,6 @@
         (vim.notify "could not extract group name")))
     (vim.notify (.. "dont know how to " input))))
 
-; (fn access [tree key rest]
-;   (let [val (. tree key)]
-;     (match (type val)
-;       :function (values val)
-;       :table (let [[head & rest] rest]
-;                 (access val head rest))
-
-
-;   (match (. tree key)
-
-;   (if (. tree key)
-
 (fn command-completion [arg-lead cmd-line cursor-pos]
   ;; we're going to be simple and only provide completions on the
   ;; final section of the command line.
