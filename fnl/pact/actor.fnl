@@ -12,18 +12,18 @@
 (fn defactor [actor-name fields ...]
   `(do
      (import-macros {: defstruct} :pact.struct)
-     (var actor# nil)
-     (fn loop# [...]
-       (match [(actor#.receive actor# ...)]
-         [:halt val#] #(values val#)
-         val# (loop# (coroutine.yield (unpack val#)))))
-     (let [thread# (coroutine.create loop#)
-           struct-type# (defstruct ,actor-name
-                          ;; inject our always present fields
-                          ,(doto fields (table.insert `thread) (table.insert `receive))
-                          ;; everything else as normal
-                          ,...)]
-       (fn [...]
+     (fn [...]
+       (var actor# nil)
+       (fn loop# [...]
+         (match [(actor#.receive actor# ...)]
+           [:halt val#] #(values val#)
+           val# (loop# (coroutine.yield (unpack val#)))))
+       (let [thread# (coroutine.create loop#)
+             struct-type# (defstruct ,actor-name
+                            ;; inject our always present fields
+                            ,(doto fields (table.insert `thread) (table.insert `receive))
+                            ;; everything else as normal
+                            ,...)]
          (let [len# (select :# ...)
                ;; inject our known value, because we may be given :attr nil, we
                ;; have to insert at the "true" last index
