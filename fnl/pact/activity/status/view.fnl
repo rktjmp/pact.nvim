@@ -1,5 +1,5 @@
 (import-macros {: raise : expect} :pact.error)
-(import-macros {: defactor : actor} :pact.actor)
+(import-macros {: defactor} :pact.actor)
 (local {: fmt : inspect : pathify} (require :pact.common))
 (local uv vim.loop)
 
@@ -87,8 +87,7 @@
        (match action
          :sync :will-sync
          :hold :can-sync
-         _ action
-         )
+         _ action)
        (fmt "(%s) (at %s)%s" t-ref c-ref latest)]
       ;; no sync option, so it's only hold and in sync
       [[c-hash c-ref] :hold {:hold [] :sync nil}]

@@ -35,7 +35,7 @@
              (let [{: view} (require :fennel)]
                (view any)))))
 
-(local actor (defactor pact/activity/snapshot
+(local actor-type (defactor pact/activity/snapshot
                [runtime group-name cache-dir actions snapshot-message workflows view]
                :mutable [snapshot-message view]))
 
@@ -46,14 +46,14 @@
         {: receive} (require :pact.activity.snapshot.view)
         ;; default the snapshot message to a timestamp and group name
         default-message (fmt "%s %s" (vim.fn.strftime "%Y-%m-%d %H:%M:%S") group.name)
-        activity (actor :runtime runtime
-                        :group-name group.name
-                        :cache-dir (pathify (vim.fn.stdpath :cache) :pact)
-                        :actions actions
-                        :snapshot-message default-message
-                        :workflows workflows
-                        :view nil
-                        :receive receive-message)
+        activity (actor-type :runtime runtime
+                             :group-name group.name
+                             :cache-dir (pathify (vim.fn.stdpath :cache) :pact)
+                             :actions actions
+                             :snapshot-message default-message
+                             :workflows workflows
+                             :view nil
+                             :receive receive-message)
         view (pact-view receive
                         {:on-close [activity :quit]
                          :keymap {:normal {:gq [activity :quit]

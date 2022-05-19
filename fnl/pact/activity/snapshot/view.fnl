@@ -1,5 +1,4 @@
 (import-macros {: raise : expect} :pact.error)
-(import-macros {: actor} :pact.actor)
 (local {: fmt : inspect : pathify} (require :pact.common))
 (local uv vim.loop)
 

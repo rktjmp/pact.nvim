@@ -1,6 +1,6 @@
 (import-macros {: raise : expect} :pact.error)
-(import-macros {: struct : typeof} :pact.struct)
-(import-macros {: actor : defactor} :pact.actor)
+(import-macros {: typeof} :pact.struct)
+(import-macros {: defactor} :pact.actor)
 
 (local {: fmt : inspect : pathify} (require :pact.common))
 (local {: subscribe : broadcast : unsubscribe : send} (require :pact.pubsub))
