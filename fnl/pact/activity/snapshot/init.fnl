@@ -1,5 +1,4 @@
 (import-macros {: raise : expect} :pact.error)
-(import-macros {: struct} :pact.struct)
 (import-macros {: defactor} :pact.actor)
 
 (local {: fmt : inspect : pathify} (require :pact.common))

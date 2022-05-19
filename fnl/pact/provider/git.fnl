@@ -1,5 +1,5 @@
 (import-macros {: raise : expect} :pact.error)
-(import-macros {: struct : defstruct} :pact.struct)
+(import-macros {: defstruct} :pact.struct)
 (local constraint (require :pact.constraint))
 (local {: fmt : has-any-key?} (require :pact.common))
 

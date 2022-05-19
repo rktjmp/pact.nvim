@@ -1,5 +1,5 @@
 (import-macros {: raise : expect} :pact.error)
-(import-macros {: struct : defstruct} :pact.struct)
+(import-macros {: defstruct} :pact.struct)
 
 (local uv vim.loop)
 (local {: inspect} (require :pact.common))

@@ -1,5 +1,5 @@
 (import-macros {: raise : expect} :pact.error)
-(import-macros {: typeof : struct : defstruct} :pact.struct)
+(import-macros {: typeof : defstruct} :pact.struct)
 (import-macros {: defactor} :pact.actor)
 
 (local {: inspect : fmt} (require :pact.common))

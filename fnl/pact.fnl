@@ -1,5 +1,5 @@
 (import-macros {: raise : expect} :pact.error)
-(import-macros {: struct : defstruct} :pact.struct)
+(import-macros {: defstruct} :pact.struct)
 
 (local providers (let [{: git} (require :pact.provider.git)
                        {: github} (require :pact.provider.github)

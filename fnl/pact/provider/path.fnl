@@ -4,7 +4,7 @@
 ;;; create a symlink to the target directory.
 
 (import-macros {: raise : expect} :pact.error)
-(import-macros {: struct : defstruct} :pact.struct)
+(import-macros {: defstruct} :pact.struct)
 
 (fn path->id [path]
   (-?> path

@@ -6,7 +6,7 @@
 ;; should call (run workflow).
 
 (import-macros {: raise : expect : error->string} :pact.error)
-(import-macros {: struct : defstruct} :pact.struct)
+(import-macros {: defstruct} :pact.struct)
 
 (local uv vim.loop)
 (local {: inspect : fmt} (require :pact.common))
