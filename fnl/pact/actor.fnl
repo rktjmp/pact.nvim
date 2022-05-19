@@ -1,6 +1,3 @@
-(local {: hash-map : kvseq} (require :pact.vendor.cljlib))
-;; (print (hash-map :open false :close false))
-
 ;; This concept (an actor is a struct) worked better with the older struct style
 ;; it's a bit awkward now and a bit less safe in construction, but for now we will
 ;; leave it as it is. it may make more sense to define an actor/responder type
@@ -39,30 +36,4 @@
            (set actor# (struct-type# (unpack args# 1 (+ len# 2))))
            (values actor#))))))
 
-(fn actor [actor-name fields ...]
-  "wraps some state in a `persistent` [sic] process that can handle messages"
-  ; (print actor-name)
-  (let [attrs fields
-        opts (hash-map ...)
-        receive opts.receive]
-    (assert receive "actor must be given at least (receive (fn [] nil))")
-    `(do
-       (import-macros {: struct} :pact.struct)
-       (var actor# nil)
-       (var receive# ,receive)
-
-       (fn loop# [...]
-         (match [(receive# actor# ...)]
-           [:halt val#] #(values val#)
-           val# (loop# (coroutine.yield (unpack val#)))))
-
-       (let [thread# (coroutine.create loop#)]
-         (set actor# (struct :neo ,actor-name
-                             ,(doto attrs
-                                    (table.insert `const)
-                                    (table.insert `:thread)
-                                    (table.insert `thread#))
-                             ,...))
-         (values actor#)))))
-
-{: actor : defactor}
+{: defactor}
