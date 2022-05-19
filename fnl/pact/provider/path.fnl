@@ -4,7 +4,7 @@
 ;;; create a symlink to the target directory.
 
 (import-macros {: raise : expect} :pact.error)
-(import-macros {: struct} :pact.struct)
+(import-macros {: struct : defstruct} :pact.struct)
 
 (fn path->id [path]
   (-?> path
@@ -12,13 +12,17 @@
        (string.match "([^/]+)/.+")
        (string.reverse)))
 
+(local struct-type (defstruct
+                     pact/provider/path
+                     [id pin path]
+                     :describe-by [id pin path]))
+
 (fn path [path opts]
   (expect (not (= nil path)) argument "path provider must be given path")
   (let [{: new} (require :pact.constraint.path)
         opts (or opts {})]
-    (struct pact/provider/path
-            (attr id (or opts.id (path->id path)) show)
-            (attr pin (new path) show)
-            (attr path path show))))
+    (struct-type :id (or opts.id (path->id path))
+                 :pin (new path)
+                 :path path)))
 
-{: path}
+{: path :type struct-type}

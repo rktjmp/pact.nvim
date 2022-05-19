@@ -91,10 +91,14 @@
   (local struct-name (tostring name))
   (assert (sequence? fields) (.. struct-name " fields must be a sequence"))
   (assert (< 0 (select :# (unpack fields))) (.. struct-name " struct must have at least one field"))
+  ;; we blindly assume opts is correctly :opt val :opt val without nils
   (let [opts (parse-opts [...])
+        ;; extract field names -> flags and default to immutable
         fields (collect [_ field (ipairs fields)] (values (tostring field) {:mutable false}))
+        ;; update any mutable field flags
         mutable-fields (each [_ field (ipairs (or opts.mutable []))]
                          (tset fields (tostring field) :mutable true))
+        ;; extract descriptor field names
         describe-by-fields (icollect [_ field (ipairs (or opts.describe-by []))] (tostring field))]
     `(let [common# (require :pact.common)
            is-a# ,struct-name
@@ -103,7 +107,11 @@
            to-string# #(let [inner# (collect [_# attr# (ipairs ,describe-by-fields)]
                                              (values attr# (or (. $1 attr#) :nil)))]
                          (common#.fmt "(%s %s)" id# (common#.view inner#)))
+           ;; struct creation, expects to be called with :field val
            new# (fn [...]
+                  ;; TODO: check for keys equality here, need to extract parse-opts or find a lib thats acceptable (cljlib broken)
+                  ; (assert (= (length fields#) (select :# ...))
+                  ;         (common#.fmt "%s must be called with all fields: %s" is-a# (common#.view fields#)))
                   (let [instance-fields# {}
                         _# (for [i# 1 (select :# ...) 2]
                              (let [key# (. [...] i#)
@@ -131,9 +139,8 @@
            type-def-mt# {:__index (fn [_# key#]
                                     (if (= :is-a key#)
                                       (values is-a#)
-                                      (error "struct-def should be called or indexed for :is-a")))
-                         :__call (fn [_# ...]
-                                   (new# ...))}]
+                                      (error (common#.fmt "struct-def %s should be called or indexed for :is-a, got %s" is-a# key#))))
+                         :__call (fn [_# ...] (new# ...))}]
        (setmetatable {} type-def-mt#))))
 
 (fn typeof [x]
