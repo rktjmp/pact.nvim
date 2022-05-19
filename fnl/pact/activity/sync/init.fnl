@@ -51,7 +51,7 @@
     [:quit]
     (do
       ;; TODO kill any running workflows
-      (unsubscribe state)
+      (unsubscribe state true)
       (send view :close)
       (broadcast state state :quit))
     any

@@ -21,13 +21,13 @@
       (with-open [fout (io.open file-path :w)]
                  (each [_ line (ipairs lines)]
                    (fout:write (.. line "\n"))))
-      (unsubscribe activity)
+      (unsubscribe activity true)
       (send view :close)
       (broadcast activity activity :commit activity.group-name activity.actions))
     ;; quit, dont do anything
     [:quit]
     (do
-      (unsubscribe activity)
+      (unsubscribe activity true)
       (send view :close)
       (broadcast activity activity :quit))
     any

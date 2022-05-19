@@ -75,13 +75,13 @@
                     (when (= :complete tag)
                       data))]
       ;; TODO kill any running workflows & timers
-      (unsubscribe activity)
+      (unsubscribe activity true)
       (send view :close)
       (broadcast activity activity :commit activity.group-name actions))
     [:quit]
     (do
       ;; TODO kill any running workflows & timers
-      (unsubscribe activity)
+      (unsubscribe activity true)
       (send view :close)
       (broadcast activity activity :quit))
     any
