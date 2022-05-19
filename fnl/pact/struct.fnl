@@ -108,7 +108,8 @@
            fields# ,fields
            ;; struct creation, expects to be called with :field val
            new# (fn [...]
-                  ;; TODO: check for keys equality here, need to extract parse-opts or find a lib thats acceptable (cljlib broken)
+                  ;; TODO: check for keys equality here, need to extract
+                  ;; parse-opts or find a lib thats acceptable (cljlib broken)
                   ; (assert (= (length fields#) (select :# ...))
                   ;         (common#.fmt "%s must be called with all fields: %s" is-a# (common#.view fields#)))
                   (let [id# (common#.monotonic-id is-a#)
@@ -153,118 +154,4 @@
      [:table is-a#] is-a#
      [t# _#] t#))
 
-;; (fn struct [struct-name fields ...]
-;;   (struct :pact/struct
-;;           [const :group g-name
-;;            const :color red
-;;            mutable :age nil]
-;;          :describe-by [:color :age])
-
-(fn neostruct [struct-name fields ...]
-  ; (assert (= :string (type struct-name)) "struct name must be given as a string")
-  (assert (sequence? fields) (.. :struct-name " fields must be a sequence"))
-  (assert (< 0 (select :# (unpack fields))) (.. :struct-name " struct must have at least one field"))
-  (assert (= 0 (% (select :# (unpack fields)) 3)) (.. :struct-name " fields must be given in 3-set"))
-  ;; parse fields which should match [const|mutable :name value|nil ...]
-  (let [opts (parse-opts [...])
-        fields (parse-fields fields)
-        attributes (collect [_ {: name : mutable} (ipairs fields)]
-                            (values name {:mutable mutable}))
-        in-memory (collect [_ {: name : value} (ipairs fields)]
-                         (values name value))
-        describe-by-fields (or opts.describe-by [])]
-    `(let [common# (require :pact.common)
-           is-a# ,struct-name
-           _# (assert (= :string (type is-a#)) "struct name must be a string")
-           id# (common#.monotonic-id is-a#)
-           ;; all attributes as given originally
-           attrs# ,attributes
-           ;; the table as it exists, and will exist, in memory
-           in-memory# ,in-memory
-           to-string# (fn [_#]
-                        (let [inner# (collect [_# attr# (ipairs ,describe-by-fields)]
-                                              (values attr# (or (. in-memory# attr#) :nil)))]
-                          (common#.fmt "(%s %s)" id# (common#.view inner#))))
-           mt# {:__tostring to-string#
-                :__fennelview to-string#
-                :__index (fn [_# key#]
-                           (match key#
-                             :__id id#
-                             :is-a is-a#
-                             other# (do
-                                      (if (= nil (. attrs# key#))
-                                        (error (common#.fmt "%s does not have attr %s"
-                                                            is-a# key#)))
-                                      (. in-memory# key#))))
-                :__newindex (fn [_# key# val#]
-                              (if (= nil (. attrs# key#))
-                                (error (common#.fmt "%s does not have attr %s"
-                                                    is-a# key#)))
-                              (if (not (. attrs# key# :mutable))
-                                (error (common#.fmt "%s.%s is not mutable"
-                                                    is-a# key#)))
-                              (tset in-memory# key# val#))}]
-       (setmetatable {} mt#))))
-
-(fn struct [is-a ...]
-  "A very weakly typed struct type. Really only exists to wrap asserts around
-  field access and some immutability, though that's never going to flow down to
-  plain old lua tables.
-
-  (struct my-struct-name
-          (describe-by :id :counter) ;; (print my-struct) => my-struct#10{:id x :counter y}
-          (const :id forever-value)
-          (const :foo :bar)
-          (mutable :counter 0)) ;; can (tset my-struct :counter 10)
-  (= :my-struct-name (typeof my-struct))"
-  (if (= :neo is-a)
-    (neostruct ...)
-    (let [fields (icollect [_ attr  (ipairs [...])]
-                           (let [[call name value & flags] attr
-                                 call (tostring call)
-                                 flags (collect [_ flag (ipairs flags)]
-                                                (values (tostring flag) true))]
-                             (when (or (= :const call) (= :mutable call))
-                               (tset flags call true)
-                               {:name name
-                                :value value
-                                :flags flags})))
-          describe-by-fields (accumulate [found nil _ [call & args] (ipairs [...]) :until found]
-                                         (when (= (tostring call) :describe-by) args))
-          _ (print (view describe-by-fields))
-          attrs (collect [_ {: name : flags} (ipairs fields)]
-                         (values name flags))
-          context (collect [_ {: name : value} (ipairs fields)]
-                           (values name value))]
-      `(let [common# (require :pact.common)
-             is-a# ,(tostring is-a)
-             id# (common#.monotonic-id is-a#)
-             attrs# ,attrs
-             context# ,context
-             describe-by-fields# (or ,describe-by-fields [])
-             to-string# (fn [_#]
-                          (let [inner# (collect [_# attr# (ipairs describe-by-fields#)]
-                                                (values attr# (or (. context# attr#) :nil)))]
-                            (common#.fmt "(%s %s)" id# (common#.view inner#))))
-             mt# {:__tostring to-string#
-                  :__fennelview to-string#
-                  :__index (fn [_# key#]
-                             (match key#
-                               :__id id#
-                               :is-a is-a#
-                               other# (do
-                                        (if (= nil (. attrs# key#))
-                                          (error (common#.fmt "%s does not have attr %s"
-                                                              is-a# key#)))
-                                        (. context# key#))))
-                  :__newindex (fn [_# key# val#]
-                                (if (= nil (. attrs# key#))
-                                  (error (common#.fmt "%s does not have attr %s"
-                                                      is-a# key#)))
-                                (if (not (. attrs# key# :mutable))
-                                  (error (common#.fmt "%s.%s is not mutable"
-                                                      is-a# key#)))
-                                (tset context# key# val#))}]
-         (setmetatable {} mt#)))))
-
-  {: struct : typeof : neostruct : defstruct}
+{: typeof : defstruct}
