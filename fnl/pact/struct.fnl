@@ -105,17 +105,17 @@
         describe-by-fields (icollect [_ field (ipairs (or opts.describe-by []))] (tostring field))]
     `(let [common# (require :pact.common)
            is-a# ,struct-name
-           id# (common#.monotonic-id is-a#)
            fields# ,fields
-           to-string# #(let [inner# (collect [_# attr# (ipairs ,describe-by-fields)]
-                                             (values attr# (or (. $1 attr#) :nil)))]
-                         (common#.fmt "(%s %s)" id# (common#.view inner#)))
            ;; struct creation, expects to be called with :field val
            new# (fn [...]
                   ;; TODO: check for keys equality here, need to extract parse-opts or find a lib thats acceptable (cljlib broken)
                   ; (assert (= (length fields#) (select :# ...))
                   ;         (common#.fmt "%s must be called with all fields: %s" is-a# (common#.view fields#)))
-                  (let [instance-fields# {}
+                  (let [id# (common#.monotonic-id is-a#)
+                        to-string# #(let [inner# (collect [_# attr# (ipairs ,describe-by-fields)]
+                                                          (values attr# (or (. $1 attr#) :nil)))]
+                                      (common#.fmt "(%s %s)" id# (common#.view inner#)))
+                        instance-fields# {}
                         _# (for [i# 1 (select :# ...) 2]
                              (let [key# (. [...] i#)
                                    value# (. [...] (+ i# 1))]
