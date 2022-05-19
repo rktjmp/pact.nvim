@@ -83,7 +83,6 @@
                           :keymap {:normal {:gq [activity :quit]
                                             ;; ergo
                                             :gc [activity :quit] }}})]
-    (print view activity)
     (tset activity :view view)
     (start-timer activity)
     ;; sub to all workflow events

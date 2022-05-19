@@ -57,7 +57,6 @@
                         {:on-close [activity :quit]
                          :keymap {:normal {:gq [activity :quit]
                                            :gc [activity :commit]}}})]
-    (print activity view)
     (tset activity :view view)
     (send activity.view :redraw activity)
     (values activity)))
