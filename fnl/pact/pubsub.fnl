@@ -33,8 +33,6 @@
       (table.insert subs subscriber))))
 
 (fn unsubscribe-topic [subscriber topic-id]
-  (assert-subscriber subscriber)
-  (assert-topic topic)
   (let [subs (topic-subscribers topic-id)
         updated-subs (icollect [_ existing-sub (ipairs subs)]
                                (if (not (= existing-sub.__id subscriber.__id))
@@ -78,9 +76,13 @@
 
 (fn broadcast [topic ...]
   (assert-topic topic)
-  (local fennel (require :fennel))
-  (let [topic-subs (topic-subscribers (topic->id topic))]
-    (each [_ sub (ipairs topic-subs)]
+  (let [topic-subs (topic-subscribers (topic->id topic))
+        ;; clone out subs as messages may impact subscriber list and those
+        ;; added while this broadcast is occuring should not receive the
+        ;; message.
+        targets (icollect [_ sub (ipairs topic-subs)]
+                          (values sub))]
+    (each [_ sub (ipairs targets)]
       (send sub topic ...))))
 
 {: subscribe
