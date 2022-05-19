@@ -23,45 +23,31 @@
                   (. topic-id))]
     (values (or subs []))))
 
-(fn add-sub [channel-id topic-id new-sub]
-  (when (= nil (. registry channel-id))
-    (tset registry channel-id []))
-  (when (= nil (. registry channel-id topic-id))
-    (tset (. registry channel-id) topic-id []))
-  (let [subs (. registry channel-id topic-id)
+(fn add-sub [topic-id new-sub]
+  (when (= nil (. registry topic-id))
+    (tset registry topic-id []))
+  (let [subs (. registry topic-id)
         exists? (accumulate [found nil _ sub (ipairs subs) :until found]
-                  (when (= sub new-sub)
-                    true))]
+                            ;; todo remove when
+                  (when (= sub new-sub) true))]
     (when (not exists?)
       (table.insert subs new-sub))))
 
-(fn subscribe-channel-topic [subscriber channel topic]
-  (expect (= (is-a channel.__id) :monotonic-id) argument
-          "subscribe channel argument must have id")
-  (expect (= (is-a topic.__id) :monotonic-id) argument
-          "subscribe topic argument must have id")
-  (add-sub channel.__id topic.__id subscriber))
+(fn subscribe-topic [subscriber topic]
+  (match (type topic)
+    :string  (add-sub topic subscriber)
+    :table (add-sub topic.__id subscriber)))
 
-(fn subscribe-channel [subscriber channel]
-  (expect (= (is-a channel.__id) :monotonic-id) argument
-          "subscribe channel argument must have id")
-  (add-sub channel.__id true subscriber))
-
-(fn subscribe [subscriber channel topic]
-  ;; TODO maybe add extra type info to actor to check for?
-  ;; aka (is-a sub) :actor, but still have (is-a sub) :pact/status...
-  (expect (= :table (type subscriber)) argument
-          (fmt "subscribe %s must be table" subscriber))
-  (expect (= :monotonic-id (is-a subscriber.__id)) argument
-          "subscribe subscriber must have id")
-  (expect (= :thread (type subscriber.thread)) argument
-          (fmt "subscribe %s must be an actor" subscriber))
-  (match [channel topic]
-    [nil nil] (raise argument (fmt "must give at least channel %s"
-                                   subscriber.__id))
-    [channel nil] (subscribe-channel subscriber channel)
-    [channel topic] (subscribe-channel-topic subscriber channel topic)
-    _ (raise internal "could not match subscribe request")))
+(fn subscribe [subscriber topic]
+  (expect (and (= :table (type subscriber))
+               (not (= nil subscriber.__id))
+               (= :thread (type subscriber.thread)))
+          argument "invalid subscriber given, must be actor")
+  (expect (or (and (= :table (type topic))
+                   (not (= nil topic.__id)))
+              (= :string (type topic)))
+          argument "subscribe topic must have __id or be a string")
+  (subscribe-topic subscriber topic))
 
 (fn unsubscribe-channel-topic [subscriber channel-id topic-id]
   (let [subs (channel-topic-subscribers channel-id topic-id)

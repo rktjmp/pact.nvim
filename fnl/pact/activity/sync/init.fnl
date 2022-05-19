@@ -90,7 +90,7 @@
     ;; sub to all workflow events
     (let [{: add-workflow} (require :pact.workflow.scheduler)]
       (each [_ [workflow _] (ipairs activity.workflows)]
-        (subscribe activity runtime.scheduler workflow)
+        (subscribe activity runtime.scheduler)
         (add-workflow runtime.scheduler workflow)))
     (values activity)))
 

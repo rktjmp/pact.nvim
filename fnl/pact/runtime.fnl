@@ -66,7 +66,7 @@
         activity (new runtime group)]
     (doto runtime
       (tset :active-activity activity)
-      (subscribe activity activity)
+      (subscribe activity)
       (tset :state states.STATUS))))
 
 (fn STATUS->SNAPSHOT [runtime group-name actions]
@@ -78,7 +78,7 @@
         activity (new runtime group actions)]
     (doto runtime
       (tset :active-activity activity)
-      (subscribe activity activity)
+      (subscribe activity)
       (tset :state states.SNAPSHOT))))
 
 (fn SNAPSHOT->SYNC [runtime group-name actions]
@@ -90,7 +90,7 @@
         activity (new runtime group actions)]
     (doto runtime
       (tset :active-activity activity)
-      (subscribe activity activity)
+      (subscribe activity)
       (tset :state states.SYNC))))
 
 (fn *->READY [runtime]
