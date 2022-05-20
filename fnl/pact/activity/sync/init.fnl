@@ -82,7 +82,7 @@
                         {:on-close [activity :quit]
                           :keymap {:normal {:gq [activity :quit]
                                             ;; ergo
-                                            :gc [activity :quit] }}})]
+                                            :gc [activity :quit]}}})]
     (tset activity :view view)
     (start-timer activity)
     ;; sub to all workflow events

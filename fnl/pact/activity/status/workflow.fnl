@@ -88,12 +88,12 @@
   ;; repo origin must match plugin origin
   (match (git.get-origin repo-path)
     origin (if (not (= origin plugin.url))
-                      (raise internal
-                             (fmt "plugin origin does not match repo origin %q %q %q %q"
-                                  plugin.id plugin.url repo-path origin)))
+             (raise internal
+                    (fmt "plugin origin does not match repo origin %q %q %q %q"
+                         plugin.id plugin.url repo-path origin)))
     (nil err) (raise internal
-                       (fmt "could not check origin for plugin %q %q: %q"
-                            plugin.id repo-path err)))
+                     (fmt "could not check origin for plugin %q %q: %q"
+                          plugin.id repo-path err)))
   ;; proceed with status checking
   (let [_ (event "discovering local sha")
         current-hash (match (git.HEAD-sha repo-path)
@@ -113,21 +113,21 @@
       ;; version may return multiple commits that match given version, so check
       ;; if we match any of them.
       [:version commit] (let [found (accumulate [found nil _ [hash btv] (ipairs commit) :until found]
-                                              (when (= hash current-hash) [hash btv]))
+                                                (when (= hash current-hash) [hash btv]))
                               first-option (. commit 1)]
-                        (match found
-                          nil (git-result plugin [current-hash current-hash] :hold
-                                      {:hold [] :sync [first-option]} latest)
-                          found (git-result plugin found :hold {:hold []} latest)))
+                          (match found
+                            nil (git-result plugin [current-hash current-hash] :hold
+                                            {:hold [] :sync [first-option]} latest)
+                            found (git-result plugin found :hold {:hold []} latest)))
       [_ [hash btv]] (match (= hash current-hash)
-                   ;; current hash is equal to commit, so we can send that back
-                   ;; as the current checkout
-                   true
-                   (git-result plugin commit :hold {:hold []} latest)
-                   ;; commit cant stand in as current checkout, so construct a commit
-                   false
-                   (git-result plugin [current-hash current-hash] :hold
-                               {:hold [] :sync [commit]} latest)))))
+                       ;; current hash is equal to commit, so we can send that back
+                       ;; as the current checkout
+                       true
+                       (git-result plugin commit :hold {:hold []} latest)
+                       ;; commit cant stand in as current checkout, so construct a commit
+                       false
+                       (git-result plugin [current-hash current-hash] :hold
+                                   {:hold [] :sync [commit]} latest)))))
 
 (fn new-git-status [plugin]
   ;; New plugins can't really be verified, but we can check that they're
