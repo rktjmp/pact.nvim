@@ -16,10 +16,10 @@
                       :CREATED :pact.workflow.state.CREATED
                       ;; ready to coroutine.resume
                       :READY :pact.workflow.state.READY
-                      ;; resumed
-                      :RUNNING :pact.workflow.state.RUNNING
                       ;; has future pending
                       :WAITING :pact.workflow.state.WAITING
+                      ;; executing in-lua code
+                      :RUNNING :pact.workflow.state.RUNNING
                       ;; no more work
                       :FINISHED :pact.workflow.state.FINISHED
                       ;; something broke
