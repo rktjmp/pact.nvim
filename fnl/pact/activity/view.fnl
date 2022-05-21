@@ -9,10 +9,11 @@
                     [view]
                     :describe-by [view]))
 
-(local context-type (defstruct pact/activity/view/context
-                      [buf win]
-                      :mutable [buf win]
-                      :describe-by [buf win]))
+(local (new-context {:type context-type})
+  (defstruct pact/activity/view/context
+    [buf win]
+    :mutable [buf win]
+    :describe-by [buf win]))
 
 (fn view-ready? [view]
   ;; Check view has been run in vim.schedule and is ready for use.
@@ -25,7 +26,7 @@
 
 (fn set-content [view lines]
   "Set content of given view to given lines"
-  (expect (= (typeof context-type) (typeof view))
+  (expect (= context-type (typeof view))
           argument "must be given view")
   (expect (= :table (type lines))
           argument "must be given table")
@@ -41,7 +42,7 @@
 
 (fn close [view]
   "Close given view"
-  (expect (= (typeof context-type) (typeof view))
+  (expect (= context-type (typeof view))
           argument "must be given view")
 
   (fn unsafe []
@@ -83,7 +84,7 @@
   (tset opts.keymap :normal (or opts.keymap.normal {}))
   (tset opts :on-close (or opts.on-close nil))
   ;; define context early so vim.schedule can see and update values
-  (local context (context-type :win -1 :buf -1))
+  (local context (new-context :win -1 :buf -1))
 
   (fn unsafe []
     (api.nvim_command "botright vnew")

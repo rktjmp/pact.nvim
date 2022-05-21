@@ -3,10 +3,10 @@
 (local constraint (require :pact.constraint))
 (local {: fmt : has-any-key?} (require :pact.common))
 
-(local struct-type (defstruct
-                     pact/provider/git
-                     [id pin url]
-                     :describe-by [id pin url]))
+(local (new-struct {:type struct-type})
+  (defstruct pact/provider/git
+    [id pin url]
+    :describe-by [id pin url]))
 
 (fn e-ctx [reason]
   {:git-provider reason})
@@ -20,13 +20,13 @@
 
 (fn new [url opts]
   ;; assumes all arguments are correct
-  (struct-type :id opts.id
-               :url url
-               :pin (match opts
-                      {: hash} (constraint.hash.new hash)
-                      {: tag} (constraint.tag.new tag)
-                      {: branch} (constraint.branch.new branch)
-                      {: version} (constraint.version.new version))))
+  (new-struct :id opts.id
+              :url url
+              :pin (match opts
+                     {: hash} (constraint.hash.new hash)
+                     {: tag} (constraint.tag.new tag)
+                     {: branch} (constraint.branch.new branch)
+                     {: version} (constraint.version.new version))))
 
 (fn enforce-url [url]
   (when (or (not url) (= url ""))

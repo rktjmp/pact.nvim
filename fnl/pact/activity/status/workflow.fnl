@@ -172,17 +172,13 @@
     (nil err) (raise internal err)))
 
 (fn work [plugin-group-root plugin]
-  (let [git-plugin-type (-> (require :pact.provider.git)
-                            (. :type)
-                            (typeof))
-        path-plugin-type (-> (require :pact.provider.path)
-                             (. :type)
-                             (typeof))
+  (let [git-plugin (require :pact.provider.git)
+        path-plugin (require :pact.provider.path)
         repo-path (pathify plugin-group-root plugin.id)
         _ (fs.ensure-directory-exists plugin-group-root)
         result (match (typeof plugin)
-                 git-plugin-type (git-status repo-path plugin)
-                 path-plugin-type (path-status repo-path plugin))]
+                 git-plugin.type (git-status repo-path plugin)
+                 path-plugin.type (path-status repo-path plugin))]
     (halt result)))
 
 (fn new [plugin-group-root plugin]

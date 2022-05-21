@@ -65,6 +65,68 @@
 ;;; defstruct would return a metatable with call and is-a so we could call
 ;;; (= (typeof struct) (typeof struct-fn)).
 
+;;; other ideas
+
+;;; following on from Induction, where a module may be "struct"ed, it could automatically
+;;; set some functions such as ->struct (clojure constructor?) and ->type (type name)
+;;; instead of having to (typeof structed-module)
+;;;
+;;;  (defrecord provider/git
+;;;    [id url path])
+;;;
+;;;  (provider/git->struct
+;;;    :id id ...)
+;;; 
+;;; or more completely
+;;; 
+;;;   (defmodule provider/git
+;;;     ;; m* -> special syntax to push struct as module, or perhaps
+;;;     ;; just infer on sym? vs sequence?
+;;;     (defstruct m*
+;;;       [id path url]))
+;;; 
+;;;   ;; if you know git-provider is a struct-module, -> type makes some sense
+;;;   ;; though maybe awkward without an argument.
+;;;   (let [git-provider (require :provider.git)
+;;;         ;; calling a module is also a bit weird
+;;;         my-struct (git-provider :id 10 :url :http...)
+;;;         ;; module can have functions too so ...
+;;;         supported-version (git-provider.supported-version)
+;;;         ;; maybe nicer to have explicit
+;;;         my-struct (git-provider.->struct :id 10 ...)
+;;;         git-provider-type (git-provider.->type)]
+;;;     (match (typeof my-struct)
+;;;       git-provider-type :git))
+;;; 
+;;;   ;; vs
+;;; 
+;;;   ;; again, you have to know that its a struct-module, but calling
+;;;   ;; (typeof module) seems like you'd expect it to return "its a module"?
+;;;   (let [git-provider (require :provider.git)
+;;;         my-struct (git-provider :id 10 :url :http...)
+;;;         git-provider-type (typeof git-provider)]
+;;;     (match (typeof my-struct)
+;;;       git-provider-type :git))
+;;; 
+;;; ;; If you abuse Inductions """global""" struct registry idea, you could have something like
+;;; 
+;;;   (struct->type provider/git) ;; macro
+;;; 
+
+;;; (->struct provider/git :id 10)
+;;; (->type my-struct)
+
+;;; I also don't really like the term "defstruct" where it's actually
+;;; "def-fn-that-returns-struct". If given a module system, you could use
+;;; "defstruct" as elixir does, where structs are tightly linked to modules, but
+;;; that does remove some of the flexibility of the type, which is probably pretty
+;;; important. We might want to have 3 "actions", sync, hold, delete. These could all
+;;; be their own structs with own data (sync needs commit, hold needs nothing,
+;;; delete needs confirmation), so it's useful to be able to define 3 types "on the fly"
+;;; vs having to create 3 modules, then define the structs inside each. Defining modules
+;;; isn't **too** hard, but it is friction.
+;;; (I really don't want to call it (defstructfactory ...))
+
 (fn parse-fields [fields]
   (let [len (select :# (unpack fields))
         generator (coroutine.wrap #(for [i 0 len 3]
@@ -86,6 +148,10 @@
     (collect [name val (values generator opts)]
              (values name val))))
 
+;; TODO? This could now just be a plain function, since the instance creation
+;; is separated from the definition, assuming you are ok with prefixing the name
+;; and arguments as strings. This also allows for more flexible creation since
+;; you can just pass in strings and tables.
 (fn defstruct [name fields ...]
   (assert (sym? name) "struct name must be given as a symbol")
   (local struct-name (tostring name))
@@ -139,13 +205,8 @@
                                                       {:mutable false} (error (common#.fmt "%s.%s is not mutable"
                                                                                            is-a# key#))
                                                       {:mutable true} (tset instance-fields# key# val#)))}]
-                    (values (setmetatable {} instance-mt#))))
-           type-def-mt# {:__index (fn [_# key#]
-                                    (if (= :is-a key#)
-                                      (values is-a#)
-                                      (error (common#.fmt "struct-def %s should be called or indexed for :is-a, got %s" is-a# key#))))
-                         :__call (fn [_# ...] (new# ...))}]
-       (setmetatable {} type-def-mt#))))
+                    (values (setmetatable {} instance-mt#))))]
+       (values new# {:type is-a#}))))
 
 (fn typeof [x]
   ;; return structs type if given a struct, or normal type for other values.
