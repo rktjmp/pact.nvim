@@ -28,18 +28,14 @@
           ssh (string.match str :^ssh)]
       (not (= nil http ssh))))
 
-  (let [(code lines err) (match (url? repo-path-or-url)
-                           true (await (run :git
-                                            [:ls-remote
-                                             :--tags
-                                             :--heads
-                                             repo-path-or-url]
-                                            "." const.ENV))
-                           false (await (run :git
-                                             [:ls-remote
-                                              :--tags
-                                              :--heads]
-                                             repo-path-or-url const.ENV)))]
+  (let [(code lines err)
+        (match (url? repo-path-or-url)
+          true (await (run :git
+                           [:ls-remote :--tags :--heads repo-path-or-url]
+                           "." const.ENV))
+          false (await (run :git
+                            [:ls-remote :--tags :--heads]
+                            repo-path-or-url const.ENV)))]
     (match [code lines err]
       [0 lines _] (values lines)
       [code _ err] (values nil (dump-err code err)))))
