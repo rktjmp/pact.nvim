@@ -1,5 +1,5 @@
 (import-macros {: raise : expect} :pact.error)
-(import-macros {: typeof} :pact.struct)
+(import-macros {: typeof : defstruct} :pact.struct)
 (import-macros {: defactor} :pact.actor)
 
 (local {: fmt : inspect : pathify} (require :pact.common))
@@ -42,6 +42,25 @@
     (if (= workflow target-wf)
         (tset state.results i [workflow tag [plugin data]]))))
 
+;; running workflows receive periodic status updates
+(local new-running-state
+  (defstruct pact/activity/status/workflow-state/running
+    [workflow plugin message]
+    :mutable [message]
+    :describe-by [plugin message]))
+
+(local new-failed-state
+  (defstruct pact/activity/status/workflow-state/failed
+    [workflow plugin message]
+    :mutable [message]
+    :describe-by [plugin message]))
+
+(local new-complete-state
+  (defstruct pact/activity/status/workflow-state/complete
+    [workflow plugin message current-command valid-commands]
+    :mutable [message current-command]
+    :describe-by [plugin message current-command]))
+
 (fn receive-message [activity ...]
   (local {: runtime : view} activity)
   (match [...]
@@ -58,10 +77,12 @@
       (send view :redraw activity))
     [runtime.scheduler workflow :complete result]
     (do
-      (update-workflow-state activity workflow :complete result)
-      (stop-timer-when-all-finished activity)
-      (send view :redraw activity))
-    ;; input handlers, sent directly, no channel+topic
+      (print result))
+      ; (update-workflow-state activity workflow :complete result)
+      ; (stop-timer-when-all-finished activity)
+      ; (send view :redraw activity))
+
+    ;; input handlers, messages sent directly from the view
     [:sync]
     (let [workflow (send view :workflow-at-cursor activity)]
       (set-workflow-action activity workflow :sync)
@@ -95,16 +116,23 @@
   ;; Allows user to pick desired action against each plugin (sync, hold, etc)
   ;; where appropriate.
   ;; Passes list of actions to SNAPSHOT.
-
   ;; ensure we have all files compiled (see file)
   (require :pact.vim.hotpot)
   (let [{:new pact-view} (require :pact.activity.view)
         {: receive} (require :pact.activity.status.view)
         group-dir group.path
         ;; create a status workflow for each plugin
-        workflows (let [{: new} (require :pact.activity.status.workflow)]
+        workflows (let [path-plugin-type (-> (require :pact.provider.path)
+                                             (. :type))
+                        git-plugin-type (-> (require :pact.provider.git)
+                                            (. :type))
+                        {:new new-git-workflow} (require :pact.activity.status.workflow)
+                        {:new new-path-workflow} (require :pact.activity.status.path-workflow)]
                     (icollect [_ plugin (ipairs group.plugins)]
-                      [(new group-dir plugin) plugin]))
+                      (match (typeof plugin)
+                        path-plugin-type [(new-path-workflow group-dir plugin) plugin]
+                        git-plugin-type [(new-git-workflow group-dir plugin) plugin]
+                        t (error (fmt "unknown plugin type %s" t)))))
         activity (actor-type
                    ;; attach runtime so we can match on it to be sure we're getting
                    ;; messages from the correct scheduler. this can probably be done cleaner.

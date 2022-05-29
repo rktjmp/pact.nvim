@@ -45,4 +45,6 @@
                        nil (new-tag name sha)
                        version (new-version (.. "= " version) sha))))
 
-{: ref-line->commit : new-hash : new-tag : new-version : new-branch}
+{: ref-line->commit
+ : new-hash : new-tag
+ : new-version : new-branch}

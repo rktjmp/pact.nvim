@@ -39,6 +39,38 @@
   ;; return *something* but really control flow is dictated by raising errors
   (values true))
 
+(fn checkout2 [repo-path sha]
+  (match-try (match (absolute-path? repo-path)
+               true true
+               false (values nil (error-result "must be absolute path")))
+    true (match (what-is-at? repo-path)
+           :directory true
+           :nothing (values nil (error-result "path did not exist, unable to update")))))
+
+(fn log [message]
+  (fn [...]
+    (event message)
+    (values ...)))
+
+; (fn checkout-mona [repo-path sha]
+;   (let [state (new-state :path repo-path
+;                          :dot-git-path (pathify repo-path :.git)
+;                          :sha sha)]
+;     (run (continue state)
+;          (log "checking paths")
+;          #(match (absolute-path? $1.repo-path)
+;            true (continue $1)
+;            false (failure ("must be absolute-path")))
+;          #(match (what-is-at $1.repo-path)
+;             :directory (continue $1)
+;             other (failure "must be dir, got" other))
+;          #(match (what-is-at $1.dot-git-path)
+;             :directory (continue $1)
+;             other (failure "must be git dir, got" other))
+;          #(match (git.fetch-sha $1.repo-path $1.sha)
+;             sha (continue $1)
+;             nil err (failure (err))))))
+
 (fn checkout [repo-path sha]
   ;; preflight
   (event "validating target path")

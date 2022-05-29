@@ -5,12 +5,30 @@
 ;; behaviour to act syncronously. Workflows expect to be ran by a scheduler, which
 ;; should call (run workflow).
 
+(import-macros {: use} :pact.vendor.donut)
 (import-macros {: raise : expect : error->string} :pact.error)
 (import-macros {: defstruct} :pact.struct)
 
-(local uv vim.loop)
-(local {: inspect : fmt} (require :pact.common))
+(use {: defmonad} :pact.vendor.donut.monad :as m
+     {:loop uv} vim
+     {: fmt : inspect} :pact.common)
+
 (local co (require :pact.coroutine))
+
+(local workflow-m
+  ;; functionally equivalent to an ethier/result but we
+  ;; treat it more as continue-done vs ok-error
+  (let [halted [:halt]]
+    (m/defmonad :finished (fn [val] [halted val])
+                :bind (fn [val fun]
+                        (match val
+                          [halted x] (values x)
+                          _ (fun val)))
+                :result (fn [val]
+                          (match val
+                            [halted x] (values x)
+                            _ (values val))))))
+
 
 (local const {:state {;; created but scheduler has not prepared
                       :CREATED :pact.workflow.state.CREATED
@@ -190,4 +208,4 @@
    :state const.state.READY
    :timer -1))
 
-{: new : run : halt : event : result : const}
+{: new : run : halt : event : result : const : workflow-m}

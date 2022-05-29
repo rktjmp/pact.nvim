@@ -5,10 +5,12 @@
 (local error-type :error)
 
 (fn __tostring [e]
-  (let [{: view} (require :fennel)
-        str (.. e.message " [" (view e.context) "]")
-        str (string.gsub str "\n" "  ")]
-    str))
+  (let [{: view} (require :fennel)]
+    (if (= :table (type e))
+      (->
+        (.. (view e.message) " [" (view e.context) "]")
+        (string.gsub "\n" "  "))
+      (view e))))
 
 (fn new [type message context ?trace]
   (let [fennel (require :fennel)
