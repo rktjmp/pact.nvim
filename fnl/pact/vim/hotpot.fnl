@@ -23,12 +23,18 @@
                   (let [modname (-> (.. req-path "." name)
                                     (string.sub 2 -5))]
                     (when (and (string.match modname "^pact")
-                               (not (= :pact.vendor.cljlib.init-macros modname))
+                               ;; this is us
                                (not (= :pact.vim.hotpot modname))
+                               ;; these will always be macros
+                               (= nil (string.match modname "init%-macros$"))
+                               ;; these are macros
                                (not (= :pact.struct modname))
                                (not (= :pact.actor modname))
                                (not (= :pact.error modname))
                                (not (= :pact.async_await modname)))
+                      ;; (print :pact.hotpot->compliling modname)
                       (require modname))))))))
 
   (walk-dir "" pact-dir))
+
+(string.match "pact.vendor.cljlib.init-macros" "init%-macros$")
