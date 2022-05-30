@@ -1,26 +1,16 @@
-(import-macros {: raise : expect} :pact.error)
+(import-macros {: use} :pact.vendor.donut)
+(use {: 'typeof : 'defstruct} :pact.struct)
+
+(local (new {:type branch-constraint-type})
+  (defstruct pact/constraint/branch
+    [branch]
+    :describe-by [branch]))
 
 (fn eq? [a b]
-  (match [a b]
-    [{:operator ca :branch ba}
-     {:operator cb :branch bb}] (and (= ca cb)
-                                     (= ba bb))
-    _ false))
-
-(fn refuse []
-  (raise internal "branches may only be compared for equality"))
+  (and (= branch-constraint-type (typeof a) (typeof b))
+       (= a.branch b.branch)))
 
 (fn satisfies? [base ask]
-  (= base ask))
+  (eq? base ask))
 
-(fn new [str]
-  (expect str argument "new branch constraint requires branch name")
-  (let [t {:operator "=" :branch str}]
-    (setmetatable t {:__tostring #(let [{: fmt} (require :pact.common)]
-                                     (fmt "%s" $1.branch))
-                     :__eq eq?
-                     :__le refuse
-                     :__lte refuse})
-    (values t)))
-
-{: new : satisfies? : eq?}
+{: new : satisfies? : eq? :type branch-constraint-type}

@@ -1,25 +1,16 @@
-(import-macros {: raise : expect} :pact.error)
+(import-macros {: use} :pact.vendor.donut)
+(use {: 'typeof : 'defstruct} :pact.struct)
+
+(local (new {:type tag-constraint-type})
+  (defstruct pact/constraint/tag
+    [tag]
+    :describe-by [tag]))
 
 (fn eq? [a b]
-  (match [a b]
-    [{:operator ca :tag ta} {:operator cb :tag tb}] (and (= ca cb)
-                                                             (= ta tb))
-    _ false))
-
-(fn refuse []
-  (raise internal "tags may only be compared for equality"))
+  (and (= tag-constraint-type (typeof a) (typeof b))
+       (= a.tag b.tag)))
 
 (fn satisfies? [base ask]
-  (= base ask))
+  (eq? base ask))
 
-(fn new [str]
-  (expect str argument "new tag constraint requires tag name")
-  (let [t {:operator "=" :tag str}]
-    (setmetatable t {:__tostring #(let [{: fmt} (require :pact.common)]
-                                     (fmt "%s" $1.tag))
-                     :__eq eq?
-                     :__le refuse
-                     :__lte refuse})
-    (values t)))
-
-{: new : satisfies? : eq?}
+{: new : satisfies? : eq? :type tag-constraint-type}
