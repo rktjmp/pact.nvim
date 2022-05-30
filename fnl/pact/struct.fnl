@@ -193,7 +193,7 @@
                                       :__index (fn [_# key#]
                                                  (match key#
                                                    :__id id#
-                                                   :is-a is-a#
+                                                   :__is-a is-a#
                                                    other# (match (. fields# key#)
                                                             nil (error (common#.fmt "%s does not have field %s"
                                                                                     is-a# key#))
@@ -210,7 +210,7 @@
 
 (fn typeof [x]
   ;; return structs type if given a struct, or normal type for other values.
-  `(match [(type ,x) (?. ,x :is-a)]
+  `(match [(type ,x) (?. ,x :__is-a)]
      [:table nil] :table
      [:table is-a#] is-a#
      [t# _#] t#))
