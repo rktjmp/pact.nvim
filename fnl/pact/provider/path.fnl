@@ -9,6 +9,7 @@
 (fn path->id [path]
   (-?> path
        (string.reverse)
+       ;; TODO not windows safe
        (string.match "([^/]+)/.+")
        (string.reverse)))
 
@@ -22,7 +23,7 @@
   (let [{: new} (require :pact.constraint.path)
         opts (or opts {})]
     (struct :id (or opts.id (path->id path))
-            :pin (new path)
+            :pin (new :path path)
             :path path)))
 
 {: path :type struct-type}

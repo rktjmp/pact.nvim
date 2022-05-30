@@ -1,23 +1,16 @@
-(import-macros {: raise : expect} :pact.error)
+(import-macros {: use} :pact.vendor.donut)
+(use {: 'typeof : 'defstruct} :pact.struct)
+
+(local (new {:type path-constraint-type})
+  (defstruct pact/constraint/path
+    [path]
+    :describe-by [path]))
 
 (fn eq? [a b]
-  (match [a b]
-    [{:operator ca :path sa} {:operator cb :path sb}] (and (= ca cb) (= sa sb))
-    _ false))
-
-(fn refuse []
-  (raise internal "paths may only be compared for equality"))
+  (and (= path-constraint-type (typeof a) (typeof b))
+       (= a.path b.path)))
 
 (fn satisfies? [base ask]
-  (= base ask))
+  (eq? base ask))
 
-(fn new [str]
-  (expect str argument "new path constraint requires path")
-  (let [t {:operator "=" :path str}]
-    (setmetatable t {:__tostring #(values "path")
-                     :__eq eq?
-                     :__le refuse
-                     :__lte refuse})
-    (values t)))
-
-{: new : satisfies? : eq?}
+{: new : satisfies? : eq? :type path-constraint-type}

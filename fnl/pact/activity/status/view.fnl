@@ -110,6 +110,12 @@
       :hold [:hold plugin.id "(link)" :has-link  plugin.path]
       :sync [:link plugin.id "(link)" :create-link plugin.path])))
 
+(fn fmt-pin [plugin]
+  (use {: type} :pact.constraint.path :as path)
+  (match (typeof plugin.pin)
+    path/type "(path)"
+    any (fmt "(%s)"any)))
+
 (fn result->line [plugin action result]
   (use {: result-types} :pact.activity.status.git-workflow :as git
        {: result-types} :pact.activity.status.path-workflow :as path
@@ -121,7 +127,6 @@
        {: CAN-SYNC : NEEDS-CLONE : NEEDS-SYNC : IN-SYNC} git/result-types :as git
        {: EXISTS : MISSING} path/result-types :as path
        {: ERROR} wf/result-types :as wf)
-  (fn fmt-pin [plugin] (fmt "(%s)" plugin.pin))
   (fn msg-with-latest [str result]
     (match result.latest
       latest (fmt "%s (latest: %s)" str latest)
@@ -135,8 +140,8 @@
     ; [git/CAN-SYNC git/UPDATE] [:sync plugin.id "sync" "can update" :abc]
     [git/NEEDS-CLONE git/HOLD] [:hold plugin.id (fmt-pin plugin) (msg-with-latest "can-clone" result)]
     [git/NEEDS-CLONE git/CLONE] [:sync plugin.id (fmt-pin plugin) (msg-with-latest "clone" result)]
-    ; [path/EXISTS path/HOLD] [:hold plugin.id "exists" :has-link :abc]
-    ; [path/MISSING _] [:hold plugin.id "missing" :has-link :abc]
+    [path/EXISTS path/HOLD] [:hold plugin.id (fmt-pin plugin) (fmt "sym-linked to %s" plugin.pin.path)]
+    [path/MISSING _] [:hold plugin.id (fmt-pin plugin) (fmt "missing sym-link to %s" plugin.pin.path)]
     [wf/ERROR _] [:error plugin.id (fmt-pin plugin) result.reason]
     any (do
           (print :any (vim.inspect any))
