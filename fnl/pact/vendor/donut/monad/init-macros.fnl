@@ -11,37 +11,37 @@
     (each [_ v (ipairs t)] (table.insert out v))
     (setmetatable out (getmetatable t))))
 
-(fn do-monad [monad-t bindings body not-any]
-  "Our goal form is this, which is most simply created inside out.
-  First we create the result form, then then function containing that,
-  then the function containing that ... etc.
-
-  (do-monad maybe-m
-    [a 10
-     b 8]
-    (* a b))
-
-  (maybe-m.bind
-    10 (fn [a]
-         (maybe-m.bind
-           8
-           (fn [b]
-             (maybe-m.result (* a b)))))"
+(fn do-monad [monad-t bindings ...]
+  "Accepts a monad-t, a list of let-like bindings and then any set of
+  expressions."
+  ;; Our goal form is this, which is most simply created inside out.
+  ;; First we create the result form, then then function containing that,
+  ;; then the function containing that ... etc.
+  ;; (do-monad maybe-m
+  ;;   [a 10
+  ;;    b 8]
+  ;;   (* a b))
+  ;; (maybe-m.bind
+  ;;   10 (fn [a]
+  ;;        (maybe-m.bind
+  ;;          8
+  ;;          (fn [b]
+  ;;            (maybe-m.result (* a b)))))
   ;; assert monad-t has bind and result
   (assert-compile (= 0 (% (length bindings) 2))
                   "do-monad requires even number of bindings"
                   bindings)
-  (assert-compile body
-                  "do-monad requires one body expression after bindings"
+  (assert-compile (< 0 (select :# ...))
+                  "do-monad requires at least one expression after bindings"
                   bindings)
-  (assert-compile (= nil not-any)
-                  "do-monad accepts only one body expression after bindings"
-                  not-any)
   (let [bind-fn (sym (.. (tostring monad-t) :.bind))
         result-fn (sym (.. (tostring monad-t) :.result))
-        ;; start with the inner most statement present, we will
-        ;; extract this and wrap it
-        code `(do (,result-fn ,body))]
+        ;; start with the inner most statement present, we will extract this
+        ;; and wrap it.
+        ;; ... may be one expression or many, so wrap in (do). we do this
+        ;; because I kept writing multiple expressions and do/doto accept
+        ;; multiple expressions.
+        code `(do (,result-fn (do ,...)))]
     ;; we now work from the tail up
     (let [tail-first (-> bindings
                          (seq/chunk-every 2)
@@ -62,7 +62,9 @@
     (add 3)
     ((fn [v] (* v v))))"
   (assert-compile monad-t "m-> requires a monad-t first argument")
-  (assert-compile initial-value "m-> requires an initial value argument")
+  (assert-compile (< 0 (select :# ...))
+                  "requires at least one form after initial-value to chain through"
+                  initial-value)
   (let [bind-fn (sym (.. (tostring monad-t) :.bind))
         result-fn (sym (.. (tostring monad-t) :.result))
         ;; turn (inc x) -> (fn [a] (inc a x)) so it's m-bind-able

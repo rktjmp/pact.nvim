@@ -1,9 +1,12 @@
 ;; A commit in a Git repository
 ;;
 ;; Commits are represented as a two element list, the first element is always
-;; the hash of the commit, the second element is ethir a branch or tag ref, a
+;; the hash of the commit, the second element is either a branch or tag ref, a
 ;; version or a hash (for "direct pins to hash", we inclued [hash hash] for
 ;; QOL).
+
+(import-macros {: use} :pact.vendor.donut)
+(use {: 'typeof : 'defstruct} :pact.struct)
 
 (local constraint (require :pact.constraint))
 

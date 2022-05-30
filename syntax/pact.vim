@@ -14,9 +14,11 @@ syn match pactCommandClone "^clone"
 syn match pactCanSync "\(can-sync\|can-clone\)"
 syn match pactWillSync "\(will-sync\|create-link\|clone\)"
 syn match pactInSync "\(in-sync\|has-link\)"
+syn match pactError "^error"
 
 let b:current_syntax = "pact"
 
+hi def link pactError Error
 hi def link pactComment Comment
 hi def link pactCommand Function
 hi def link pactCanSync DiffChange

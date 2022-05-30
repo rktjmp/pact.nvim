@@ -29,6 +29,10 @@
                             [halted x] (values x)
                             _ (values val))))))
 
+(local (new-error-result {:type error-result-type})
+  ;; something went wrong?
+  (defstruct pact/git-status-workflow/result/error
+    [plugin reason]))
 
 (local const {:state {;; created but scheduler has not prepared
                       :CREATED :pact.workflow.state.CREATED
@@ -208,4 +212,9 @@
    :state const.state.READY
    :timer -1))
 
-{: new : run : halt : event : result : const : workflow-m}
+{: new : run
+ : halt : event
+ : result : const
+ : workflow-m
+ : new-error-result
+ :result-types {:ERROR error-result-type}}

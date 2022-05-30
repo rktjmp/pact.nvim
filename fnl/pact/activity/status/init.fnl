@@ -1,14 +1,26 @@
+(import-macros {: use : do-use} :pact.vendor.donut)
 (import-macros {: raise : expect} :pact.error)
-(import-macros {: typeof : defstruct} :pact.struct)
-(import-macros {: defactor} :pact.actor)
 
-(local {: fmt : inspect : pathify} (require :pact.common))
-(local {: subscribe : broadcast : unsubscribe : send} (require :pact.pubsub))
-(local uv vim.loop)
+(use {: fmt : inspect : pathify} :pact.common
+     {: subscribe : broadcast : unsubscribe : send} :pact.pubsub
+     {: 'defactor} :pact.actor
+     {: 'typeof : 'defstruct} :pact.struct
+     {:loop uv} vim)
 
 (local actor-type (defactor pact/activity/status
                     [runtime group-name plugins workflows view results elapsed timer]
                     :mutable [view elapsed]))
+
+(local path-actions ((defstruct pact/activity/status/path-actions
+                       [HOLD LINK])
+                     :HOLD :pact.activity.status.path-actions.HOLD
+                     :LINK :path.activity.status.path-actions.LINK))
+
+(local git-actions ((defstruct path/activity/status/git-actions
+                      [HOLD UPDATE CLONE])
+                    :HOLD :pact.activity.status.git-actions.HOLD
+                    :UPDATE :pact.activity.status.git-actions.UPDATE
+                    :CLONE :pact.activity.status.git-actions.CLONE))
 
 (fn stop-timer-when-all-finished [state]
   (let [{: workflows : timer} state]
@@ -38,28 +50,9 @@
             [tag _] (vim.notify (fmt "cant adjust action for %s" tag)))))))
 
 (fn update-workflow-state [state target-wf tag data]
-  (each [i [workflow _tag [plugin _data]] (ipairs state.results)]
-    (if (= workflow target-wf)
-        (tset state.results i [workflow tag [plugin data]]))))
-
-;; running workflows receive periodic status updates
-(local new-running-state
-  (defstruct pact/activity/status/workflow-state/running
-    [workflow plugin message]
-    :mutable [message]
-    :describe-by [plugin message]))
-
-(local new-failed-state
-  (defstruct pact/activity/status/workflow-state/failed
-    [workflow plugin message]
-    :mutable [message]
-    :describe-by [plugin message]))
-
-(local new-complete-state
-  (defstruct pact/activity/status/workflow-state/complete
-    [workflow plugin message current-command valid-commands]
-    :mutable [message current-command]
-    :describe-by [plugin message current-command]))
+  (each [i [workflow _tag plugin action _data] (ipairs state.results)]
+    (when (= workflow target-wf)
+        (tset state.results i [workflow tag plugin action data]))))
 
 (fn receive-message [activity ...]
   (local {: runtime : view} activity)
@@ -72,25 +65,27 @@
       (send view :redraw activity))
     [runtime.scheduler workflow :error err]
     (do
-      (update-workflow-state activity workflow :error err)
+      (update-workflow-state activity workflow :error err.reason)
       (stop-timer-when-all-finished activity)
       (send view :redraw activity))
     [runtime.scheduler workflow :complete result]
     (do
-      (print result))
-      ; (update-workflow-state activity workflow :complete result)
-      ; (stop-timer-when-all-finished activity)
-      ; (send view :redraw activity))
-
+      (print result)
+      (update-workflow-state activity workflow :complete result)
+      (stop-timer-when-all-finished activity)
+      (send view :redraw activity))
     ;; input handlers, messages sent directly from the view
+    ;; Try to update or create, etc
     [:sync]
     (let [workflow (send view :workflow-at-cursor activity)]
       (set-workflow-action activity workflow :sync)
       (send view :redraw activity))
+    ;; Do nothing
     [:hold]
     (let [workflow (send view :workflow-at-cursor activity)]
       (set-workflow-action activity workflow :hold)
       (send view :redraw activity))
+    ;; Confirm changes
     [:commit]
     (let [actions (icollect [_ [_ tag [_ data]] (ipairs activity.results)]
                     (when (= :complete tag)
@@ -99,6 +94,7 @@
       (unsubscribe activity true)
       (send view :close)
       (broadcast activity activity :commit activity.group-name actions))
+    ;; cancel and exit
     [:quit]
     (do
       ;; TODO kill any running workflows & timers
@@ -116,23 +112,24 @@
   ;; Allows user to pick desired action against each plugin (sync, hold, etc)
   ;; where appropriate.
   ;; Passes list of actions to SNAPSHOT.
+  (use {: fwd } :pact.vendor.donut.gen
+       {: type} :pact.provider.path :as path
+       {: type} :pact.provider.git :as git)
   ;; ensure we have all files compiled (see file)
   (require :pact.vim.hotpot)
   (let [{:new pact-view} (require :pact.activity.view)
         {: receive} (require :pact.activity.status.view)
         group-dir group.path
-        ;; create a status workflow for each plugin
-        workflows (let [path-plugin-type (-> (require :pact.provider.path)
-                                             (. :type))
-                        git-plugin-type (-> (require :pact.provider.git)
-                                            (. :type))
-                        {:new new-git-workflow} (require :pact.activity.status.workflow)
-                        {:new new-path-workflow} (require :pact.activity.status.path-workflow)]
-                    (icollect [_ plugin (ipairs group.plugins)]
-                      (match (typeof plugin)
-                        path-plugin-type [(new-path-workflow group-dir plugin) plugin]
-                        git-plugin-type [(new-git-workflow group-dir plugin) plugin]
-                        t (error (fmt "unknown plugin type %s" t)))))
+        ;; Create a status workflow for each plugin. We use a list instead of a
+        ;; map because we want to show the report in the same order we're
+        ;; given.
+        workflows (do-use [{: new} :pact.activity.status.git-workflow :as git
+                           {: new} :pact.activity.status.path-workflow :as path]
+                    (let [type->f {path/type path/new git/type git/new}]
+                      (icollect [plugin (fwd group.plugins)]
+                        (match (. type->f (typeof plugin))
+                          f [(f group-dir plugin) plugin]
+                          nil (error (fmt "unknown plugin type %s" (typeof plugin)))))))
         activity (actor-type
                    ;; attach runtime so we can match on it to be sure we're getting
                    ;; messages from the correct scheduler. this can probably be done cleaner.
@@ -143,9 +140,9 @@
                    ;; need to set view after actor creation for input target
                    :view nil
                    :results (icollect [i [workflow plugin] (ipairs workflows)]
-                                      [workflow
-                                       :incomplete
-                                       [plugin :working]])
+                              (match (typeof plugin)
+                                path/type [workflow :incomplete plugin path-actions.HOLD "awaiting scheduler"]
+                                git/type [workflow :incomplete plugin git-actions.HOLD "awaiting scheduler"]))
                    :elapsed 0
                    :timer (uv.new_timer)
                    :receive receive-message)
@@ -164,4 +161,4 @@
         (add-workflow runtime.scheduler workflow)))
     (values activity)))
 
-{: new}
+{: new : path-actions : git-actions}

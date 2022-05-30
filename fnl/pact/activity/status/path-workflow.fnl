@@ -1,4 +1,5 @@
 (import-macros {: use} :pact.vendor.donut)
+
 (use {: defmonad :do-monad 'do-m :m-> '->
       : maybe-m : identity-m} :pact.vendor.donut.monad :as m
      {: fs} :pact.workflow.task
@@ -6,7 +7,8 @@
      {: 'typeof : 'defstruct} :pact.struct
      {:loop uv} vim
      {: fmt : inspect : pathify} :pact.common
-     {: workflow-m :new new-workflow : halt : event} :pact.workflow
+     {: workflow-m :new new-workflow
+      : halt : new-error-result} :pact.workflow
      {: view} :fennel)
 
 (local (new-exists-result {:type exists-result-type})
@@ -21,17 +23,11 @@
     [plugin]
     :describe-by [plugin]))
 
-(local (new-broken-result {:type broken-result-type})
-  ;; symlink exists but is invalid and needs repair
-  (defstruct pact/path-status-workflow/result/broken
-    [plugin reason]
-    :describe-by [plugin reason]))
-
 (local result-types ((defstruct pact/path-status-workflow/result-types
-                       [EXISTS MISSING BROKEN]
-                       :EXISTS exists-result-type
-                       :BROKEN broken-result-type
-                       :MISSING missing-results-type)))
+                       [EXISTS MISSING]
+                       :describe-by [EXISTS MISSING])
+                     :EXISTS exists-result-type
+                     :MISSING missing-result-type))
 
 (fn path-is-link? [path]
   (match (uv.fs_lstat path)
@@ -49,15 +45,15 @@
   (let [_ (fs.ensure-directory-exists plugin-group-root)
         repo-path (pathify plugin-group-root plugin.id)
         finished workflow-m.finished
-        result (m/-> workflow-m [:no-persistent-state]
+        result (m/-> workflow-m :no-persistent-state
                      (#(match (path-is-link? repo-path)
                          false (finished (new-missing-result :plugin plugin))
-                         (nil err) (finished (new-broken-result :plugin plugin
-                                                                :reason (fmt "was type %s" t)))))
+                         (nil err) (finished (new-error-result :plugin plugin
+                                                               :reason (fmt "was type %s" t)))))
                      (#(match (links-to-dir? repo-path)
                          true (finished (new-exists-result :plugin plugin))
-                         (false t) (finished (new-broken-result :plugin plugin
-                                                                :reason (fmt "link exists but resolves to %s" t)))
+                         (false t) (finished (new-error-result :plugin plugin
+                                                               :reason (fmt "link exists but resolves to %s" t)))
                          (nil err) (error "how did you get here?"))))]
     (halt result)))
 

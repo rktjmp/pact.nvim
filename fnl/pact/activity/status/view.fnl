@@ -1,7 +1,10 @@
+(import-macros {: use : do-use} :pact.vendor.donut)
 (import-macros {: raise : expect} :pact.error)
 (import-macros {: defactor} :pact.actor)
 (local {: fmt : inspect : pathify} (require :pact.common))
 (local uv vim.loop)
+(use {: 'typeof} :pact.struct)
+
 
 ;; Status Workflow UI
 ;;
@@ -107,19 +110,47 @@
       :hold [:hold plugin.id "(link)" :has-link  plugin.path]
       :sync [:link plugin.id "(link)" :create-link plugin.path])))
 
-(fn result->line [plugin result]
-  (match result
-    [:git data] (git-result->line plugin data)
-    [:path data] (path-result->line plugin data)
-    other (raise internal "no match for result->line" other)))
+(fn result->line [plugin action result]
+  (use {: result-types} :pact.activity.status.git-workflow :as git
+       {: result-types} :pact.activity.status.path-workflow :as path
+       {: result-types} :pact.workflow :as wf
+       {: git-actions} :pact.activity.status
+       {: path-actions} :pact.activity.status
+       {: HOLD : LINK} path-actions :as path-actions
+       {: HOLD : UPDATE : CLONE} git-actions :as git-actions
+       {: CAN-SYNC : NEEDS-CLONE : NEEDS-SYNC : IN-SYNC} git/result-types :as git
+       {: EXISTS : MISSING} path/result-types :as path
+       {: ERROR} wf/result-types :as wf)
+  (fn fmt-pin [plugin] (fmt "(%s)" plugin.pin))
+  (fn msg-with-latest [str result]
+    (match result.latest
+      latest (fmt "%s (latest: %s)" str latest)
+      nil str))
+  (match [(typeof result) action]
+    ;; format is selected-action plugin-name plugin-pin recommended-action descriptive-string
+    ; [git/IN-SYNC git/HOLD] [:hold plugin.id (fmt-pin plugin) (msg-with-latest "up to date" result)]
+    ; [git/NEEDS-SYNC git/HOLD] [:hold plugin.id "can-sync" "out of date" :abc]
+    ; [git/NEEDS-SYNC git/UPDATE] [:sync plugin.id "sync" "out of date" :abc]
+    ; [git/CAN-SYNC git/HOLD] [:hold plugin.id "can-sync" "can update" :abc]
+    ; [git/CAN-SYNC git/UPDATE] [:sync plugin.id "sync" "can update" :abc]
+    [git/NEEDS-CLONE git/HOLD] [:hold plugin.id (fmt-pin plugin) (msg-with-latest "can-clone" result)]
+    [git/NEEDS-CLONE git/CLONE] [:sync plugin.id (fmt-pin plugin) (msg-with-latest "clone" result)]
+    ; [path/EXISTS path/HOLD] [:hold plugin.id "exists" :has-link :abc]
+    ; [path/MISSING _] [:hold plugin.id "missing" :has-link :abc]
+    [wf/ERROR _] [:error plugin.id (fmt-pin plugin) result.reason]
+    any (do
+          (print :any (vim.inspect any))
+          [:hold plugin.id "er" "any"])))
 
 (fn state->lines [{: results}]
   (let [pact-view (require :pact.activity.view)
-        tuples (icollect [_ [workflow tag [plugin data]] (ipairs results)]
+        tuples (icollect [_ [workflow tag plugin action data] (ipairs results)]
                  (match tag
-                   :incomplete [:busy plugin.id (fmt "(%s)" plugin.pin) data ""]
-                   :error [:error plugin.id (fmt "(%s)" plugin.pin) data ""]
-                   :complete (result->line plugin data)))]
+                   :incomplete [:busy plugin.id (fmt "(%s)" plugin.pin) data]
+                   :error [:error plugin.id (fmt "(%s)" plugin.pin) data]
+                   :complete (result->line plugin action data)))]
+    (table.insert tuples 1 ["------" "------" "---" "-------"])
+    (table.insert tuples 1 ["action" "plugin" "pin" "if-sync"])
     (pact-view.columnise-data tuples)))
 
 (fn receive [{: view} ...]

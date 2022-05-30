@@ -5,31 +5,37 @@
      {: 'typeof : 'defstruct} :pact.struct
      {:loop uv} vim
      {: fmt : inspect : pathify} :pact.common
-     {: workflow-m :new new-workflow : halt : event} :pact.workflow
+     {: workflow-m :new new-workflow : halt : event : new-error-result} :pact.workflow
      {: view} :fennel)
 
 (local git-commit (require :pact.git.commit))
 (local constraint (require :pact.constraint))
 
-; (local (new-satisfied-result {:type satisfied-result-type})
-;   ;; plugin checkout is "satisfied" with its constraint
-;   (defstruct pact/git-status-workflow/result/satisfied
-;     [plugin latest]))
+(local (needs-sync-result {:type needs-sync-type})
+  (defstruct pact/git-status-workflow/result/satisfied
+    [plugin current latest]
+    :describe-by [plugin current latest]))
 
-; (local (new-unsatisfied-result {:type unsatisfied-result-type})
-;   ;; plugin checkout is "unsatisfied" with its constraint
-;   (defstruct pact/git-status-workflow/result/unsatisfied
-;     [plugin satisfed-by latest]))
+(local (in-sync-result {:type in-sync-type})
+  (defstruct pact/git-status-workflow/result/unsatisfied
+    [plugin latest]))
 
-; (local (new-clone-result {:type clone-result-type})
-;   ;; plugin has no current checkout
-;   (defstruct pact/git-status-workflow/result/clone
-;     [plugin satisfed-by latest]))
+(local (can-sync-result {:type can-sync-type})
+  (defstruct pact/git-status-workflow/result/unsatisfied
+    [plugin satisfied-by latest]))
 
-; (local (new-error-result {:type error-result-type})
-;   ;; something went wrong?
-;   (defstruct pact/git-status-workflow/result/error
-;     [plugin reason]))
+(local (needs-clone-result {:type needs-clone-type})
+  ;; plugin has no current checkout
+  (defstruct pact/git-status-workflow/result/clone
+    [plugin satisfied-by latest]
+    :describe-by [plugin satisfied-by latest]))
+
+(local result-types ((defstruct pact/git-status-workflow/result-types
+                       [NEEDS-CLONE NEEDS-SYNC IN-SYNC CAN-SYNC])
+                     :NEEDS-CLONE needs-clone-type
+                     :NEEDS-SYNC needs-sync-type
+                     :IN-SYNC in-sync-type
+                     :CAN-SYNC can-sync-type))
 
 (fn find-best-commit-by-version [commits pin]
   "Search commits for version that satisfies given pin"
@@ -40,15 +46,14 @@
   ;; first we will filter out all versions and map them version -> commit
   (let [versions->commits (collect [_ [hash btv] (ipairs commits)]
                             (if (= :version (constraint.type btv))
-                                (values btv [hash btv])
-                                (values nil nil)))
+                                (values btv [hash btv])))
         ;; extract just the version numbers to solve for
-        versions (icollect [version _ (pairs versions->commits)]
-                   version)
+        versions (icollect [version _ (pairs versions->commits)] version)
         best (constraint.version.solve [pin] versions)
         ;; now find all commits that match the best version
         viable (icollect [version commit (pairs versions->commits)]
                        (when (= version best) commit))]
+    (inspect viable)
     (values viable)))
 
 (fn find-commit-by-branch-or-tag [commits branch-or-tag]
@@ -70,7 +75,7 @@
     commits (if (< 0 (length commits))
               (values commits)
               (values nil "ls-remote returned no commits"))
-    (catch (nil err) (values nil (fmt "ls-remote failed: %s" err)))))
+    (catch (nil err) (values nil (fmt "(ls-remote) %s" err)))))
 
 (fn find-commit-for-constraint [commits pin]
   (match pin
@@ -119,32 +124,33 @@
 
 (fn existing-git-status [repo-path plugin]
   (do-monad workflow-m
-    [existing-clone-ok? (match (existing-checkout-ready repo-path plugin)
+    [existing-clone-ok? (match (existing-checkout-ready? repo-path plugin)
                           true true
                           other (workflow-m.finished other))
      _ (event "discovering local sha")
-     ; current-hash (match (git.HEAD-sha repo-path)
-     ;                val (constraint.hash.new val)
-     ;                (nil err) (workflow-m.finished
-     ;                            (new-error-result :plugin plugin
-     ;                                              :reason (fmt "could not get current sha %s %s %s"
-     ;                                                           plugin.id repo-path err))))
-     ; _ (event "fetching remote commits")
-     ; refs (match (fetch-remote-refs plugin.url)
-     ;        refs refs
-     ;        (nil err) (workflow-m.finished (new-error-result :plugin plugin
-     ;                                                         :reason err)))
-     ; _ (event "resolving latest commit")
-     ; latest (maybe-latest-version refs)
-     ; _ (event "verifying pin target")
-     ; commits (match (find-commit-for-constraint refs plugin.pin)
-     ;           commits commits
-     ;           nil (workflow.finished (new-error-result :plugin plugin
-     ;                                                    :reason (fmt "could not satisfy %s"
-     ;                                                                 plugin.pin))))
-     ; _ (event "resolving pin to commit")
-     ; via (constraint.type plugin.pin)
+     current-hash (match (git.HEAD-sha repo-path)
+                    val (constraint.hash.new val)
+                    (nil err) (workflow-m.finished
+                                (new-error-result :plugin plugin
+                                                  :reason (fmt "could not get current sha %s %s %s"
+                                                               plugin.id repo-path err))))
+     _ (event "fetching remote commits")
+     refs (match (fetch-remote-refs plugin.url)
+            refs refs
+            (nil err) (workflow-m.finished (new-error-result :plugin plugin
+                                                             :reason err)))
+     _ (event "resolving latest commit")
+     latest (maybe-latest-version refs)
+     _ (event "verifying pin target")
+     commit (match (find-commit-for-constraint refs plugin.pin)
+              commits commits
+              nil (workflow.finished (new-error-result :plugin plugin
+                                                       :reason (fmt "could not satisfy %s"
+                                                                    plugin.pin))))
+     _ (event "resolving pin to commit")
+     via (constraint.type plugin.pin)
      _ (event "verifying pin against commit")]
+    (print (vim.inspect [current-hash refs latest commit via]))
     (match [via commit]
       [_ nil] (raise argument (fmt "could not resolve %s (%s)" via plugin.pin))
       ;; version may return multiple commits that match given version, so check
@@ -155,24 +161,20 @@
                                      (when (= hash current-hash) [hash btv]))
                                first-option (. commit 1)]
                          (match found
-                            nil (git-result plugin [current-hash current-hash]
-                                            :hold
-                                            {:hold [] :sync [first-option]}
-                                            latest)
-                            found (git-result plugin
-                                              found
-                                              :hold
-                                              {:hold []}
-                                              latest)))
+                           nil (can-sync-type :plugin plugin
+                                              :satisfied-by first-option
+                                              :latest latest)
+                           found (in-sync-type :plugin plugin
+                                               :satisfied-by found
+                                               :lates latest)))
       [_ [hash btv]] (match (= hash current-hash)
                       ;; current hash is equal to commit, so we can send that back
                       ;; as the current checkout
                       true
-                      (git-result plugin commit :hold {:hold []} latest
-                       ;; commit cant stand in as current checkout, so construct a commit
-                       false
-                       (git-result plugin [current-hash current-hash] :hold
-                                {:hold [] :sync [commit]} latest))))))
+                      (git-result plugin commit :hold {:hold []} latest)
+                      ;; commit cant stand in as current checkout, so construct a commit
+                      false
+                      (git-result plugin [current-hash current-hash] :hold {:hold [] :sync [commit]} latest)))))
 
 (fn new-git-status [repo-path plugin]
   ;; New plugins can't really be verified, but we can check that they're
@@ -186,8 +188,12 @@
             refs refs
             (nil err) (workflow-m.finished (new-error-result :plugin plugin
                                                              :reason err)))
-     latest (maybe-latest-version refs)
+     latest (match (maybe-latest-version refs)
+              ;; will get back hash - version, but we only care
+              ;; to use version to *show* latest
+              [_ version] version)
      _ (event "verifying pin target")
+     _ (inspect :latest latest)
      commit (match (find-commit-for-constraint refs plugin.pin)
               ;; version may return multiple commits that match given version but
               ;; for new status-checks any version will do, so just grab the first.
@@ -195,9 +201,9 @@
               nil (workflow.finished (new-error-result :plugin plugin
                                                        :reason (fmt "could not satisfy %s"
                                                                     plugin.pin))))]
-    (workflow-m.finished (new-clone-result :plugin plugin
-                                           :satisfed-by commit
-                                           :latest latest))))
+    (workflow-m.finished (needs-clone-result :plugin plugin
+                                             :satisfied-by commit
+                                             :latest latest))))
 
 (fn work [plugin-group-root plugin]
   (fn workflow-for-dir-type [repo-path plugin]
@@ -206,6 +212,7 @@
       :directory existing-git-status
       any (raise internal (fmt "cant verify path %q because it is a %q" repo-path any))
       (nil err) (raise internal err)))
+
   (let [repo-path (pathify plugin-group-root plugin.id)
         _ (fs.ensure-directory-exists plugin-group-root)
         result (match (workflow-for-dir-type repo-path plugin)
@@ -223,4 +230,4 @@
         f #(work plugin-group-root plugin)]
     (new-workflow id f)))
 
-{: new}
+{: new : result-types}

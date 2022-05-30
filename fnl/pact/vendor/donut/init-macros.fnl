@@ -189,4 +189,12 @@
                  _ prep-set (ipairs prepared)]
       (icollect [_ code (ipairs prep-set) :into ft] code))))
 
-{: use}
+(fn do-use [uses ...]
+  (assert-compile (sequence? uses) "do-use use arguments must be inside []" uses)
+  (let [use-ast (macroexpand `(use ,(unpack uses)))]
+    `(do
+       ,use-ast
+       ,...)))
+
+{:import-from use :do-with-import do-use
+ : use : do-use}
