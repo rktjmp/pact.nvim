@@ -99,6 +99,7 @@
               bindings)
   (values true))
 
+
 (fn fn+-impl [name pattern ...]
   ;; Actual fn+ without checks for in-scope, otherwise we could never define
   ;; bodies attached to fn*.
@@ -180,27 +181,28 @@
         _ (depth-walk (fn [loc ast parent]
                         ;; only translate syms that are not call syms
                         (when (and (sym? ast) (not (and (list? parent) (= ast (. parent 1)))))
-                          (match [(sym-pinned? ast) (. renamed-match-bindings (tostring ast))]
-                            ;; clause sym is pinned and we have no rename
-                            [true nil] (let [depinned (depin-sym ast)]
-                                         (assert-compile
-                                           (in-scope? depinned)
-                                           (string.format "unable to depin %q, not in scope" 
-                                                          (tostring (depin-sym ast)))
-                                           ast)
-                                         (tset ast 1 (tostring depinned)))
-                            ;; not pinned but we had no rename
-                            [false nil] (assert-compile
-                                          false
-                                          (string.format
-                                            "unknown symbol %q, use in match list or ^pin for outer scope symbols"
-                                            (tostring ast))
-                                          ast)
-                            ;; not pinned and we had a rename
-                            [false rename] (tset ast 1 (tostring rename))
-                            ;; pinned and we had a rename (this should never happen?)
-                            [true rename] (assert-compile false "pinned cause sym but also had rename??" ast)
-                            _ (assert-compile false "fn* bug, please report" ast))))
+                          (let [root-sym (or (and (multi-sym? ast) (. (multi-sym? ast) 1)) ast)]
+                            (match [(sym-pinned? root-sym) (. renamed-match-bindings (tostring root-sym))]
+                              ;; clause sym is pinned and we have no rename
+                              [true nil] (let [depinned (depin-sym root-sym)]
+                                           (assert-compile
+                                             (in-scope? depinned)
+                                             (string.format "unable to depin %q, not in scope" 
+                                                            (tostring (depin-sym ast)))
+                                             ast)
+                                           (tset ast 1 (tostring depinned)))
+                              ;; not pinned but we had no rename
+                              [false nil] (assert-compile
+                                            false
+                                            (string.format
+                                              "unknown symbol %q, use in match list or ^pin for outer scope symbols"
+                                              (tostring ast))
+                                            ast)
+                              ;; not pinned and we had a rename
+                              [false rename] (tset ast 1 (tostring rename))
+                              ;; pinned and we had a rename (this should never happen?)
+                              [true rename] (assert-compile false "pinned cause sym but also had rename??" ast)
+                              _ (assert-compile false "fn* bug, please report" ast)))))
                       clauses)
         _ (depth-walk (fn [[depth index] ast parent]
                         ;; Can't actually match against ... so don't include it in the match pattern

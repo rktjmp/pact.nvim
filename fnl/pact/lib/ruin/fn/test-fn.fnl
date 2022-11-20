@@ -363,3 +363,14 @@
             (import-macros {: fn* : fn+} :fn)
             (fn* x)
             (fn+ x [])))))
+
+(describe "bugfixes"
+
+  ; unknown symbol "opts.hash", use in match list or ^pin for outer scope symbols
+  ; (where [opts] (or opts.hash opts.branch opts.tag opts.version))
+  (it "clauses can use multisyms"
+    (fn* x
+      (where [opts] (or opts.a opts.b))
+      true)))
+
+
