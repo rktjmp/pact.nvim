@@ -61,7 +61,7 @@ When called, [`fn*`](#fn) functions (termed *matched functions*) compare the arg
 recieved against the patterns defined and executes the matching function body.
 
 Patterns are checked in the order they are defined and have strict arity
-checks (unless `...` or `& x` are in the argument list, then the arity is
+checks (unless `...` is in the argument list, then the arity is
 defined as *at least n* where *n* is the number of other arguments).
 
 Matched functions may be anonymous, which requires all match heads and bodies
@@ -77,14 +77,14 @@ match and the expression is the function body.
 Matches are checked in the order given, so higher specificity patterns should
 be first.
 
-Arguments follow `(match)` semantics and may be symbols or values, or
-destructing expressions. Arguments may not be nil unless defined as nil-able by
-prefixing with `?` or with the explicit value (eg: `[a b nil]`).
+Arguments matching follow `(match)` semantics *except `& rest` is unsupported
+and `...` is*. Arguments may be symbols or values. Destructuring is supported.
+Arguments may not be nil unless defined as nil-able by prefixing with `?` or
+with the explicit value (eg: `[a b nil]`).
 
-As with `(match)`, values in clauses may match previously defined in-scope
-symbols. This is explicity opt-in for [`fn*`](#fn), if a symbol name matches an
-existing symbol, an error is raised. If the match is intentional the symbol may
-be prefixed with `^` to *pin* the value.
+As with `(match)`, values in patterns may match previously defined in-scope
+symbols. This is explicity opt-in for [`fn*`](#fn), and symbols should be prefixed with
+`^` to *"pin"* the value and indicate it should match the outer scope.
 
 See also [`fn+`](#fn-1) to add additional patterns to an existing function.
 
@@ -118,10 +118,10 @@ See also [`fn+`](#fn-1) to add additional patterns to an existing function.
   ;;    (x 1 2 3 10 11 12)
   ;; => 1 2 3
   ;; => and-rest 3
-  (where [a b c & rest])
+  (where [a b c ...])
   (do
     (print a b c)
-    (print :and-rest (length rest)))
+    (print :and-rest (select :### ...)))
 
   ;; anything else that does not match will call this
   (where _)
@@ -158,18 +158,23 @@ Attach new function body to `name`. `name` must have been defined via [`fn*`](#f
 
 # tests
 ```
+✓ fn* { } it {: y}
+✓ fn* { } it {: y}
+✓ fn* { } it {:x y}
+✓ fn* { } it {:x y}
+✓ fn* ... and & validation it must have & at the second last position
 ✓ fn* ... code generation it correctly constructs ... function argument for body
 ✓ fn* ... code generation it changes clauses to select
 ✓ fn* ... and & usage it allows for n+ arity
 ✓ fn* ... and & usage it accepts ... as only argument
+✓ fn* scope protection it will compile with shared symbols
+✓ fn* scope protection it wont compile with {: ^x}
 ✓ fn* scope protection it wont compile if a pinned symbol is not in-scope
 ✓ fn* scope protection it can match pinned in-scope syms
 ✓ fn* scope protection it can match pinned in-scope multi-syms
 ✓ fn* scope protection it raises on ^& rest and ^...
 ✓ fn* it has help
 ✓ fn* it must have where-expr
-✓ fn* it accepts [a & rest]
-✓ fn* it handles nils in [a & rest]
 ✓ fn* it all in one
 ✓ fn* it raises error if called with no bodies
 ✓ fn* it raises when called with no default body
