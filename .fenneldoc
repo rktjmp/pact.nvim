@@ -1,0 +1,3 @@
+{:modules-info {"enum/init.fnl" {:doc-order [:reduce :map]}
+                "maybe/init.fnl" {:doc-order [:maybe :some :none]}
+                "result/init.fnl" {:doc-order [:result :ok :err]}}}
