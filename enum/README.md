@@ -1,7 +1,8 @@
 # ruin/enum
 
 `enum` functions generally accept a sequence (`[a b]`), an assoc (`{: a : b})`
-or a generator - a function which when called returns a lua iterator.
+or a generator - a function which when called returns a lua iterator. Some
+functions accept a `stream` (see below).
 
 These functions will attempt to call the correct `ipairs` or `pairs` where
 appropriate (generators are simply called as given).
@@ -27,8 +28,39 @@ To force a mixed-key table to iterate all values, you can pass a generator with
 
 This behaviour may change in the future.
 
+Functions suffixed with `$` modify the given table "in place" and return their
+first argument.
+
+```fennel
+(enum.set$ t :a 1)
+;; equivalent to
+(doto t
+  (tset :a 1))
+```
+
+Streams allow deferred execution of computations against an enumerable. This
+can be more performant as intermediary collections are not created.
+
+```fennel
+(->> [4 2 3]
+     (enum.map #(* 2 $2)) ;; first sequence created => [8 4 6]
+     (enum.filter #(<= 5 $2)) ;; second sequence => [8 6]
+     (enum.map #(* 10 $2))) ;; third => [80 60]
+```
+
+```fennel
+(->> [4 2 3]
+     (enum.stream) ;; create a stream over sequence
+     (enum.map #(* 2 $2)) ;; evaluates (*2 4)
+     (enum.filter #(<= 5 $2)) ;; then evaulates (<= 5 8)
+     (enum.map #(* 10 $2)) ;; then (* 10 8)
+     ;; we must "resolve" the stream into a concrete collection
+     (enum.stream->seq)) ;; then stores [80], then repeats for 2, 3, etc
+```
+
 - **[functions](#initfnl)**
 - **[tests](#tests)**
+
 # Init.fnl
 
 **Table of contents**
@@ -40,7 +72,6 @@ This behaviour may change in the future.
 - [`append$`](#append)
 - [`chunk-every`](#chunk-every)
 - [`concat$`](#concat)
-- [`copy`](#copy)
 - [`each`](#each)
 - [`empty?`](#empty)
 - [`filter`](#filter)
@@ -48,19 +79,25 @@ This behaviour may change in the future.
 - [`first`](#first)
 - [`flat-map`](#flat-map)
 - [`flatten`](#flatten)
+- [`group-by`](#group-by)
 - [`hd`](#hd)
 - [`insert$`](#insert)
+- [`intersperse`](#intersperse)
 - [`keys`](#keys)
 - [`last`](#last)
 - [`pack`](#pack)
 - [`pairs->table`](#pairs-table)
+- [`pluck`](#pluck)
 - [`reduced`](#reduced)
+- [`reject`](#reject)
 - [`remove$`](#remove)
 - [`set$`](#set)
 - [`shuffle$`](#shuffle)
 - [`sort`](#sort)
 - [`sort$`](#sort-1)
 - [`split`](#split)
+- [`stream`](#stream)
+- [`stream->seq`](#stream-seq)
 - [`table->pairs`](#table-pairs)
 - [`tl`](#tl)
 - [`unpack`](#unpack)
@@ -92,13 +129,15 @@ Reduce `enumerable` by `f` with `?initial` as initial accumulator value if given
 Function signature:
 
 ```
-(map [ (where [f] (function? f)) | (where [f enumerable] (and (function? f) (enumerable? enumerable))) ])
+(map [ (where [f] (function? f)) | (where [f stream] (and (function? f) (stream? stream))) | (where [f enumerable] (and (function? f) (enumerable? enumerable))) ])
 ```
 
 Collect `f x` for every `x` in `enumerable` into a seq. If `f x` returns
   `nil`, the value is NOT inserted to avoid creating sparse sequences. If you
   want true map behaviour, use [`reduce`](#reduce) and manually track and return your
   table length.
+
+  Can accept a stream.
 
 ## `all?`
 Function signature:
@@ -145,23 +184,16 @@ Function signature:
 
 Concatenate the values of `seq-1` (and any other seqs) into `seq`.
 
-## `copy`
-Function signature:
-
-```
-(copy t)
-```
-
-Shallow copies values from `t` into a new table.
-
 ## `each`
 Function signature:
 
 ```
-(each [ (where [f] (function? f)) | (where [f enumerable] (and (function? f) (enumerable? enumerable))) ])
+(each [ (where [f] (function? f)) | (where [f stream] (and (function? f) (stream? stream))) | (where [f enumerable] (and (function? f) (enumerable? enumerable))) ])
 ```
 
 See [`map`](#map) but for side effects, returns nil.
+
+  Can accept a stream.
 
 ## `empty?`
 Function signature:
@@ -176,11 +208,13 @@ Check if table is empty
 Function signature:
 
 ```
-(filter [ (where [pred] (function? pred)) | (where [pred t] (and (function? pred) (table? t))) ])
+(filter [ (where [pred] (function? pred)) | (where [pred stream] (and (function? pred) (stream? stream))) | (where [pred t] (and (function? pred) (enumerable? t))) ])
 ```
 
 Collect every `x` in `t` where `pred` is true into a seq. Only accepts
   seq or assocs, use `map` or `reduce` to drop values from a custom iterator.
+
+  Can accept a stream.
 
 ## `find`
 Function signature:
@@ -218,6 +252,24 @@ Function signature:
 
 Flatten a sequence of sequences into one sequence.
 
+## `group-by`
+Function signature:
+
+```
+(group-by [ (where [f] (function? f)) | (where [f e] (and (function? f) (table? e))) | (where [f e] (and (function? f) (function? e))) ])
+```
+
+Group values of `enumerable` by the key from `f`.
+
+  May return one value, the `key` to store the enumerable value under, or two
+  values, where the first is the `key` and the second is the `value`.
+
+  Function enumerables must always return two values.
+
+  Keys may not be `nil`.
+
+  Returns an assoc of sequences.
+
 ## `hd`
 Function signature:
 
@@ -236,6 +288,15 @@ Function signature:
 
 Insert `v` into `seq` at `i` and return `seq`. Accepts negative indexes.
 
+## `intersperse`
+Function signature:
+
+```
+(intersperse [ (where [e inter] (seq? e)) ])
+```
+
+Intersperse `inter` between each value in `e`.
+
 ## `keys`
 Function signature:
 
@@ -243,7 +304,7 @@ Function signature:
 (keys [ (where [enumerable] (table? enumerable)) ])
 ```
 
-Get values from table as an enumerable, order is undetermined.
+Get keys from table, order is undetermined.
 
 ## `last`
 Function signature:
@@ -273,14 +334,32 @@ Function signature:
 
 Convert `seq` of `[[k, v] ...]` into `{k v ...}`
 
+## `pluck`
+Function signature:
+
+```
+(pluck [ (where [t ks] (and (table? t) (seq? ks))) ])
+```
+
+For each key in `ks`, get value from `t`, Returns seq.
+
 ## `reduced`
 Function signature:
 
 ```
-(reduced [ (where [value]) | (where _) ])
+(reduced [ (where []) | (where [?value]) | (where _) ])
 ```
 
 Terminate a reducer with value
+
+## `reject`
+Function signature:
+
+```
+(reject pred ...)
+```
+
+Complement of [`filter`](#filter)
 
 ## `remove$`
 Function signature:
@@ -336,6 +415,38 @@ Function signature:
 
 Return `seq` in two parts, split at `index`.
 
+## `stream`
+Function signature:
+
+```
+(stream [ (where [t] (enumerable? t)) ])
+```
+
+Create stream container from given enumerable.
+
+  A stream container can be used do defer computation on an enumerable. Not all
+  `enum` function support streams. Streams must be "resolved" by calling
+  [`stream->seq`](#stream-seq).
+
+  ```
+  (->> [4 2 3]
+       (enum.stream) ;; create a stream over sequence
+       (enum.map #(* 2 $2)) ;; evaluates (*2 4)
+       (enum.filter #(<= 5 $2)) ;; then evaulates (<= 5 8)
+       (enum.map #(* 10 $2)) ;; then (* 10 8)
+       ;; we must "resolve" the stream into a concrete collection
+       (enum.stream->seq)) ;; then stores [80], then repeats for 2, 3, etc
+  ```
+
+## `stream->seq`
+Function signature:
+
+```
+(stream->seq [ (where [l] (and (stream? l) (or (seq? l.enum) (assoc? l.enum)))) | (where [l] (and (stream? l) (function? l.enum))) ])
+```
+
+"resolve" stream into seq.
+
 ## `table->pairs`
 Function signature:
 
@@ -368,10 +479,10 @@ Unpack a packed table, automatically uses `t.n` if present
 Function signature:
 
 ```
-(vals [ (where [enumerable] (table? enumerable)) | (where [enumerable] (function? enumerable)) ])
+(vals [ (where [enumerable] (table? enumerable)) ])
 ```
 
-Get values from table as an enumerable, order is undetermined.
+Get values from table, order is undetermined.
 
 
 <!-- Generated with Fenneldoc v1.0.0
@@ -387,6 +498,8 @@ Get values from table as an enumerable, order is undetermined.
 ✓ map it handles empty tables
 ✓ map it handles seq
 ✓ map it handles stl-custom iter
+✓ each it works
+✓ intersperse it works
 ✓ table->pairs it converts
 ✓ pairs->table it converts
 ✓ filter it handles seq
@@ -398,6 +511,10 @@ Get values from table as an enumerable, order is undetermined.
 ✓ all? it finds one bad
 ✓ find it returns found value
 ✓ find it returns nil on no find
+✓ group-by it table groups with just key
+✓ group-by it table groups with key, value
+✓ group-by it function groups errors with just key
+✓ group-by it function groups with key, value
 ✓ set$ it sets a value in-place
 ✓ set$ it updates a value in-place
 ✓ set$ it removes a value in-place without respect to seq or assoc
@@ -442,4 +559,11 @@ Get values from table as an enumerable, order is undetermined.
 ✓ shuffle$ it shuffles a list
 ✓ mixed tables it maps
 ✓ mixed tables it maps
+✓ stream it simple map over seq
+✓ stream it can map->filter seq
+✓ stream it works with each seq
+✓ stream it works with assocs?
+✓ stream it works with functions?
+✓ pluck it works with assocs
+✓ pluck it works with tables
 ```

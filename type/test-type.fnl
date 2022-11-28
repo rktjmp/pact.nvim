@@ -1,6 +1,12 @@
 (import-macros {: view : must : describe : it : rerequire} :test)
 (local t (rerequire :type))
 
+(describe "kernel"
+  (it "imports functions"
+    (import-macros {: kernelise} :type.kernel)
+    (kernelise)
+    (must match true (nil? nil))))
+
 (describe "set and check type"
   (it "throws on missing type"
        (must throw (t.set-type {:a 10} nil)))

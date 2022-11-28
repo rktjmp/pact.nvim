@@ -84,6 +84,10 @@
   "Is `v` nil?"
   (= :nil (type v)))
 
+(fn M.not-nil? [v]
+  "Is `v` not nil?"
+  (not (M.nil? v)))
+
 (fn M.userdata? [v]
   "Is `v` userdata?"
   (= :userdata (type v)))
@@ -102,4 +106,3 @@
 (tset M :type-is-any? M.is-any?)
 
 (values M)
-

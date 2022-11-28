@@ -43,6 +43,12 @@
     (must match nil (enum.each #(tset x $1 true) [1 2 3]))
     (must match [true true true] x)))
 
+(describe "intersperse"
+  (it "works"
+    (must match [1 nil] (enum.intersperse [1] 0))
+    (must match [1 0 2] (enum.intersperse [1 2] 0))
+    (must match [1 0 2 0 3] (enum.intersperse [1 2 3] 0))))
+
 (describe "table->pairs"
   (it "converts"
     (must match
@@ -81,6 +87,25 @@
     (must match (4 6) (enum.find #(<= 5 $2) [1 -1 3 6 10 7 9])))
   (it "returns nil on no find"
     (must match nil (enum.find #(<= 50 $2) [6 10 7 1 39]))))
+
+(describe "group-by"
+  (it "table groups with just key"
+    (must match {true [1 2] false [3 4]}
+          (enum.group-by #(<= $2 2) [1 2 3 4]))
+    (must match {true [1] false [2]}
+          (enum.group-by #(<= $2 1) {:a 1 :b 2}))
+    (must throw (enum.group-by #nil [1 2 3])))
+  (it "table groups with key, value"
+    (must match {true [2 4] false [6 8]}
+          (enum.group-by #(values (<= $2 2) (* $2 2))
+                         [1 2 3 4])))
+  (it "function groups errors with just key"
+    (must throw (enum.group-by #true #(ipairs [1 2 3]))))
+
+  (it "function groups with key, value"
+    (must match {true [2 4] false [6 8]}
+          (enum.group-by #(values (<= $2 2) (* $2 2))
+                         #(ipairs [1 2 3 4])))))
 
 (fn fixture []
   (values [1 2 3]
@@ -300,3 +325,68 @@
   (it "maps"
     [t {1 :first :greet :hello}]
     (must match [[1 :first] [:greet :hello]] (enum.map #[$1 $2] #(pairs t)))))
+
+(describe "stream"
+  (it "simple map over seq"
+    [t []]
+    (local x (->> (enum.stream [7 8 9])
+                  (enum.map #(do
+                               (table.insert t [:a $2])
+                               (* $1 $2)))
+                  (enum.map #(do
+                               (table.insert t [:b $2])
+                               (* $2 (+ $1 10))))))
+    (must match {:enum [7 8 9]
+                 :funs [_ _]} x)
+    ;; should collate out to list correctly
+    (must match [77 192 351] (enum.stream->seq x))
+    ;; but should have been run in stream order
+    (must match [[:a 7] [:b 7] [:a 8] [:b 16] [:a 9] [:b 27]] t))
+
+  (it "can map->filter seq"
+    [t []]
+    (local x (->> (enum.stream [1 2 1 4])
+                  (enum.filter #(<= 2 $2))
+                  (enum.map #(* $1 $2))))
+    ;; should still pass original index through to functions,
+    ;; so 2*2, 4*4
+    (must match [4 16] (enum.stream->seq x)))
+
+  (it "works with each seq"
+    [t []]
+    (local x (->> (enum.stream [1 2 1 4])
+                  (enum.each #(do
+                                (table.insert t $2)
+                                100))
+                  (enum.map #(* $2 2))))
+    ;; should still pass original index through to functions,
+    ;; so 2*2, 4*4
+    (must match [2 4 2 8] (enum.stream->seq x))
+    (must match [1 2 1 4] t))
+
+  (it "works with assocs?"
+    (local x (->> (enum.stream {:a 1 :b 2 :c 1 :d 8})
+                  (enum.filter #(<= 2 $2))
+                  (enum.map #[$1 $2])
+                  (enum.stream->seq)
+                  (enum.sort (fn [[_ v1] [_ v2]] (<= v1 v2)))))
+    (must match [[:b 2] [:d 8]] x))
+
+  (it "works with functions?"
+    [t []]
+    (local x (->> (enum.stream #(string.gmatch "hello\nthis\nhas\nmany\nlines" "[^\n]+"))
+                  (enum.each #(table.insert t [$...]))
+                  (enum.map #(string.upper $1))
+                  (enum.each #(table.insert t [$...]))))
+    (must match [:HELLO :THIS :HAS :MANY :LINES] (enum.stream->seq x))
+    (must match [[:hello] [:HELLO]
+                 [:this] [:THIS]
+                 [:has] [:HAS]
+                 [:many] [:MANY]
+                 [:lines] [:LINES]] t)))
+
+(describe "pluck"
+  (it "works with assocs"
+    (must match [true false] (enum.pluck {:a true :b false :c 1} [:a :b])))
+  (it "works with tables"
+    (must match [true false] (enum.pluck [true true false true] [1 3]))))

@@ -1,13 +1,35 @@
 (import-macros {: use} (.. (or (-?> ... (string.match "(.+%.)enum")) "") :use))
 
-(use {: seq? : assoc? : table?
+(use {:seq? t-seq? :assoc? t-assoc? :table? t-table?
       : number? : function? : nil?} :type &from :enum
-     {: 'fn*} :fn &from :enum)
+     {: 'fn*} :fn &from :enum
+     {:format fmt} string)
 
 (local M {})
 
+(fn stream? [s]
+  (match s
+    {:enum enum :funs funs} true
+    _ false))
+
+;; we want to shadow the normal seq? and assoc? functions to make sure we were
+;; not getting a stream-container.
+(fn seq? [t] (and (t-seq? t) (not (stream? t))))
+(fn assoc? [t] (and (t-assoc? t) (not (stream? t))))
+(fn table? [t] (and (t-table? t) (not (stream? t))))
+
 (fn enumerable? [v]
-  (or (table? v) (function? v)))
+  ;; stream is a table, so it will look enumerable but really its not.
+  (or (and (or (seq? v)
+               (assoc? v))
+           (not (stream? v)))
+      (function? v)))
+
+;; stream iter internal behaviour markers
+(local stream-halt-marker {})
+(local stream-use-last-value-marker {})
+(local stream-use-new-value-marker {})
+(local reduced-marker {})
 
 ;; Generic helpers
 
@@ -31,11 +53,12 @@
 
 ;; Reduce
 
-(fn reduced-marker {})
 (fn* M.reduced
   "Terminate a reducer with value"
-  (where [value])
-  (values reduced-marker value)
+  (where [])
+  (values reduced-marker)
+  (where [?value])
+  (values reduced-marker ?value)
   (where _)
   (error "reduced accepts only a single value"))
 
@@ -45,9 +68,9 @@
 ;; back.
 ;; Kind of depends on how accurately we really detect seq and
 ;; assoc, these could be passed to reduce-impl to order the values passed to f.
-(fn r-order-identity [...] (values ...))
-(fn r-order-v-k [i v] (values v i))
-(fn r-order-k-v [k v] (values k v))
+; (fn r-order-identity [...] (values ...))
+; (fn r-order-v-k [i v] (values v i))
+; (fn r-order-k-v [k v] (values k v))
 
 (fn reduce-impl [f acc [gen invariant ctrl]]
   (let [{: n &as vals} (M.pack (gen invariant ctrl))]
@@ -114,9 +137,15 @@
   "Collect `f x` for every `x` in `enumerable` into a seq. If `f x` returns
   `nil`, the value is NOT inserted to avoid creating sparse sequences. If you
   want true map behaviour, use `reduce' and manually track and return your
-  table length."
+  table length.
+
+  Can accept a stream."
   (where [f] (function? f))
   #(M.map f $1)
+  (where [f stream] (and (function? f) (stream? stream)))
+  (do
+    (table.insert stream.funs #(values stream-use-new-value-marker (f $...)))
+    (values stream))
   (where [f enumerable] (and (function? f) (enumerable? enumerable)))
   (let [fx (fn [acc ...]
              (match (f ...)
@@ -125,9 +154,15 @@
     (M.reduce fx [] enumerable)))
 
 (fn* M.each
-  "See `map' but for side effects, returns nil."
+  "See `map' but for side effects, returns nil.
+
+  Can accept a stream."
   (where [f] (function? f))
   #(M.each f $1)
+  (where [f stream] (and (function? f) (stream? stream)))
+  (do
+    (table.insert stream.funs #(values stream-use-last-value-marker (f $...)))
+    (values stream))
   (where [f enumerable] (and (function? f) (enumerable? enumerable)))
   (let [fx (fn [acc ...]
              (f ...)
@@ -143,23 +178,30 @@
                (M.append$ acc v)))]
     (M.reduce fx [] seq)))
 
-(fn flat-map-impl [f enumerable]
+(fn* M.flat-map
+  (where [f] (function? f))
+  #(M.flat-map f $1)
+  (where [f enumerable] (and (function? f) (enumerable? enumerable)))
   (-> (M.map f enumerable)
       (M.flatten)))
 
-(fn* M.flat-map
-  (where [f] (function? f))
-  #(flat-map-impl f)
-  (where [f enumerable] (and (function? f) (enumerable? enumerable)))
-  (flat-map-impl f enumerable))
+;; Predicators
 
 (fn* M.filter
   "Collect every `x` in `t` where `pred` is true into a seq. Only accepts
-  seq or assocs, use `map` or `reduce` to drop values from a custom iterator."
+  seq or assocs, use `map` or `reduce` to drop values from a custom iterator.
+
+  Can accept a stream."
   (where [pred] (function? pred))
   #(M.filter pred $1)
-  (where [pred t] (and (function? pred) (table? t)))
-  (let [insert (if (seq? t)
+  (where [pred stream] (and (function? pred) (stream? stream)))
+  (do
+    (table.insert stream.funs #(if (pred $...)
+                               (values stream-use-last-value-marker)
+                               (values stream-halt-marker)))
+    (values stream))
+  (where [pred t] (and (function? pred) (enumerable? t)))
+  (let [insert (if (or (seq? t) (function? t))
                  #(doto $1 (table.insert $3))
                  #(doto $1 (tset $2 $3)))
         insert? (fn [acc k v]
@@ -168,16 +210,9 @@
                     (values acc)))]
     (M.reduce insert? {} t)))
 
-(fn* M.find
-  "Return first value pair from `t` that `f` returns true for."
-  (where [f t] (and (function? f) (enumerable? t)))
-  (let [reducer (M.reduce (fn [_ ...] (if (f ...)
-                                        ;; track index/key and value, etc
-                                        (M.reduced (M.pack ...))
-                                        (values nil))))]
-    (match (reducer nil t)
-      any (M.unpack any)
-      nil nil)))
+(fn M.reject [pred ...]
+  "Complement of `filter'"
+  (M.filter #(not (pred $...)) ...))
 
 (fn* M.any?
   "Return true if `f` returns true for any member of `t`"
@@ -194,6 +229,64 @@
                             (values true)
                             (M.reduced false)))
             true t))
+
+(fn* M.find
+  "Return first value pair from `t` that `f` returns true for."
+  (where [f t] (and (function? f) (enumerable? t)))
+  (let [reducer (M.reduce (fn [_ ...] (if (f ...)
+                                        ;; track index/key and value, etc
+                                        (M.reduced (M.pack ...))
+                                        (values nil))))]
+    (match (reducer nil t)
+      any (M.unpack any)
+      nil nil)))
+
+(fn* M.group-by
+  "Group values of `enumerable` by the key from `f`.
+
+  May return one value, the `key` to store the enumerable value under, or two
+  values, where the first is the `key` and the second is the `value`.
+
+  Function enumerables must always return two values.
+
+  Keys may not be `nil`.
+
+  Returns an assoc of sequences."
+  (where [f] (function? f))
+  #(M.group-by f $1)
+  ;; tables (seq or assoc) always have a k v pair so we can be
+  ;; confident in what to pass around
+  (where [f e] (and (function? f) (table? e)))
+  (M.reduce (fn [acc k v]
+              (let [(key val) (f k v)
+                    _ (assert (not= nil key) "group-by key may not be nil")
+                    val (or val v)
+                    group (or (. acc key) [])]
+                (M.set$ acc key (M.append$ group val))))
+            {} e)
+  ;; we can't know how many values a function returns, so we don't know what
+  ;; suits as a default value, so the user must return one.
+  (where [f e] (and (function? f) (function? e)))
+  (M.reduce (fn [acc ...]
+              (let [(key val) (f ...)
+                    _ (assert (not= nil key) "group-by key may not be nil")
+                    _ (assert (not= nil val)
+                              "group-by on function must return (key value)")
+                    group (or (. acc key) [])]
+                (M.set$ acc key (M.append$ group val))))
+            {} e))
+
+(fn* take
+  (where [e n] (and (seq? e) (number? n)))
+  (error "todo")
+  (where [e n] (and (function? e) (number? n)))
+  (error "todo"))
+
+(fn* M.pluck
+  ;; TODO: accept keys table or table keys?
+  "For each key in `ks`, get value from `t`, Returns seq."
+  (where [t ks] (and (table? t) (seq? ks)))
+  (M.map #(. t $2) ks))
 
 ;; Seq-only alterations
 
@@ -243,19 +336,16 @@
   (where [seq seq-1 seq-2 ...] (and (seq? seq) (seq? seq-1) (seq? seq-2)))
   (M.concat$ (M.concat$ seq seq-1) seq-2 ...))
 
-(fn* M.chunk-every
-  "Split `seq` by `n` into `[[v1 .. vn] ...]` optionally fill tail with `?fill`"
-  (where [seq n] (and (seq? seq) (number? n)))
-  (M.chunk-every seq n nil)
-  (where [seq n ?fill] (and (seq? seq) (number? n)))
-  (let [l (length seq)]
-    (if (< 0 l)
-      (fcollect [i 1 (length seq) n]
-        (fcollect [ii 0 (- n 1)]
-          (match (. seq (+ i ii))
-            nil ?fill
-            any any)))
-      (values []))))
+(fn* M.shuffle$
+  "Shuffle sequence in place"
+  (where [seq] (seq? seq))
+  (do
+    (for [i (length seq) 1 -1]
+      (let [j (math.random 1 i)
+            hold (. seq j)]
+        (tset seq j (. seq i))
+        (tset seq i hold)))
+    (values seq)))
 
 (fn* M.hd
   "Return first element of `seq`"
@@ -288,9 +378,19 @@
       (values (M.insert$ left -1 v) right)
       (values left (M.insert$ right -1 v)))))
 
-(fn M.copy [t]
-  "Shallow copies values from `t` into a new table."
-  (collect [k v (pairs t)] (values k v)))
+(fn* M.chunk-every
+  "Split `seq` by `n` into `[[v1 .. vn] ...]` optionally fill tail with `?fill`"
+  (where [seq n] (and (seq? seq) (number? n)))
+  (M.chunk-every seq n nil)
+  (where [seq n ?fill] (and (seq? seq) (number? n)))
+  (let [l (length seq)]
+    (if (< 0 l)
+      (fcollect [i 1 (length seq) n]
+        (fcollect [ii 0 (- n 1)]
+          (match (. seq (+ i ii))
+            nil ?fill
+            any any)))
+      (values []))))
 
 ;; General table alterations
 
@@ -330,7 +430,6 @@
     ;; recreate new seq by inserting values according to their sorted-index
     (M.reduce (fn [acc i v] (M.set$ acc (. sorted-keys i) v)) [] seq)))
 
-
 ;; x -> tuples
 
 (fn* M.table->pairs
@@ -345,29 +444,83 @@
 
 (fn* M.keys
   "Get keys from table, order is undetermined."
-  ;; we'll manually iterate to be sure we use pairs
   (where [enumerable] (table? enumerable))
+  ;; specify pairs iterators to be sure we get everything
   (M.map #(values $1) #(pairs enumerable)))
 
 (fn* M.vals
   "Get values from table, order is undetermined."
   (where [enumerable] (table? enumerable))
+  ;; specify pairs iterators to be sure we get everything
   (M.map #(values $2) #(pairs enumerable)))
 
-(fn* M.shuffle$
-  "Shuffle sequence in place"
-  (where [seq] (seq? seq))
-  (do
-    (for [i (length seq) 1 -1]
-      (let [j (math.random 1 i)
-            hold (. seq j)]
-        (tset seq j (. seq i))
-        (tset seq i hold)))
-    (values seq)))
+(fn* M.intersperse
+  "Intersperse `inter` between each value in `e`."
+  ;; assocs obviously make no sense, functions are unclear which iter-args will
+  ;; be a value and which is a key.
+  (where [e inter] (seq? e))
+  (M.reduce (fn*
+              (where [acc n v] (= n (length ^e))) (M.append$ acc v)
+              (where [acc i v]) (M.append$ acc v inter))
+            [] e))
 
 (fn* M.empty?
   "Check if table is empty"
   (where [t] (table? t))
   (= nil (next t)))
+
+(fn* M.stream
+  "Create stream container from given enumerable.
+
+  A stream container can be used do defer computation on an enumerable. Not all
+  `enum` function support streams. Streams must be \"resolved\" by calling
+  `stream->seq'.
+
+  ```
+  (->> [4 2 3]
+       (enum.stream) ;; create a stream over sequence
+       (enum.map #(* 2 $2)) ;; evaluates (*2 4)
+       (enum.filter #(<= 5 $2)) ;; then evaulates (<= 5 8)
+       (enum.map #(* 10 $2)) ;; then (* 10 8)
+       ;; we must \"resolve\" the stream into a concrete collection
+       (enum.stream->seq)) ;; then stores [80], then repeats for 2, 3, etc
+  ```"
+  (where [t] (enumerable? t))
+  {:enum t :funs []})
+
+(fn* M.stream->seq
+  "\"resolve\" stream into seq."
+  (where [l] (and (stream? l) (or (seq? l.enum) (assoc? l.enum))))
+  (M.map (fn [k v]
+           (M.reduce (fn [acc i f]
+                       (match [(f k acc)]
+                         ;; halt processing and drop from resulting seq
+                         [stream-halt-marker] (M.reduced nil)
+                         ;; keep processing but actually ignore the result
+                         [stream-use-last-value-marker] (values acc)
+                         ;; pass ahead
+                         [stream-use-new-value-marker ?new-acc] (values ?new-acc)))
+                     v l.funs))
+         l.enum)
+  ;; Functions must be juggled as they have unspecified behaviour.
+  ;; We need to capture all return values and pack/unpack as we go.
+  (where [l] (and (stream? l) (function? l.enum)))
+  (->> (M.map (fn [...]
+               (M.reduce (fn [acc _ f]
+                           (let [new (M.pack (f (M.unpack acc)))]
+                             (match new
+                               [stream-halt-marker] (M.reduced nil)
+                               [stream-use-last-value-marker] (values acc)
+                               ;; drop the marker from our packed value
+                               [stream-use-new-value-marker] (M.pack (M.unpack new 2)))))
+                         (M.pack ...) l.funs))
+             l.enum)
+      ;; the above gives us [{1 :a :n 1} {1 :b :n 1} ...] so we have to flatten
+      ;; that back out.
+      (M.flatten)))
+
+; (fn M.copy [t]
+;   "Shallow copies values from `t` into a new table."
+;   (collect [k v (pairs t)] (values k v)))
 
 (values M)

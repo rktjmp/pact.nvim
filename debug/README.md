@@ -2,6 +2,7 @@
 
 - **[functions](#initfnl)**
 - **[tests](#tests)**
+
 # Init.fnl
 
 **Table of contents**

@@ -3,6 +3,13 @@
                 : if-let : when-let
                 : if-some-let : when-some-let} :let)
 
+(describe "kernel"
+  (it "kernelises"
+    (do
+      (import-macros {: kernelise} :let.kernel)
+      (kernelise)
+      (must match 20 (if-let [a true] 20)))))
+
 (describe "match-let without shadowing"
   (it "returns value"
     (local one (match-let [str "10 10"

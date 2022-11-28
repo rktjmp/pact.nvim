@@ -392,4 +392,8 @@
       (where [1]) true
       (where _) (values false ...))
     (must match true (x 1))
-    (must match (false 10) (x 10))))
+    (must match (false 10) (x 10)))
+
+  (it "reconstructs the first part of a multisym in clauses with shadow bind"
+    (fn* x (where [v] (= true v.val)) true)
+    (must match true (x {:val true}))))

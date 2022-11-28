@@ -3,6 +3,7 @@
 - **[functions](#initfnl)**
 - **[macros](#init-macrosfnl)**
 - **[tests](#tests)**
+
 # Init.fnl
 
 **Table of contents**
