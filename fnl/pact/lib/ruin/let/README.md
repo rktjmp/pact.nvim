@@ -2,6 +2,7 @@
 
 - **[macros](#init-macrosfnl)**
 - **[tests](#tests)**
+
 # Init-macros.fnl
 
 **Table of contents**
@@ -141,10 +142,13 @@ Check `bindings` in order, if all are not nil, evaluate `...` or nil.
 
 # tests
 ```
+✓ kernel it kernelises
 ✓ match-let without shadowing it returns value
 ✓ match-let without shadowing it returns else matches
+✓ match-let without shadowing it returns catch matches
 ✓ match-let without shadowing it can have multiple body clauses
 ✓ match-let without shadowing it can have multiple body clauses and an else
+✓ match-let without shadowing it returns all values
 ✓ match-let with shadowing locals it warns on rebinding (until matchless exists)
   match-let with shadowing locals it does allow rescoping _
 ✓ match-let with shadowing locals it warns when attempting to bind(?)/match a symbol that exists in outerscope not defined by us

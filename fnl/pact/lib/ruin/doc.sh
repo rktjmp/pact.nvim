@@ -23,6 +23,7 @@ for f in "${dirs[@]}"; do
     echo "- **[macros](#init-macrosfnl)**" >> "$f/README.md"
   fi
   echo "- **[tests](#tests)**" >> "$f/README.md"
+  echo "" >> "$f/README.md"
 
   if [[ -e "$f/init.fnl" ]]; then
     ./fenneldoc.bin --out-dir . "$f/init.fnl"

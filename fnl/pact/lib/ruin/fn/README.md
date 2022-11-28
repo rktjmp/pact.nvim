@@ -3,6 +3,7 @@
 - **[functions](#initfnl)**
 - **[macros](#init-macrosfnl)**
 - **[tests](#tests)**
+
 # Init.fnl
 
 **Table of contents**
@@ -57,8 +58,17 @@ Create a new pattern-matched & arity-matched function.
   (print :otherwise))
 ```
 
-When called, [`fn*`](#fn) functions (termed *matched functions*) compare the arguments
-recieved against the patterns defined and executes the matching function body.
+When called, [`fn*`](#fn) functions compare the arguments recieved against the
+patterns defined and executes the first matching function body.
+
+[`fn*`](#fn) functions are useful if you want a very strict API (by default they
+will raise an error if no pattern matched the arguments recieved), or to
+simplify dispatching against different argument types. The `enum` module
+uses this macro heavily as an example.
+
+Generally you probably should prefer regular `fn` functions with `match` unless
+you know you want very strict argument checks or particular behaviour depending
+on the arguments received.
 
 Patterns are checked in the order they are defined and have strict arity
 checks (unless `...` is in the argument list, then the arity is
@@ -85,6 +95,9 @@ with the explicit value (eg: `[a b nil]`).
 As with `(match)`, values in patterns may match previously defined in-scope
 symbols. This is explicity opt-in for [`fn*`](#fn), and symbols should be prefixed with
 `^` to *"pin"* the value and indicate it should match the outer scope.
+
+A default "match all" handler can be defined with `(where _)`, the handler
+will receive `...` as an argument.
 
 See also [`fn+`](#fn-1) to add additional patterns to an existing function.
 
@@ -194,4 +207,9 @@ Attach new function body to `name`. `name` must have been defined via [`fn*`](#f
 ✓ fn+ it can attach to fn* head
 ✓ fn+ it will not compile without fn*
 ✓ fn+ it must have args
+✓ bugfixes it clauses can use multisyms
+✓ bugfixes it can use nil in clause
+✓ bugfixes it can use $1
+✓ bugfixes it passes ... to default handler
+✓ bugfixes it reconstructs the first part of a multisym in clauses with shadow bind
 ```

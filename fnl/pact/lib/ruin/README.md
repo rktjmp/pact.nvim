@@ -11,6 +11,30 @@ Each directory has its own readme documenting its usage.
 Should be usable inside other projects when dropped into a subtree (eg: `my-tool/lib/ruin`)
 or cloned into Neovims RTP (eg: `(require :ruin...)`).
 
+## ruin! macro
+
+```fennel
+(import-macros {: ruin!} :ruin)
+(ruin!)
+```
+
+The `ruin!` macro automatically a selection of functions and macros into a
+module.
+
+These include:
+
+- let
+  - The macros `match-let`, `if-let`, `if-some-let`, `when-let`, `when-some-let`
+- fn
+  - The macros `fn*`, `fn+`
+- match
+  - The macro `match?`
+- type
+  - The functions `nil?`, `not-nil?`, `seq?`, `assoc?`, `table?`, `number?`, `boolean?`,
+  `string?`, `function?`, `userdata?`, `thread?`
+- use
+  The macro `use`
+
 ## modules
 
 **[use](use/README.md)**
@@ -36,6 +60,9 @@ Multi-arity/pattern-dispatch functions.
   (print :100-hello name)
   (where _)
   (print :otherwise))
+
+(fn+ y [:message msg]
+  (print msg))
 ```
 
 **[let](let/README.md)**
@@ -64,7 +91,7 @@ A `ok` or `err` monad.
 
 **[math](math/README.md)**
 
-Generic maths functions, `add`, `even?`, etc.
+Do maths with words, `add`, `even?`, etc.
 
 **[type](type/README.md)**
 

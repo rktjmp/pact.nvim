@@ -6,6 +6,7 @@ similar behaviour in a more idiomatic style.
 - **[functions](#initfnl)**
 - **[macros](#init-macrosfnl)**
 - **[tests](#tests)**
+
 # Init.fnl
 
 **Table of contents**

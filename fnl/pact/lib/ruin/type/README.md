@@ -1,7 +1,9 @@
 # ruin/type
 
 - **[functions](#initfnl)**
+- **[macros](#init-macrosfnl)**
 - **[tests](#tests)**
+
 # Init.fnl
 
 **Table of contents**
@@ -13,6 +15,7 @@
 - [`is-any?`](#is-any)
 - [`is?`](#is)
 - [`nil?`](#nil)
+- [`not-nil?`](#not-nil)
 - [`number?`](#number)
 - [`of`](#of)
 - [`seq?`](#seq)
@@ -87,6 +90,15 @@ Function signature:
 ```
 
 Is `v` nil?
+
+## `not-nil?`
+Function signature:
+
+```
+(not-nil? v)
+```
+
+Is `v` not nil?
 
 ## `number?`
 Function signature:
@@ -190,9 +202,16 @@ Is `v` userdata?
 
 <!-- Generated with Fenneldoc v1.0.0
      https://gitlab.com/andreyorst/fenneldoc -->
+# Init-macros.fnl
+
+
+
+<!-- Generated with Fenneldoc v1.0.0
+     https://gitlab.com/andreyorst/fenneldoc -->
 
 # tests
 ```
+✓ kernel it imports functions
 ✓ set and check type it throws on missing type
 ✓ set and check type it can set special type
   of it can get type of normal data
