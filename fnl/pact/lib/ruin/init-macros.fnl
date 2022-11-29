@@ -1,11 +1,15 @@
-(import-macros {: use : relative-mod}
-               (.. (or (-?> ... (string.match "(.+%.)ruin")) "") :use))
+;; string match slightly different here as we're in the root mod
+;; and it's simpler to just build most things manually.
+(import-macros {: relative-root}
+               (.. (or (-?> ... (string.match "(.+)")) "") :.use))
 
-(local use-path (relative-mod :use.kernel &from "ruin"))
-(local let-path (relative-mod :let.kernel &from "ruin"))
-(local fn-path (relative-mod :fn.kernel &from "ruin"))
-(local match-path (relative-mod :match.kernel &from "ruin"))
-(local type-path (relative-mod :type.kernel &from "ruin"))
+
+(local root (.. (relative-root &from "ruin") :ruin.))
+(local use-path (.. root :use.kernel))
+(local let-path (.. root :let.kernel))
+(local fn-path (.. root :fn.kernel))
+(local match-path (.. root :match.kernel))
+(local type-path (.. root :type.kernel))
 
 (fn ruin! [...]
   (let [mods [let-path fn-path match-path type-path use-path]]
@@ -16,3 +20,4 @@
           (table.insert `(s#)))))))
 
 {: ruin!}
+
