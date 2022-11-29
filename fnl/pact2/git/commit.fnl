@@ -54,5 +54,4 @@
                        version (commit sha {:tag name
                                             :version version}))))
 
-
 {: commit : ref-line->commit}

@@ -5,7 +5,6 @@
      {:format fmt} string
      {: valid-sha? : valid-version-spec?} :pact2.valid)
 
-
 (fn one-of? [coll test]
   (enum.any? #(= $2 test) coll))
 

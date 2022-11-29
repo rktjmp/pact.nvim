@@ -1,75 +1,78 @@
+(import-macros {: use} :pact.lib.ruin.use)
+(use {: 'fn* : 'fn+} :pact.lib.ruin.fn
+     result :pact.lib.ruin.result
+     {: string? : thread?} :pact.lib.ruin.type
+     enum :pact.lib.ruin.enum
+     {:format fmt} string
+     {:loop uv} vim)
+
 (import-macros {: raise : expect} :pact.error)
 (import-macros {: defstruct} :pact.struct)
 
 (local uv vim.loop)
 (local {: inspect} (require :pact.common))
-(local {: subscribe : broadcast} (require :pact.pubsub))
+(local {: broadcast} (require :pact2.pubsub))
 
 (fn make-idle-loop [scheduler]
-  (fn tick-workflow [workflow]
-    ;; Run the workflow and inspect its return value. It may request to be
-    ;; de/re-scheduled and may return an event or final value.
-    (let [{: run :const {: reply}} (require :pact.workflow)]
-      (match [(run workflow)]
-        [nil err] (do
-                    (inspect :eeee err)
-                    [:halt :error err])
-        (where [reply.CONT thread] (= (type thread) :thread)) [:cont]
-        [reply.CONT event] [:cont :event event]
-        [reply.CONT] [:cont]
-        [reply.HALT value] [:halt value]
-        other (do
-                (inspect :tick-workflow :unhandled other)
-                ;; temp? TODO
-                (raise internal other)
-                [:halt]))))
-
   (fn []
+    ; (vim.pretty_print scheduler)
     ;; can we add an additional task to the active list?
     (while (and (< (length scheduler.active) scheduler.concurrency-limit)
                 (< 0 (length scheduler.queue)))
       ;; activate workflow
       (let [workflow (table.remove scheduler.queue 1)]
         (table.insert scheduler.active 1 workflow)))
-    ;; tick every running workflow
-    (let [updates (collect [_ workflow (ipairs scheduler.active)]
-                           (values workflow (tick-workflow workflow)))
+    ;; tick every active workflow
+    (let [{: run} (require :pact2.workflow)
+          {: ok? : err?} (require :pact.lib.ruin.result)
+          ;; pair the workflows with the run results so we can drop halted and
+          ;; retain continued wfs in the active list.
+          {:halt halted :cont continued} (enum.group-by #(match (run $2)
+                                                           (action value) (values action [$2 value]))
+                                                        scheduler.active)
           ;; collect anything that wants to be scheduled again, and update the
           ;; currently active list. Do this before dispatching any messaages so
           ;; any error in that occurs in dispatching doesn't leave zombie workflows.
-          still-active (icollect [workflow [act & rest] (pairs updates)]
-                         (when (= :cont act)
-                           (values workflow)))
-          ;; replace old active with still active list
-          _ (tset scheduler :active still-active)
+          _ (tset scheduler :active (enum.map (fn [_ [wf _result]] wf) (or continued [])))
           ;; dispatch any messages
-          _ (each [workflow reply (pairs updates)]
-              (match reply
-                [:cont :event event] (broadcast scheduler workflow :info event)
-                [:halt :error err] (broadcast scheduler workflow :error err)
-                [:halt val] (broadcast scheduler workflow :complete val)))]
+          ;; TODO broadcast should collate these into one vim.schedule
+          _ (enum.map
+              #(enum.map (fn [_ [wf result]] (broadcast scheduler wf result)) $2)
+              [(or halted []) (or continued [])])]
+    ; (vim.pretty_print scheduler halted continued)
+    (uv.idle_stop scheduler.idle-handle)
       ;; stop or nah?
       (when (= 0 (length scheduler.queue) (length scheduler.active))
         (uv.idle_stop scheduler.idle-handle)
         (uv.close scheduler.idle-handle)
         (tset scheduler :idle-handle nil)))))
 
-(fn new [opts]
-  "Create a new scheduler.
-  Options:
-  - concurrency-limit: 10"
-  (expect (not (= nil opts))
-          argument "scheduler requires opts")
-  (let [uv vim.loop]
-    ;; TODO this could / should? be an actor so we can message it in
-    ;; the standard way.
-    ((defstruct pact/scheduler
-       [concurrency-limit queue active idle-handle]
-       :mutable [active idle-handle])
-     :concurrency-limit opts.concurrency-limit
-     :queue []
-     :active []
-     :idle-handle nil)))
+(fn* new
+  (where [])
+  (new {})
+  (where [{: ?concurrency-limit}])
+  {:concurrency-limit (or ?concurrency-limit 10)
+   :queue []
+   :active []
+   :idle-handle nil})
+
+; (fn new [opts]
+;   "Create a new scheduler.
+;   Options:
+;   - concurrency-limit: 10"
+;   (expect (not (= nil opts))
+;           argument "scheduler requires opts")
+;   (let [uv vim.loop]
+;     {:concurrency-limit opts.concurrency-limit}
+;     ;; TODO this could / should? be an actor so we can message it in
+;     ;; the standard way.
+;     ((defstruct pact/scheduler
+;        [concurrency-limit queue active idle-handle]
+;        :mutable [active idle-handle])
+;      :concurrency-limit opts.concurrency-limit
+;      :queue []
+;      :active []
+;      :idle-handle nil)))
 
 (fn add-workflow [scheduler workflow]
   "Enqueue a workflow with on-event and on-complete callbacks.
@@ -92,4 +95,4 @@
   (tset scheduler :active nil)
   (uv.close scheduler.idle-handle))
 
-{: new : add-workflow}
+{: new : add-workflow : stop}
