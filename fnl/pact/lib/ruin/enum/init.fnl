@@ -231,15 +231,33 @@
             true t))
 
 (fn* M.find
-  "Return first value pair from `t` that `f` returns true for."
-  (where [f t] (and (function? f) (enumerable? t)))
-  (let [reducer (M.reduce (fn [_ ...] (if (f ...)
-                                        ;; track index/key and value, etc
-                                        (M.reduced (M.pack ...))
-                                        (values nil))))]
-    (match (reducer nil t)
+  "Return first values from `e` that `f` returns true for.
+
+  Note this currently means `find` returns `(index value)` or `(key value)` for
+  tables"
+  (where [f e] (and (function? f) (enumerable? e)))
+  (let [reducer (M.reduce (fn [_ ...]
+                            (if (f ...)
+                              ;; track index/key and value, etc
+                              (M.reduced (M.pack ...))
+                              (values nil))))]
+    (match (reducer nil e)
       any (M.unpack any)
       nil nil)))
+
+(fn* M.find-key
+  "See `find', but returns key only. Does not support function-enumerables."
+  (where [f t] (and (function? f) (table? t)))
+  (match (M.find f t)
+    (k _) (values k)
+    _ (values nil)))
+
+(fn* M.find-value
+  "See `find', but returns value only. Does not support function-enumerables."
+  (where [f t] (and (function? f) (table? t)))
+  (match (M.find f t)
+    (_ v) (values v)
+    _ (values nil)))
 
 (fn* M.group-by
   "Group values of `enumerable` by the key from `f`.
@@ -369,6 +387,27 @@
   (where [seq] (seq? seq))
   (. seq (length seq)))
 
+(fn* M.unique
+  "Remove any duplicate values from `seq`. Optionally accepts an `identity`
+  function.
+
+  By default all values are compared directly, so different tables that have
+  the same content are considered different values. The identity function can
+  be used to 'hash' complex value types into an appropriate comparison value."
+  (where [seq] (seq? seq))
+  (M.unique seq #$1)
+  (where [seq identity] (and (seq? seq) (function? identity)))
+  (-> (M.reduce (fn [[new-seq seen] _index value]
+                  (let [id-key (identity value)]
+                    (if (nil? (. seen id-key))
+                      (do
+                        (tset seen id-key true)
+                        (table.insert new-seq value)
+                        (values [new-seq seen]))
+                      (values [new-seq seen]))))
+                [[] {}] seq)
+      (M.first)))
+
 (fn* M.split
   "Return `seq` in two parts, split at `index`."
   ;; TODO: -index for enum.split?
@@ -395,7 +434,8 @@
 ;; General table alterations
 
 (fn* M.set$
-  "Set `t.k` to `v`, return `t`. `k` and `v` may also be functions."
+  "Set `t.k` to `v`, return `t`. This differs from Fennels `set`/`tset` by
+  returning the table `t`, it may be used in pipelines."
   (where [t k ?v] (table? t))
   (doto t (tset k ?v))
   (where [t] (table? t))

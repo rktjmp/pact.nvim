@@ -14,30 +14,6 @@
                       (string.gsub "%." "__"))]
     (sym (.. :__fn*- safe-name :-dispatch))))
 
-(fn make-fn-head-expr [name ?docstring]
-  "creates callable function under `name` which dispatches via the dispatch
-  table to matching function"
-  (let [dispatch-sym (gen-dispatch-sym name)
-        dispatch `{:bodies [] :help []}
-        dispatch-fn `(fn [...]
-                       ,(or ?docstring nil)
-                      ;; automatic fail if we have no bodies registered
-                      (if (= 0 (length (. ,dispatch-sym :bodies)))
-                        (error (.. "multi-arity function " ,(tostring name) " has no bodies")))
-                      ;; look for matching callable or die
-                      (match (accumulate [f# nil _# match?# (ipairs (. ,dispatch-sym :bodies)) &until f#]
-                               (match?# ...))
-                        f# (f# ...)
-                        nil (let [{:view view#} (require :fennel)
-                                  msg# (string.format (.. "Multi-arity function %s had no matching head "
-                                                          "or default defined.\nCalled with: %s\nHeads:\n%s")
-                                                      ,(tostring name)
-                                                      (view# [...])
-                                                      (table.concat (. ,dispatch-sym :help) "\n"))]
-                              (error msg#))))]
-    (values `(local ,dispatch-sym ,dispatch)
-            `(,(if (multi-sym? name) `set `local) ,name ,dispatch-fn))))
-
 (fn depth-walk [f ast]
   (fn walk [f depth i ast parent]
     (match ast
@@ -265,11 +241,13 @@
     ;                 (if ,arity-check
     ;                   (match [...] (where ,match-bindings ,clauses) (fn ,fn-args-bindings ,...))))))
     `(do
-       (table.insert (. ,dispatch-sym :help) ,pattern-as-given)
+       (table.insert (. ,dispatch-sym :help)
+                     ,pattern-as-given)
        (table.insert (. ,dispatch-sym :bodies)
                      (fn [...]
                        (if ,arity-check
-                         (match [...] (where ,match-bindings ,clauses) (fn ,fn-args-bindings ,...)))))
+                         (match [...]
+                           (where ,match-bindings ,clauses) (fn ,fn-args-bindings ,...)))))
        (values ,name))))
 
 (fn fn+ [name pattern ...]
@@ -463,7 +441,25 @@ See also `fn+' to add additional patterns to an existing function.
                      {:fnl/docstring s :fnl/arglist nil}
                      {:fnl/docstring s :fnl/arglist auto-arglist}
                      _ ?docstring)
-        (locals callable) (make-fn-head-expr name ?docstring) ]
+        dispatch-lookup-sym (gen-dispatch-sym name)
+        dispatch-fn `(fn [...]
+                       ,(or ?docstring nil)
+                       ;; automatic fail if we have no bodies registered
+                       (if (= 0 (length (. ,dispatch-lookup-sym :bodies)))
+                         (error (.. "multi-arity function " ,(tostring name) " has no bodies")))
+                       ;; look for matching callable or die
+                       (match (accumulate [f# nil _# match?# (ipairs (. ,dispatch-lookup-sym :bodies)) &until f#]
+                                (match?# ...))
+                         f# (f# ...)
+                         nil (let [view# (match (pcall require :fennel)
+                                           (true {:view view#}) view#
+                                           (false _#) (or _G.vim.inspect print))
+                                   msg# (string.format (.. "Multi-arity function %s had no matching head "
+                                                           "or default defined.\nCalled with: %s\nHeads:\n%s")
+                                                       ,(tostring name)
+                                                       (view# [...])
+                                                       (table.concat (. ,dispatch-lookup-sym :help) "\n"))]
+                               (error msg#))))]
     ;; so we can only return one expression from a macro, but we want to
     ;; define a whole bunch then return the callable-function under name so
     ;; that gets passed around, put in arrays, etc.
@@ -471,9 +467,27 @@ See also `fn+' to add additional patterns to an existing function.
     ;; then the return values of the statements are put in the list, then we
     ;; make that seq callable and return the name fn when called, and
     ;; immediately call it. EASY.
-    `((setmetatable [,locals
-                     ,callable
-                     ,fn+-bodies]
-                    {:__call #(values ,name)}))))
+    `((setmetatable [(local ,dispatch-lookup-sym {:bodies [] :help []})
+                     (,(if (multi-sym? name) `set `local) ,name ,dispatch-fn)]
+                    ;; this must be (fn []) - not #(do) otherwise fennel wont
+                    ;; accept #(x $...) inside function bodies.
+                    {:__call (fn []
+                                ;; We end up with one local var at least per
+                                ;; function body given to fn*. This can make us
+                                ;; run up against luas 200 local var limit in
+                                ;; larger modules.
+                                ;; We'll create and insert-into-dispatch here,
+                                ;; which is automatically called,
+
+                                ;; must have an expression before fn-bodies
+                                ;; otherwise nothing is output.
+                                ;; https://todo.sr.ht/~technomancy/fennel/144
+                                nil
+                                ,fn+-bodies
+
+                                ;; Return the given name, which should be bound to
+                                ;; the dispatch-fn, so you can dosomething like
+                                ;; (let [mf (fn* [...])] (mf ...))
+                                (values ,name))}))))
 
 {: fn+ : fn*}
