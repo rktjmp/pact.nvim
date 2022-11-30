@@ -83,10 +83,26 @@
     (must match false (enum.all? #(<= 50 $2) [6 10 7 1 91]))))
 
 (describe "find"
-  (it "returns found value"
+  (it "returns found key, value"
     (must match (4 6) (enum.find #(<= 5 $2) [1 -1 3 6 10 7 9])))
   (it "returns nil on no find"
     (must match nil (enum.find #(<= 50 $2) [6 10 7 1 39]))))
+
+(describe "find-value"
+  (it "returns found value"
+    (must match 6 (enum.find-value #(<= 5 $2) [1 -1 3 6 10 7 9])))
+  (it "returns nil on no find"
+    (must match nil (enum.find-value #(<= 50 $2) [6 10 7 1 39]))))
+
+(describe "find-key"
+  (it "returns found key"
+    (must match 4 (enum.find-key #(<= 5 $2) [1 -1 3 6 10 7 9])))
+  (it "returns nil on no find"
+    (must match nil (enum.find-key #(<= 50 $2) [6 10 7 1 39]))))
+
+(describe "unique"
+  (it "strips uniques"
+    (must match [1 2 3] (enum.unique [1 1 1 2 1 1 2 3 2 3 1 1]))))
 
 (describe "group-by"
   (it "table groups with just key"
