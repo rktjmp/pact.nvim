@@ -33,7 +33,7 @@
           ;; dispatch any messages
           ;; TODO broadcast should collate these into one vim.schedule
           _ (enum.map
-              #(enum.map (fn [_ [wf result]] (broadcast scheduler wf result)) $2)
+              #(enum.map (fn [_ [wf result]] (broadcast wf result)) $2)
               [(or halted []) (or continued [])])]
       ;; stop or nah?
       (when (= 0 (length scheduler.queue) (length scheduler.active))
@@ -45,7 +45,7 @@
   (where [])
   (new {})
   (where [{: ?concurrency-limit}])
-  {:concurrency-limit (or ?concurrency-limit 2)
+  {:concurrency-limit (or ?concurrency-limit 10)
    :queue []
    :active []
    :idle-handle nil})
