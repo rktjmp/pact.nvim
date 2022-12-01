@@ -57,7 +57,12 @@
     (sha :heads name) (commit sha {:branch name})
     (sha :tags name) (match (string.match name "v?(%d+%.%d+%.%d+)")
                        nil (commit sha {:tag name})
+                       ;; versions are tags, so pair them
                        version (commit sha {:tag name
                                             :version version}))))
 
-{: commit : ref-line->commit}
+(fn ref-lines->commits [refs]
+  "Convert list of ref lines into list of commits."
+  (enum.map #(ref-line->commit $2) refs))
+
+{: commit : ref-line->commit : ref-lines->commits}
