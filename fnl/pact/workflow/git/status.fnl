@@ -8,9 +8,10 @@
      enum :pact.lib.ruin.enum
      {:format fmt} string
      {:new new-workflow : yield} :pact.workflow
-     {: ref-line->commit} :pact.git.commit
+     {: ref-lines->commits} :pact.git.commit
      git-commit :pact.git.commit
-     {:solve solve-constraint} :pact.plugin.constraint)
+     {:solve solve-constraint
+      :satisfies? satisfies-constraint?} :pact.plugin.constraint)
 
 (fn absolute-path? [path]
   (not-nil? (string.match path "^/")))
@@ -23,10 +24,10 @@
   ;; valid.
   (result-let [_ (yield "fetching remote refs")
                remote-commits (result->> (git-tasks.ls-remote repo-url)
-                                         (enum.map #(ref-line->commit $2)))]
+                                         (ref-lines->commits))]
     (yield "solving for constraint")
     (if-some-let [target-commit (solve-constraint constraint remote-commits)]
-      (ok {:actions [:clone target-commit]})
+      (ok [:clone target-commit])
       (err (fmt "no commit satisfies %s" constraint)))))
 
 
@@ -36,18 +37,19 @@
                HEAD-sha (git-tasks.HEAD-sha path)
                _ (yield "fetching remote refs")
                remote-commits (result->> (git-tasks.ls-remote repo-url)
-                                         (enum.map #(ref-line->commit $2)))
+                                         (ref-lines->commits))
                _ (yield "reticulating splines")
-               ;; find extended commit if it exists otherwise make sha-commit.
-               HEAD-commit (match (enum.find #(= HEAD-sha $2.sha) remote-commits)
-                             (_ c) c
-                             _ (git-commit.commit HEAD-sha))]
-    (if (constraint.satisfies? constraint HEAD-commit)
+               ;; see if current head matches any possible constrainable commits
+               ;; note that one sha may map to multiple tags or branches.
+               HEAD-commits (-> (enum.filter #(= HEAD-sha $2.sha) remote-commits)
+                                ;; check against raw sha too for commit constraint
+                                (enum.append$ (git-commit.commit HEAD-sha)))]
+    (if (enum.any? #(satisfies-constraint? constraint $2) HEAD-commits)
       ;; currently satisfied, so all done
-      (ok {:actions []})
+      (ok nil)
       ;; unsatisfied, can we find one to work?
       (if-some-let [target-commit (solve-constraint constraint remote-commits)]
-        (ok {:actions [:sync target-commit]})
+        (ok [:sync target-commit])
         (err (fmt "no commit satisfies %s" constraint))))))
 
 (fn detect-kind [repo-url path constraint]
@@ -55,11 +57,11 @@
             (or (absolute-path? path)
                 (values nil (fmt "plugin path must be absolute, got %s" path)))
             (#(if (git-dir? path)
-                (status-existing-repo-impl path constraint)
+                (status-existing-repo-impl path repo-url constraint)
                 (status-new-repo-impl repo-url constraint)))))
 
 (fn* new
-  (where [id [:git repo-url] path constraint])
+  (where [id repo-url path constraint])
   (new-workflow id #(detect-kind repo-url path constraint)))
 
 {: new}
