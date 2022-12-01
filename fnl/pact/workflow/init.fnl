@@ -5,130 +5,27 @@
 ;; behaviour to act syncronously. Workflows expect to be ran by a scheduler, which
 ;; should call (run workflow).
 
-(import-macros {: use} :pact.vendor.donut)
-(import-macros {: raise : expect : error->string} :pact.error)
-(import-macros {: defstruct} :pact.struct)
+(import-macros {: use} :pact.lib.ruin.use)
 
-(use {: defmonad} :pact.vendor.donut.monad :as m
-     {:loop uv} vim
-     {: fmt : inspect} :pact.common)
+(require :pact.async_await_fn)
+(require :pact.workflow.exec.git)
+(require :pact.workflow.exec.fs)
 
-(local co (require :pact.coroutine))
-
-(local workflow-m
-  ;; functionally equivalent to an ethier/result but we
-  ;; treat it more as continue-done vs ok-error
-  (let [halted [:halt]]
-    (m/defmonad :finished (fn [val] [halted val])
-                :bind (fn [val fun]
-                        (match val
-                          [halted x] (values x)
-                          _ (fun val)))
-                :result (fn [val]
-                          (match val
-                            [halted x] (values x)
-                            _ (values val))))))
-
-(local (new-error-result {:type error-result-type})
-  ;; something went wrong?
-  (defstruct pact/git-status-workflow/result/error
-    [plugin reason]))
-
-(local const {:state {;; created but scheduler has not prepared
-                      :CREATED :pact.workflow.state.CREATED
-                      ;; ready to coroutine.resume
-                      :READY :pact.workflow.state.READY
-                      ;; has future pending
-                      :WAITING :pact.workflow.state.WAITING
-                      ;; executing in-lua code
-                      :RUNNING :pact.workflow.state.RUNNING
-                      ;; no more work
-                      :FINISHED :pact.workflow.state.FINISHED
-                      ;; something broke
-                      :ERROR :pact.workflow.state.ERROR}
-              :reply {:CONT :pact.workflow.reply.cont
-                      :HALT :pact.workflow.reply.halt}})
+(use result :pact.lib.ruin.result
+     {: string? : thread?} :pact.lib.ruin.type
+     enum :pact.lib.ruin.enum
+     {:format fmt} string
+     {:loop uv} vim)
 
 (fn start-timer [workflow]
-  (tset workflow :timer (uv.now)))
+  (enum.set$ workflow :timer (uv.now)))
 
 (fn stop-timer [workflow]
-  (tset workflow :timer (- (uv.now) workflow.timer)))
-
-(fn store-event [workflow event]
-  (table.insert workflow.events event))
-
-(fn has-future? [workflow]
-  (not (= nil workflow.future)))
-
-(fn future-dead? [workflow]
-  (= :dead (coroutine.status workflow.future)))
-
-(fn error->event [err]
-  {:is-a :event :type :error :message (error->string err)})
-
-(fn is-a-event? [given]
-  ;; TODO could be extended and common'd
-  (match given
-    {:is-a :event} true
-    _ false))
-
-(fn CREATED->READY [workflow thread notify]
-  (expect (= workflow.state const.state.CREATED) internal
-          "workflow could not transition created->ready")
-  (doto workflow
-    (store-event {:is-a :event :type :message :message "waiting to start"})
-    (tset :state const.state.READY)))
-
-(fn WAITING->READY [workflow]
-  (expect (= workflow.state const.state.WAITING) internal
-          "workflow could not transition waiting->ready")
-  (doto workflow
-    (tset :future nil)
-    (tset :state const.state.READY)))
-
-(fn READY->RUNNING [workflow]
-  (expect (= workflow.state const.state.READY) internal
-          "workflow could not transition ready->running")
-  (tset workflow :state const.state.RUNNING))
-
-(fn RUNNING->READY [workflow ?event]
-  (expect (= workflow.state const.state.RUNNING) internal
-          "workflow could not transition running->ready")
-  (when ?event
-    (store-event workflow ?event))
-  (tset workflow :state const.state.READY))
-
-(fn RUNNING->WAITING [workflow future]
-  (expect (= workflow.state const.state.RUNNING) internal
-          "workflow could not transition running->waiting")
-  (doto workflow
-    (tset :future future)
-    (tset :state const.state.WAITING)))
-
-(fn RUNNING->FINISHED [workflow result]
-  (expect (= workflow.state const.state.RUNNING) internal
-          "workflow could not transition running->finished")
-  (doto workflow
-    (stop-timer)
-    ;; save one value returns directly, save multi values as a list
-    (tset :result (match (select "#" (unpack result))
-                    1 (unpack result)
-                    _ result))
-    (store-event {:is-a :event :type :complete :message :complete})
-    (tset :state const.state.FINISHED)))
-
-(fn RUNNING->ERROR [workflow err]
-  (expect (= workflow.state const.state.RUNNING) internal
-          "workflow could not transition running->error")
-  (doto workflow
-    (store-event (error->event err))
-    (tset :error err)
-    (tset :state const.state.ERROR)))
+  (enum.set$ workflow :timer (- (uv.now) workflow.timer)))
 
 (fn resume [workflow]
-  (READY->RUNNING workflow)
-  (match [(co.>> workflow.thread)]
+  "Called by the scheduler, workflow should yield or return a value"
+  (match [(coroutine.resume workflow.thread)]
     ;; A workflow function may yield the following values:
     ;; [false error] <- not technically yielded, thrown by any internal errors
     ;; [true thread] <- workflow is waiting on another coroutine
@@ -138,83 +35,77 @@
     ;; We return the following values:
     ;; [:cont value] <- keep us scheduled
     ;; [:halt value] <- unschedule us, we no longer want to progress
-    [false err]
+
+    ;; Coroutines can yield a string up to pass information messages to the
+    ;; scheduler. These should always request contiunation.
+    (where [true msg] (string? msg))
     (do
-      (RUNNING->ERROR workflow err)
-      (values nil err))
+      (table.insert workflow.events [:message msg])
+      (values :cont msg))
+
     ;; "Awaited" portions of a workflow should yield the future/thread.
     ;; We instruct the scheduler to return to us later.
-    (where [true future] (= (type future) :thread))
+    (where [true future] (thread? future))
     (do
-      (RUNNING->WAITING workflow future)
-      (values const.reply.CONT future))
-    (where [true const.reply.CONT event] (is-a-event? event))
+      (table.insert workflow.events [:suspended])
+      (tset workflow :future future)
+      (values :cont future))
+
+    ;; result.ok signals that the workflow has terminated
+    (where [true ok] (result.ok? ok))
     (do
-      (RUNNING->READY workflow event)
-      (values const.reply.CONT event))
-    [true const.reply.CONT]
+      (stop-timer workflow)
+      (tset workflow :result ok)
+      (table.insert workflow.events [:result ok])
+      (values :halt ok))
+
+    ;; result.err signals we had a detected error, probably disk in poor state
+    ;; or remote not responding, etc.
+    (where [true err] (result.err? err))
     (do
-      (RUNNING->READY workflow)
-      (values const.reply.CONT))
-    [true const.reply.HALT & value]
-    (do
-      (RUNNING->FINISHED workflow value)
-      (values const.reply.HALT workflow.result))))
+      (stop-timer workflow)
+      (tset workflow :result err)
+      (table.insert workflow.events [:result err])
+      (values :halt err))
+
+    ;; This is an actual *crash* inside the coroutine, so we're matching on
+    ;; pcall return.
+    [false err]
+    (let [err (result.err err)]
+      (stop-timer workflow)
+      (tset workflow :result err)
+      (values :halt err))
+
+    ;; Shouldn't get here ... perhaps the workflow forgot to wrap the return
+    ;; value.
+    any (error any)))
 
 (fn run [workflow]
-  (match (type workflow.thread)
-    :thread (match (coroutine.status workflow.thread)
-              :dead (values nil "attempted to run workflow with dead coroutine")
-              _ (do
-                  (when (= -1 workflow.timer)
-                    (start-timer workflow))
-                  (when (and (has-future? workflow) (future-dead? workflow))
-                    (WAITING->READY workflow))
-                  (match (has-future? workflow)
-                    true (values const.reply.CONT)
-                    false (resume workflow))))
-    any (values nil (fmt "attempted to run workflow with non-coroutine (%s)"
-                         any))))
+  (match workflow
+    ;; Never run before
+    (where workflow (= nil workflow.timer))
+    (do
+      (start-timer workflow)
+      (resume workflow))
+    ;; workflow is paused by future, so just return to scheduler for continuation later
+    (where {: future} (not= :dead (coroutine.status future)))
+    (values :cont future)
+    ;; has future but the future finished, clear future and resume.
+    (where {: future} (= :dead (coroutine.status workflow.future)))
+    (do
+      (tset workflow :future nil)
+      (resume workflow))
+    ;; otherwise just resume the workflow
+    (where workflow)
+    (resume workflow)))
 
-(fn event [message ?tag ?context]
-  "Yield continuation with event table. Workflows should call this to demark
-  steps or stages that should be communicated to the user"
-  (expect (not (= nil message)) argument
-          "workflow.event must be given message (with optional tag & context)")
-  (co.<< const.reply.CONT {:is-a :event
-                           :type :message
-                           : message
-                           :tag ?tag
-                           :context ?context}))
-
-(fn result [value]
-  "Yield halt with value. Workflows should call this to end execution and retain the result"
-  (expect (not (= nil value)) argument
-          "workflow.result must be given at least one non-nil argument")
-  (co.<< const.reply.HALT value))
-
-(fn halt [...]
-  ;; TODO deprecated, result is a nicer API?
-  ;; TODO: or not? result often obscures ... the result var
-  (result ...))
-
-(fn new [id work-fn]
-  ((defstruct pact/workflow
-    [id thread future result error events state timer]
-    :mutable [future result error state timer]
-    :describe-by [id state result error])
-   :id id
-   :thread (coroutine.create work-fn)
-   :future nil
-   :result nil
-   :error nil
+(fn new [id f]
+  {:id id
+   :thread (coroutine.create f)
    :events []
-   :state const.state.READY
-   :timer -1))
+   :timer nil
+   :future nil})
 
-{: new : run
- : halt : event
- : result : const
- : workflow-m
- : new-error-result
- :result-types {:ERROR error-result-type}}
+{: new
+ : run
+ :yield coroutine.yield}

@@ -1,5 +1,0 @@
-return {
-  _all = {
-    lpath = "./lua/?.lua;./lua/?/?.lua"
-  }
-}

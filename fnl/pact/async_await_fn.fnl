@@ -1,5 +1,3 @@
-(local {: inspect} (require :pact.common))
-
 (fn async-wrap [func]
   ;; Wraps given function in a coroutine so it can be suspended by inner awaits.
   ;;

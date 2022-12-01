@@ -1,31 +1,42 @@
-;; A commit in a Git repository
-;;
-;; Commits are represented as a two element list, the first element is always
-;; the hash of the commit, the second element is either a branch or tag ref, a
-;; version or a hash (for "direct pins to hash", we inclued [hash hash] for
-;; QOL).
+(import-macros {: use} :pact.lib.ruin.use)
 
-(import-macros {: use} :pact.vendor.donut)
-(use {: 'typeof : 'defstruct} :pact.struct)
+(use {: 'fn* : 'fn+} :pact.lib.ruin.fn
+     {: string? : table?} :pact.lib.ruin.type
+     enum :pact.lib.ruin.enum
+     {: valid-sha?} :pact.valid
+     {:format fmt} string)
 
-(local constraint (require :pact.constraint))
+(fn* expand-version
+  "Convert partial versions into major.minor.patch"
+  (where [v] (string.match v "^(%d+)$"))
+  (.. v ".0.0")
+  (where [v] (string.match v "^(%d+%.%d+)$"))
+  (.. v ".0")
+  (where [v] (string.match v "^(%d+%.%d+%.%d+)$"))
+  (.. v)
+  (where _)
+  (values nil))
 
-(fn new-branch [name sha]
-  [(constraint.hash.new sha) (constraint.branch.new name)])
-
-(fn new-tag [name sha]
-  [(constraint.hash.new sha) (constraint.tag.new name)])
-
-(fn new-version [semver sha]
-  [(constraint.hash.new sha) (constraint.version.new semver)])
-
-(fn new-hash [sha]
-  ;; not actually created from ls-remote, as plain commits are not given, but
-  ;; we do want a semi-consistent interface to the object, so this is exposed
-  ;; for convenience.
-  [(constraint.hash.new sha) (constraint.hash.new sha)])
+;; note: we intentionally don't normalise duplicate sha-attr pairs
+;; in the rest of the system incase two tags point to one sha, etc.
+(fn* commit
+  (where [sha] (valid-sha? sha))
+  (commit sha {})
+  (where [sha {:tag ?tag :branch ?branch :version ?version}]
+         (and (valid-sha? sha)
+              (string? (or ?tag ""))
+              (string? (or ?branch ""))
+              (string? (or ?version ""))))
+  (-> {:sha sha :branch ?branch :tag ?tag :version (expand-version ?version)}
+      ;; TODO ideally this will be more constraint aware as this
+      ;; can match tag and branch and version if they all point to the same
+      ;; sha, but we want to show the users goal - branch if branch etc.
+      (setmetatable {:__tostring #(fmt "%s@%s" (or $.version $.branch $.tag "commit") $.sha)}))
+  (where _)
+  (values nil "commit requires a valid sha and optional table of tag, branch or version"))
 
 (fn ref-line->commit [ref]
+  "Convert a line from `git ls-remote --tags --heads url` into a `commit"
   ;; We want to match "<sha> refs/[head|tag]/name".
   ;; Name can have special characters in it such as othes slashes or dashes, etc
   ;;
@@ -43,11 +54,10 @@
   ;; Parse *expects* the input to be from `ls-remote --tags --heads url`
   ;; for best results.
   (match (string.match ref "(%x+)%s+refs/(.+)/(.+)")
-    (sha :heads name) (new-branch name sha)
+    (sha :heads name) (commit sha {:branch name})
     (sha :tags name) (match (string.match name "v?(%d+%.%d+%.%d+)")
-                       nil (new-tag name sha)
-                       version (new-version (.. "= " version) sha))))
+                       nil (commit sha {:tag name})
+                       version (commit sha {:tag name
+                                            :version version}))))
 
-{: ref-line->commit
- : new-hash : new-tag
- : new-version : new-branch}
+{: commit : ref-line->commit}
