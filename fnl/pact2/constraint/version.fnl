@@ -77,7 +77,7 @@
                  {} {:major v-maj :minor v-min :patch v-patch})))
 
 (fn str->spec [str]
-  (let [pat "([%^~><=]+) ([%d]+)%.([%d]+)%.([%d]+)"
+  (let [pat "([%^~><=]+)%s?([%d]+)%.([%d]+)%.([%d]+)"
         (s-op s-maj s-min s-patch) (string.match str pat)]
     (-> (enum.reduce #(enum.set$ $1 $2 (tonumber $3))
                      {} {:major s-maj :minor s-min :patch s-patch})

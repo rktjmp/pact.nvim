@@ -4,10 +4,14 @@
 (local {: satisfies? : solve} (rerequire :pact2.constraint.version))
 
 (describe "version constraint"
-  (it "works with strings"
+  (it "works with strings with space between operator"
     (must match true (satisfies? "= 1.0.0" "1.0.0"))
     (must match false (satisfies? "> 1.0.0" "1.0.0"))
-    (must match true (satisfies? "~ 1.1.0" "1.1.1"))))
+    (must match true (satisfies? "~ 1.1.0" "1.1.1")))
+  (it "works with strings without space between operator"
+    (must match true (satisfies? "=1.0.0" "1.0.0"))
+    (must match false (satisfies? ">1.0.0" "1.0.0"))
+    (must match true (satisfies? "~1.1.0" "1.1.1"))))
 
 (local versions [:1.1.0 :0.9.1 :1.2.0 :1.2.99 :1.2.9 :1.4.0])
 (describe "solve constraint"

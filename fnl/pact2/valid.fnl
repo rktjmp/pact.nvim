@@ -13,7 +13,7 @@
 
 (fn version-spec? [v]
   (and (string? v)
-       (not= nil (string.match v "^[%^~><=]+ %d+%.%d+%.%d+$"))))
+       (not= nil (string.match v "^[%^~><=]+%s?%d+%.%d+%.%d+$"))))
 
 {:valid-sha? sha? : sha?
  :valid-version? version? : version?
