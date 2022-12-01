@@ -15,7 +15,6 @@
 
 (fn make-idle-loop [scheduler]
   (fn []
-    ; (vim.pretty_print scheduler)
     ;; can we add an additional task to the active list?
     (while (and (< (length scheduler.active) scheduler.concurrency-limit)
                 (< 0 (length scheduler.queue)))
@@ -27,9 +26,11 @@
           {: ok? : err?} (require :pact.lib.ruin.result)
           ;; pair the workflows with the run results so we can drop halted and
           ;; retain continued wfs in the active list.
-          {:halt halted :cont continued} (enum.group-by #(match (run $2)
-                                                           (action value) (values action [$2 value]))
-                                                        scheduler.active)
+          {:halt halted :cont continued} (enum.group-by
+                                           #(match (run $2)
+                                              (action value) (values action [$2 value])
+                                              _ (error "workflow.run did not return 2 values"))
+                                           scheduler.active)
           ;; collect anything that wants to be scheduled again, and update the
           ;; currently active list. Do this before dispatching any messaages so
           ;; any error in that occurs in dispatching doesn't leave zombie workflows.
@@ -39,8 +40,6 @@
           _ (enum.map
               #(enum.map (fn [_ [wf result]] (broadcast scheduler wf result)) $2)
               [(or halted []) (or continued [])])]
-    ; (vim.pretty_print scheduler halted continued)
-    (uv.idle_stop scheduler.idle-handle)
       ;; stop or nah?
       (when (= 0 (length scheduler.queue) (length scheduler.active))
         (uv.idle_stop scheduler.idle-handle)
@@ -51,28 +50,10 @@
   (where [])
   (new {})
   (where [{: ?concurrency-limit}])
-  {:concurrency-limit (or ?concurrency-limit 10)
+  {:concurrency-limit (or ?concurrency-limit 2)
    :queue []
    :active []
    :idle-handle nil})
-
-; (fn new [opts]
-;   "Create a new scheduler.
-;   Options:
-;   - concurrency-limit: 10"
-;   (expect (not (= nil opts))
-;           argument "scheduler requires opts")
-;   (let [uv vim.loop]
-;     {:concurrency-limit opts.concurrency-limit}
-;     ;; TODO this could / should? be an actor so we can message it in
-;     ;; the standard way.
-;     ((defstruct pact/scheduler
-;        [concurrency-limit queue active idle-handle]
-;        :mutable [active idle-handle])
-;      :concurrency-limit opts.concurrency-limit
-;      :queue []
-;      :active []
-;      :idle-handle nil)))
 
 (fn add-workflow [scheduler workflow]
   "Enqueue a workflow with on-event and on-complete callbacks.

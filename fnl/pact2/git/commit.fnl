@@ -7,6 +7,7 @@
      {:format fmt} string)
 
 (fn* expand-version
+  "Convert partial versions into major.minor.patch"
   (where [v] (string.match v "^(%d+)$"))
   (.. v ".0.0")
   (where [v] (string.match v "^(%d+%.%d+)$"))
@@ -26,11 +27,16 @@
               (string? (or ?tag ""))
               (string? (or ?branch ""))
               (string? (or ?version ""))))
-  {:sha sha :branch ?branch :tag ?tag :version (expand-version ?version)}
+  (-> {:sha sha :branch ?branch :tag ?tag :version (expand-version ?version)}
+      ;; TODO ideally this will be more constraint aware as this
+      ;; can match tag and branch and version if they all point to the same
+      ;; sha, but we want to show the users goal - branch if branch etc.
+      (setmetatable {:__tostring #(fmt "%s@%s" (or $.version $.branch $.tag "commit") $.sha)}))
   (where _)
   (values nil "commit requires a valid sha and optional table of tag, branch or version"))
 
 (fn ref-line->commit [ref]
+  "Convert a line from `git ls-remote --tags --heads url` into a `commit"
   ;; We want to match "<sha> refs/[head|tag]/name".
   ;; Name can have special characters in it such as othes slashes or dashes, etc
   ;;

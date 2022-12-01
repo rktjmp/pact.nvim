@@ -15,6 +15,7 @@
     (fmt "git-error: [%d] %s" code msg)))
 
 (fn HEAD-sha [repo-root]
+  (assert repo-root "must provide repo root")
   ;; TODO handle case where git repo exists but has no commits and so
   ;; no HEAD 
   (match (await (run :git [:rev-parse :--sq :HEAD] repo-root const.ENV))
@@ -23,25 +24,25 @@
                    sha (values sha))
     (code lines err) (values nil (dump-err code [lines err]))))
 
-; (fn ls-remote [repo-path-or-url]
-;   "Get refs for an existing clone or url and parse them into refs types"
-;   (fn url? [str]
-;     (let [str (string.lower str)
-;           http (string.match str :^http)
-;           ssh (string.match str :^ssh)]
-;       (not (= nil http ssh))))
+(fn ls-remote [repo-path-or-url]
+  "Get refs for an existing clone or url and parse them into refs types"
+  (fn url? [str]
+    (let [str (string.lower str)
+          http (string.match str :^http)
+          ssh (string.match str :^ssh)]
+      (not (= nil http ssh))))
 
-;   (let [(code lines err)
-;         (match (url? repo-path-or-url)
-;           true (await (run :git
-;                            [:ls-remote :--tags :--heads repo-path-or-url]
-;                            "." const.ENV))
-;           false (await (run :git
-;                             [:ls-remote :--tags :--heads]
-;                             repo-path-or-url const.ENV)))]
-;     (match [code lines err]
-;       [0 lines _] (values lines)
-;       [code _ err] (values nil (dump-err code err)))))
+  (let [(code lines err)
+        (match (url? repo-path-or-url)
+          true (await (run :git
+                           [:ls-remote :--tags :--heads repo-path-or-url]
+                           "." const.ENV))
+          false (await (run :git
+                            [:ls-remote :--tags :--heads]
+                            repo-path-or-url const.ENV)))]
+    (match [code lines err]
+      [0 lines _] (values lines)
+      [code _ err] (values nil (dump-err code err)))))
 
 ; (fn set-origin [repo-path url origin-set]
 ;   (match (await (run :git [:remote :add :origin url] repo-path const.ENV))
@@ -73,7 +74,7 @@
 {
  ; : init
  : HEAD-sha
- ; : ls-remote
+ : ls-remote
  ; : set-origin
  ; : get-origin
  ; : fetch-sha

@@ -6,6 +6,11 @@
 ;; should call (run workflow).
 
 (import-macros {: use} :pact.lib.ruin.use)
+
+(require :pact.async_await_fn)
+(require :pact2.workflow.exec.git)
+(require :pact2.workflow.exec.fs)
+
 (use result :pact.lib.ruin.result
      {: string? : thread?} :pact.lib.ruin.type
      enum :pact.lib.ruin.enum
@@ -58,7 +63,7 @@
     ;; or remote not responding, etc.
     (where [true err] (result.err? err))
     (do
-      (stop-timer)
+      (stop-timer workflow)
       (tset workflow :result err)
       (table.insert workflow.events [:result err])
       (values :halt err))
@@ -84,7 +89,7 @@
       (resume workflow))
     ;; workflow is paused by future, so just return to scheduler for continuation later
     (where {: future} (not= :dead (coroutine.status future)))
-    (values :cont)
+    (values :cont future)
     ;; has future but the future finished, clear future and resume.
     (where {: future} (= :dead (coroutine.status workflow.future)))
     (do
@@ -102,4 +107,5 @@
    :future nil})
 
 {: new
- : run}
+ : run
+ :yield coroutine.yield}
