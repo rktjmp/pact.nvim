@@ -48,7 +48,6 @@
       (gt? a b)))
 
 (fn at-most-patch-ahead? [a b]
-  (vim.pretty_print (compare a b))
   (match (compare a b)
     (where (or [:= := :=]
                [:= := :>])) true
@@ -88,6 +87,7 @@
   (let [ver (str->ver ver)
         spec (str->spec spec)]
     ;; NOTE these are ver spec, not spec ver!
+    ;; As in, the version given, is greater than the spec version
     (match spec.operator
       "=" (eq? ver spec)
       ">" (gt? ver spec)
@@ -95,9 +95,13 @@
       ">=" (gte? ver spec)
       "<=" (lte? ver spec)
       "^" (caret? ver spec)
-      "~" (tilde? ver spec))))
+      "~" (tilde? ver spec)
+      _ (error (fmt "unsupported version spec operator %s" spec.operator)))))
 
 (fn* solve
+  "Given `spec` (or list of specs), and list of `versions`, return list of
+  versions which satisfy all given specs, in descending order from most newest
+  to oldest."
   ;; 1-spec n-versions
   (where [spec versions] (and (valid-version-spec? spec)
                               (table? versions)))
