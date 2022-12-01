@@ -22,7 +22,8 @@
   (setmetatable plugin {:__tostring #(fmt "%s@%s" plugin.source plugin.constraint)}))
 
 (fn set-package-path [plugin]
-  (let [dir (-> (.. (vim.fn.stdpath :data) :/site/pack/pact/start)
+  (let [dir (-> ;(.. (vim.fn.stdpath :data) :/site/pack/pact/start)
+                "/home/soup/projects/pact.nvim/dirty-tests"
                 (.. :/ (string.gsub plugin.name "/" "-")))]
     (enum.set$ plugin :package-path dir)))
 

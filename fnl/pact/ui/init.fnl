@@ -6,7 +6,8 @@
      {: subscribe} :pact.pubsub
      result :pact.lib.ruin.result
      api vim.api
-     git-wf :pact.activity.status.workflow.git)
+     {:format fmt} string
+     status-wf :pact.workflow.git.status)
 
 (fn open-win [ui]
   (let [api vim.api
@@ -44,8 +45,8 @@
               (where [wf [:ok {:actions a}]])
               (let [plugin (enum.find-value #(= wf.id $2.id) ui.plugins)
                     [t msg] (match a
-                              [:sync commit] [:stale (tostring commit)]
-                              [:clone] [:stale "needs new clone"]
+                              [:sync commit] [:stale (fmt "sync %s" commit)]
+                              [:clone commit] [:stale (fmt "clone %s" commit)]
                               [] [:uptodate "no update required"])
                     plugin-id wf.id]
                 (print :ok wf)
@@ -68,7 +69,11 @@
               (where _)
               (print :??? (vim.inspect (. [...] 1)))))
   (fn queue-plugin [_ plugin]
-    (scheduler.add-workflow ui.scheduler (git-wf.new plugin)))
+    (scheduler.add-workflow ui.scheduler (status-wf.new
+                                           plugin.id
+                                           plugin.source
+                                           plugin.package-path
+                                           plugin.constraint)))
   (enum.map queue-plugin ui.plugins))
 
 (fn new [plugins]
