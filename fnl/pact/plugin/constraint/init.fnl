@@ -15,7 +15,7 @@
 (fn set-tostring [t]
   (setmetatable t {:__tostring
                    (fn [[_ kind spec]]
-                     (.. kind " " spec))}))
+                     (.. kind " " (string.gsub spec "%s" "")))}))
 
 (fn* git?
   ;; we don't currently (?) check validity of contents, just shape
