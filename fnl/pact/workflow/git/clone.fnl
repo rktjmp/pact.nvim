@@ -12,7 +12,7 @@
   (not-nil? (string.match path "^/")))
 
 (fn dir-exists? [path]
-  (= :nothing (fs-tasks.what-is-at path)))
+  (= :directory (fs-tasks.what-is-at path)))
 
 (fn clone-repo-impl [repo-url sha path]
   (result-let [_ (yield "init new local repo")
@@ -23,7 +23,7 @@
                _ (git-tasks.fetch-sha path sha)
                _ (yield "checking out sha")
                _ (git-tasks.checkout-sha path sha)]
-    (ok)))
+    (ok sha)))
 
 (fn clone [repo-url sha path]
   (result-> (yield "starting git-clone workflow")
