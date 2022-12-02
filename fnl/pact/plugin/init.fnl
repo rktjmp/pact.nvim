@@ -23,30 +23,28 @@
   (setmetatable plugin {:__tostring #(fmt "%s@%s" plugin.source plugin.constraint)}))
 
 (fn set-package-path [plugin]
-  (let [dir (-> ;(.. (vim.fn.stdpath :data) :/site/pack/pact/start)
-                "/home/soup/projects/pact.nvim/dirty-tests"
+  (let [dir (-> ;(.. (vim.fn.stdpath :data) :/site/pack/pact (if plugin.opt? :opt :start))
+                (.. "/home/soup/projects/pact.nvim/dirty-tests/" (if plugin.opt? :opt :start))
                 (.. :/ plugin.forge-name "-" (string.gsub plugin.name "/" "-")))]
     (enum.set$ plugin :package-path dir)))
 
-(fn parse-opts [opts]
+(fn opts->constraint [opts]
   (match-let [keys (enum.keys opts)
-              ;; return err not nil msg due to or's behaviour with (values)
-              true (or (= 1 (length keys))
-                       (err "options table must contain at most one key"))
-              true (or (enum.any? #(or (= :branch $2)
-                                       (= :tag $2)
-                                       (= :commit $2)
-                                       (= :version $2))
-                                  (enum.keys opts))
-                       (err "options table must contain branch, tag, commit or version"))]
+              true (-> (enum.filter #(or (= :branch $1) (= :tag $1) (= :commit $1) (= :version $1)) opts)
+                       (enum.table->pairs)
+                       (length)
+                       (#(if (= 1 $1)
+                           true
+                           ;; return err, not (nil msg) due to or's behaviour with (values)
+                           (err "options table must contain at most one constraint key"))))]
     (match opts
-      (where {: version} (valid-version-spec? version)) [:version version]
+      (where {: version} (valid-version-spec? version)) (constraints.git :version version)
       {: version} (values nil "invalid version spec")
-      (where {: commit} (valid-sha? commit)) [:commit commit]
+      (where {: commit} (valid-sha? commit)) (constraints.git :commit commit)
       {: commit} (values nil "invalid commit sha, must be full 40 characters")
-      (where {: branch} (and (string? branch) (<= 1 (length branch)))) [:branch branch]
+      (where {: branch} (and (string? branch) (<= 1 (length branch)))) (constraints.git :branch branch)
       {: branch} (values nil "invalid branch, must be non-empty string")
-      (where {: tag} (and (string? tag) (<= 1 (length tag)))) [:tag tag]
+      (where {: tag} (and (string? tag) (<= 1 (length tag)))) (constraints.git :tag tag)
       {: tag} (values nil "invalid tag, must be non-empty string")
       _ (values nil
                 "expected semver constraint string or table with branch, tag, commit or version"))))
@@ -56,17 +54,17 @@
                                                 (string? constraint)
                                                 (valid-version-spec? constraint)))
   (forge forge-name user-repo {:version constraint})
-  (where [forge-name user-repo constraint] (and (string? user-repo)
-                                                (table? constraint)))
+  (where [forge-name user-repo opts] (and (string? user-repo)
+                                                (table? opts)))
   (-> (result-let [source ((. git-source forge-name) user-repo)
                    ;; TODO this is kind of ugmo, exists because user gives {:branch :main}
                    ;; but constraint fn is stricter (:branch :main) to ensure user can't 
                    ;; give {:branch :main :tag :main} and we'd only use one value.
-                   opts (parse-opts constraint)
-                   constraint (constraints.git (enum.unpack opts))]
+                   constraint (opts->constraint opts)]
         (-> {:id (generate-id)
              :name user-repo
              :forge-name forge-name
+             :opt? (not-nil? (or (. opts :opt?) (. opts :opt)))
              : source
              : constraint}
             (set-package-path)
@@ -76,14 +74,14 @@
   (err (fmt "requires user/repo and version-constraint string or constraint table, got %s"
             (inspect [...]))))
 
-(fn github [user-repo constraint]
-  (forge :github user-repo constraint))
+(fn github [user-repo opts]
+  (forge :github user-repo opts))
 
-(fn gitlab [user-repo constraint]
-  (forge :gitlab user-repo constraint))
+(fn gitlab [user-repo opts]
+  (forge :gitlab user-repo opts))
 
-(fn sourcehut [user-repo constraint]
-  (forge :sourcehut user-repo constraint))
+(fn sourcehut [user-repo opts]
+  (forge :sourcehut user-repo opts))
 
 (fn* git
   (where _)
@@ -93,7 +91,7 @@
   ; (where [url constraint] (valid-args url constraint))
   ; (result-let [source (git-source.git url)
   ;              ;; TODO this is kind of ugmo
-  ;              opts (parse-opts constraint)
+  ;              opts (opts->constraint constraint)
   ;              constraint (constraints.git (enum.unpack opts))]
   ;   (-> {:id (generate-id)
   ;        :name url
