@@ -5,25 +5,46 @@ if exists("b:current_syntax")
   finish
 endif
 
-syn sync fromstart
-
-syn match pactComment "#.*$"
-syn match pactCommandHold "^hold"
-syn match pactCommandSync "^sync"
-syn match pactCommandClone "^clone"
-syn match pactCanSync "\(can-sync\|can-clone\)"
-syn match pactWillSync "\(will-sync\|create-link\|clone\)"
-syn match pactInSync "\(in-sync\|has-link\)"
-syn match pactError "^error"
-
 let b:current_syntax = "pact"
 
-hi def link pactError Error
-hi def link pactComment Comment
-hi def link pactCommand Function
-hi def link pactCanSync DiffChange
-hi def link pactWillSync DiffAdd
-hi def link pactInSync Comment
-hi def link pactCommandHold Comment
-hi def link pactCommandSync Function
-hi def link pactCommandClone Function
+" Title -> leading word before list of section
+" Name -> the plugin name
+" Text -> plain text message associated with plugin
+
+hi def link PactTitle DiagnosticWarn
+hi def link PactName Identifier
+hi def link PactText DiagnosticInfo
+hi def link PactComment @comment
+
+hi def link PactErrorTitle DiagnosticError
+hi def link PactErrorName PactName
+hi def link PactErrorText DiagnosticWarn
+
+hi def link PactUnstagedTitle PactTitle
+hi def link PactUnstagedName PactName
+hi def link PactUnstagedText PactText
+
+hi def link PactStagedTitle PactTitle
+hi def link PactStagedName PactName
+hi def link PactStagedText PactText
+
+hi def link PactHeldTitle PactTitle
+hi def link PactHeldName PactName
+hi def link PactHeldText PactText
+
+hi def link PactUpToDateTitle PactTitle
+hi def link PactUpToDateName PactName
+hi def link PactUpToDateText PactText
+
+hi def link PactActiveTitle PactTitle
+hi def link PactActiveName PactName
+hi def link PactActiveText PactText
+
+hi def link PactWaitingTitle PactTitle
+hi def link PactWaitingName PactName
+hi def link PactWaitingText PactText
+
+hi def link PactUpdatedTitle PactTitle
+hi def link PactUpdatedName PactName
+hi def link PactUpdatedText PactText
+
