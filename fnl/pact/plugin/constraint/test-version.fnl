@@ -1,7 +1,7 @@
 (import-macros {: describe : it : must : rerequire} :pact.lib.ruin.test)
 
 (local _ (rerequire :pact.valid))
-(local {: satisfies? : solve} (rerequire :pact.constraint.version))
+(local {: satisfies? : solve} (rerequire :pact.plugin.constraint.version))
 
 (describe "version constraint"
   (it "works with strings with space between operator"
