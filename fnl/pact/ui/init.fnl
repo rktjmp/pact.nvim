@@ -250,6 +250,12 @@
                     (let [meta (. ui :plugins-meta wf.id)]
                       (enum.append$ meta.events msg)
                       (output ui))
+
+                    (where [future] (thread? future))
+                    (let [meta (. ui :plugins-meta wf.id)]
+                      (enum.append$ meta.events (.. (enum.hd meta.events) "."))
+                      (output ui))
+
                     (where _)
                     nil)]
       (subscribe wf handler)
