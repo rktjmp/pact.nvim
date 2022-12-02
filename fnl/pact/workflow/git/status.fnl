@@ -55,7 +55,6 @@
   ;; commit shas can't actually check, that a sha exists on a remote so we just
   ;; see if the local head matches the requested, otherwise assume we need to
   ;; sync.
-  (vim.pretty_print path repo-url constraint)
   (result-let [_ (yield "checking local sha")
                HEAD-sha (git-tasks.HEAD-sha path)
                _ (yield "reticulating splines")

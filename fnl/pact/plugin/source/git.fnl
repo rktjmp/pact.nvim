@@ -7,8 +7,6 @@
      {: valid-sha? : valid-version-spec?} :pact.valid
      {:git git-constraint} :pact.plugin.constraint)
 
-
-
 (fn make-provider [url]
   [:git url])
 

@@ -5,7 +5,7 @@
      {: run} :pact.workflow.exec.process
      {:loop uv} vim
      {:format fmt} string
-     {: 'async : 'await} :pact.async_await)
+     {: 'async : 'await} :pact.async-await)
 
 (local const {:ENV [:GIT_TERMINAL_PROMPT=0]})
 

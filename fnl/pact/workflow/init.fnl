@@ -7,10 +7,6 @@
 
 (import-macros {: use} :pact.lib.ruin.use)
 
-(require :pact.async_await_fn)
-(require :pact.workflow.exec.git)
-(require :pact.workflow.exec.fs)
-
 (use result :pact.lib.ruin.result
      {: string? : thread?} :pact.lib.ruin.type
      enum :pact.lib.ruin.enum
