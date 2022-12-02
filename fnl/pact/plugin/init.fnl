@@ -5,6 +5,7 @@
      enum :pact.lib.ruin.enum
      git-source :pact.plugin.source.git
      constraints :pact.plugin.constraint
+     inspect (or vim.inspect print)
      {: valid-sha? : valid-version-spec?} :pact.valid
      {:format fmt} string)
 
@@ -24,7 +25,7 @@
 (fn set-package-path [plugin]
   (let [dir (-> ;(.. (vim.fn.stdpath :data) :/site/pack/pact/start)
                 "/home/soup/projects/pact.nvim/dirty-tests"
-                (.. :/ (string.gsub plugin.name "/" "-")))]
+                (.. :/ plugin.forge-name "-" (string.gsub plugin.name "/" "-")))]
     (enum.set$ plugin :package-path dir)))
 
 (fn parse-opts [opts]
@@ -65,13 +66,15 @@
                    constraint (constraints.git (enum.unpack opts))]
         (-> {:id (generate-id)
              :name user-repo
+             :forge-name forge-name
              : source
              : constraint}
             (set-package-path)
             (set-tostring)))
       (map-err (fn [e] (err (fmt "%s/%s %s" forge-name user-repo e)))))
   (where _)
-  (err "requires user/repo and version-constraint string or constraint table"))
+  (err (fmt "requires user/repo and version-constraint string or constraint table, got %s"
+            (inspect [...]))))
 
 (fn github [user-repo constraint]
   (forge :github user-repo constraint))
@@ -86,6 +89,7 @@
   (where _)
   ;; TODO
   (error "currently unsupported, needs dir option support"))
+;; TODO: 
   ; (where [url constraint] (valid-args url constraint))
   ; (result-let [source (git-source.git url)
   ;              ;; TODO this is kind of ugmo
@@ -93,6 +97,7 @@
   ;              constraint (constraints.git (enum.unpack opts))]
   ;   (-> {:id (generate-id)
   ;        :name url
+  ;        :forge :git
   ;        : source
   ;        : constraint}
   ;         (set-package-path)
