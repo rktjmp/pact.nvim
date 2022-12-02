@@ -286,33 +286,32 @@
             ui.plugins))
 
 (fn new [plugins]
-  (let [plugins-meta (-> (enum.map #[$2.id {:events ["waiting for scheduler"]
+  (let [{true ok-plugins
+         false err-plugins} (enum.group-by #(values (result.ok? $2)
+                                                    (result.unwrap $2))
+                                           plugins)
+        plugins-meta (-> (enum.map #[$2.id {:events ["waiting for scheduler"]
                                             :state :waiting
                                             :actions []
                                             :action nil
                                             :plugin $2}]
-                                   plugins)
+                                   ok-plugins)
                          (enum.pairs->table))
-        max-name-length (enum.reduce #(math.max $1 (length $3.name)) 0 plugins)
-        ui {: plugins
+        max-name-length (enum.reduce #(math.max $1 (length $3.name)) 0 ok-plugins)
+        ui {:plugins ok-plugins
             : plugins-meta
             :layout {: max-name-length}
             :scheduler (scheduler.new)}]
+    (-> (enum.reduce (fn [lines _ $2]
+                       (enum.append$ lines (fmt "  - %s" $2)))
+                     ["Some Pact plugins had configuration errors and wont be processed!"]
+                     err-plugins)
+        (table.concat "\n")
+        (.. "\n")
+        (api.nvim_err_writeln))
     (open-win ui)
+    (exec-status ui)
     (values ui)))
-
-;; Awaiting
-;;
-;; rktjmp/hotpot.nvim
-;;
-;; Stale
-;;
-;; rktjmp/lush.nvim
-;;
-;; Up to date
-;;
-;; faimu/feline.nvim
-
 
 {: new
  : output
