@@ -1,23 +1,24 @@
-;; note relrequire check path is slightly different here than other modules, as
-;; ruin is not postfixed with a dot. It should really check for .init also
+;; string match slightly different here as we're in the root mod
+;; and it's simpler to just build most things manually.
+(import-macros {: relative-root}
+               (.. (or (-?> ... (string.match "(.+)")) "") :.use))
 
-(import-macros {: arg?! : def-rel-require}
-               (.. (or (-?> ... (string.match "(.+)")) "") :._internal))
-(def-rel-require rel-require "")
+(local root (.. (relative-root &from "ruin") :ruin.))
+(local aliases {:iter (.. root :iter)
+                :type (.. root :type)
+                :enum (.. root :enum)})
 
-(local aliases {:iter :iter
-                :maybe :maybe
-                :result :result
-                :type :type
-                :table :table})
+(fn tap [v f]
+  (f v)
+  (values v))
 
 (fn lazyload [t k]
-  (let [mod (-?> (. aliases k)
-                 (rel-require))]
-    (when mod
-      (tset t k mod)
-      (tset aliases k nil)
-      (values mod))))
+  (or (. t k)
+      (-?> (. aliases k)
+           (require)
+           (tap #(do
+                   (tset t k $1)
+                   (tset aliases k nil))))))
 
 (-> {:__submodules_are_lazyloaded aliases}
    (setmetatable {:__index lazyload}))

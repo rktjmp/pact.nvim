@@ -267,7 +267,11 @@
     (* a a))
   ```
 
-  See also `fn*'."}
+  See also `fn*'.
+
+  Each call to `fn+` creates a local variable (used by fennel to assign the
+  function to the dispatcher), which may impact large modules. Lua has a limit
+  of 200 local variables, you can create new scopes with `(do)`."}
   (assert-compile name "fn+ requires fn* created name")
   (assert-compile pattern "fn+ requires argument list" name)
   (assert-compile (< 0 (select :# ...)) "fn+ requires at least one body expression")
@@ -336,6 +340,11 @@ will receive `...` as an argument.
 
 See also `fn+' to add additional patterns to an existing function.
 
+Each call to `fn*` creates 4 local variables (3 if the function is assigned to
+a field of an existing table). The function bodies specified with `fn*` do
+not allocate additional variables. Lua has a limit of 200 local variables, you
+can create new scopes with `(do)`.
+
 ```
 (local var 10)
 (fn* x
@@ -374,7 +383,7 @@ See also `fn+' to add additional patterns to an existing function.
   ;; anything else that does not match will call this
   (where _)
   (print :no-match ...))
-  ```"}
+```"}
   ;; We accept the following forms
   ;;
   ;; Just the header, for use with fn+
