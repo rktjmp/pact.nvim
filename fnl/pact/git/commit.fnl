@@ -31,7 +31,9 @@
       ;; TODO ideally this will be more constraint aware as this
       ;; can match tag and branch and version if they all point to the same
       ;; sha, but we want to show the users goal - branch if branch etc.
-      (setmetatable {:__tostring #(fmt "%s@%s" (or $.version $.branch $.tag "commit") $.sha)}))
+      (setmetatable {:__tostring #(fmt "%s@%s"
+                                       (or $.version $.branch $.tag "commit")
+                                       (string.sub $.sha 1 8))}))
   (where _)
   (values nil "commit requires a valid sha and optional table of tag, branch or version"))
 
