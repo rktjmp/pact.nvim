@@ -8,7 +8,8 @@
      api vim.api
      {:format fmt} string
      status-wf :pact.workflow.git.status
-     clone-wf :pact.workflow.git.clone)
+     clone-wf :pact.workflow.git.clone
+     sync-wf :pact.workflow.git.sync)
 
 (fn section-title [section-name]
   (or (. {:error "Error"
@@ -100,40 +101,44 @@
               extmarks)))
 
 (fn exec-commit [ui]
-  (fn make-clone-wf [plugin commit]
-    (let [wf (clone-wf.new plugin.id
-                           plugin.package-path
-                           (. plugin.source 2)
-                           commit.sha)
+  (fn make-wf [how plugin commit]
+    (let [wf (match how
+               :clone (clone-wf.new plugin.id plugin.package-path (. plugin.source 2) commit.sha)
+               :sync (sync-wf.new plugin.id plugin.package-path commit.sha)
+               other (error (fmt "unknown staging action %s" other)))
           handler (fn* handler
-                    (where [[:ok]])
-                    (let [meta (. ui :plugins-meta plugin.id)]
-                      (tset meta :state :updated)
-                      (enum.append$ meta.events (fmt "(cloned %s)" commit))
-                      (unsubscribe wf handler)
-                      (output ui))
+                       (where [[:ok]])
+                       (let [meta (. ui :plugins-meta plugin.id)]
+                         (tset meta :state :updated)
+                         (enum.append$ meta.events (fmt "(%s %s)"
+                                                        (match how :clone :cloned :sync :synced)
+                                                        commit))
+                         (unsubscribe wf handler)
+                         (output ui))
 
-                    (where [[:err e]])
-                    (let [meta (. ui :plugins-meta plugin.id)]
-                      (set meta.state :error)
-                      (enum.append$ meta.events e)
-                      (unsubscribe wf handler)
-                      (output ui))
+                       (where [[:err e]])
+                       (let [meta (. ui :plugins-meta plugin.id)]
+                         (set meta.state :error)
+                         (enum.append$ meta.events e)
+                         (unsubscribe wf handler)
+                         (output ui))
 
-                    (where [msg] (string? msg))
-                    (let [meta (. ui :plugins-meta wf.id)]
-                      (enum.append$ meta.events msg)
-                      (output ui))
-                    (where _)
-                    nil)]
+                       (where [msg] (string? msg))
+                       (let [meta (. ui :plugins-meta wf.id)]
+                         (enum.append$ meta.events msg)
+                         (output ui))
+                       (where _)
+                       nil)]
       (subscribe wf handler)
       (values wf)))
+
   (->> (enum.filter #(and (= :unstaged $2.state)) ui.plugins-meta)
        (enum.map (fn [_ meta] (tset meta :state :held))))
-  (->> (enum.filter #(and (= :staged $2.state) (= :clone (. $2.action 1))) ui.plugins-meta)
+  (->> (enum.filter #(and (= :staged $2.state) ) ui.plugins-meta)
        (enum.map (fn [_ meta]
-                   (tset meta :state :active)
-                   (scheduler.add-workflow ui.scheduler (make-clone-wf meta.plugin (. meta.action 2))))))
+                   (let [wf (make-wf (. meta.action 1) meta.plugin (. meta.action 2))]
+                     (scheduler.add-workflow ui.scheduler wf)
+                     (tset meta :state :active)))))
   (output ui))
 
 (fn exec-keymap-cc [ui]
