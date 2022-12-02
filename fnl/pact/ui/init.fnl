@@ -12,6 +12,8 @@
      sync-wf :pact.workflow.git.sync
      diff-wf :pact.workflow.git.diff)
 
+(local M {})
+
 (fn section-title [section-name]
   (or (. {:error "Error"
           :waiting "Waiting"
@@ -184,53 +186,34 @@
 (fn exec-keymap-s [ui]
   (let [[line _] (api.nvim_win_get_cursor ui.win)
         meta (enum.find-value #(= line $2.on-line) ui.plugins-meta)]
-    (when (and meta (= :unstaged meta.state))
-      (tset meta :state :staged)
-      (output ui))))
+    (if (and meta (= :unstaged meta.state))
+      (do
+        (tset meta :state :staged)
+        (output ui))
+      (vim.notify "May only stage unstaged plugins"))))
 
 (fn exec-keymap-u [ui]
   (let [[line _] (api.nvim_win_get_cursor ui.win)
         meta (enum.find-value #(= line $2.on-line) ui.plugins-meta)]
-    (when (and meta (= :staged meta.state))
-      (tset meta :state :unstaged)
-      (output ui))))
+    (if (and meta (= :staged meta.state))
+      (do
+        (tset meta :state :unstaged)
+        (output ui))
+      (vim.notify "May only unstage staged plugins"))))
+
 
 (fn exec-keymap-= [ui]
   (let [[line _] (api.nvim_win_get_cursor ui.win)
         meta (enum.find-value #(= line $2.on-line) ui.plugins-meta)]
-    (when (and meta
-               (or (= :staged meta.state) (= :unstaged meta.state))
-               (= :sync (. meta.action 1)))
-      ;; TODO: dont allow re-diff if already have log?
-      (if meta.log-open
+    (if (and meta
+             (or (= :staged meta.state) (= :unstaged meta.state))
+             (= :sync (. meta.action 1)))
+      (if meta.log
         (do
-          (tset meta :log-open false)
+          (tset meta :log-open (not meta.log-open))
           (output ui))
-        (exec-diff ui meta)))))
-
-(fn open-win [ui]
-  (let [api vim.api
-        _ (vim.cmd.split)
-        win (api.nvim_get_current_win)
-        buf (api.nvim_create_buf false true)]
-
-    (doto win
-      (api.nvim_win_set_buf buf)
-      (api.nvim_win_set_option :wrap false))
-
-    (doto buf
-      ;; TODO v mode
-      (api.nvim_buf_set_option :ft :pact)
-      (api.nvim_buf_set_keymap :n := "" {:callback #(exec-keymap-= ui)})
-      (api.nvim_buf_set_keymap :n :cc "" {:callback #(exec-keymap-cc ui)})
-      (api.nvim_buf_set_keymap :n :s "" {:callback #(exec-keymap-s ui)})
-      (api.nvim_buf_set_keymap :n :u "" {:callback #(exec-keymap-u ui)}))
-
-    (doto ui
-      (tset :ns-id (api.nvim_create_namespace :pact-ui))
-      (tset :buf buf)
-      (tset :win win))))
-
+        (exec-diff ui meta))
+      (vim.notify "May only view diff of staged or unstaged sync-able plugins"))))
 
 (fn exec-status [ui]
   (fn make-status-wf [plugin]
@@ -274,23 +257,11 @@
               (scheduler.add-workflow ui.scheduler (make-status-wf plugin)))
             ui.plugins))
 
-(fn new [plugins]
-  (let [{true ok-plugins
-         false err-plugins} (enum.group-by #(values (result.ok? $2)
-                                                    (result.unwrap $2))
-                                           plugins)
-        plugins-meta (-> (enum.map #[$2.id {:events ["waiting for scheduler"]
-                                            :state :waiting
-                                            :actions []
-                                            :action nil
-                                            :plugin $2}]
-                                   ok-plugins)
-                         (enum.pairs->table))
-        max-name-length (enum.reduce #(math.max $1 (length $3.name)) 0 ok-plugins)
-        ui {:plugins ok-plugins
-            : plugins-meta
-            :layout {: max-name-length}
-            :scheduler (scheduler.new)}]
+(fn M.attach [win buf plugins]
+  "Attach user-provided win+buf to pact view"
+  (let [{true ok-plugins false err-plugins} (enum.group-by #(values (result.ok? $2) (result.unwrap $2))
+                                                           plugins)]
+    ;; warn user which plugins failed
     (if err-plugins
       (-> (enum.reduce (fn [lines _ $2]
                          (enum.append$ lines (fmt "  - %s" $2)))
@@ -299,10 +270,35 @@
           (table.concat "\n")
           (.. "\n")
           (api.nvim_err_writeln)))
-    (open-win ui)
-    (exec-status ui)
-    (values ui)))
 
-{: new
- : output
- : exec-status}
+    ;; try to run...
+    (if ok-plugins
+      (let [plugins-meta (-> (enum.map #[$2.id {:events ["waiting for scheduler"]
+                                                :state :waiting
+                                                :actions []
+                                                :action nil
+                                                :plugin $2}]
+                                       ok-plugins)
+                             (enum.pairs->table))
+            max-name-length (enum.reduce #(math.max $1 (length $3.name)) 0 ok-plugins)
+            ui {:plugins ok-plugins
+                : plugins-meta
+                : win
+                : buf
+                :ns-id (api.nvim_create_namespace :pact-ui)
+                :layout {: max-name-length}
+                :scheduler (scheduler.new)}]
+        (doto buf
+          ;; TODO v mode
+          (api.nvim_buf_set_option :ft :pact)
+          (api.nvim_buf_set_keymap :n := "" {:callback #(exec-keymap-= ui)})
+          (api.nvim_buf_set_keymap :n :cc "" {:callback #(exec-keymap-cc ui)})
+          (api.nvim_buf_set_keymap :n :s "" {:callback #(exec-keymap-s ui)})
+          (api.nvim_buf_set_keymap :n :u "" {:callback #(exec-keymap-u ui)}))
+
+
+        ;; we always default to status ui
+        (exec-status ui)
+        (values ui)))))
+
+(values M)

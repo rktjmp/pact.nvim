@@ -36,18 +36,32 @@
 
   - concurrency-limit = 5, number of simultaneous workflows to run.
                            setting this too high may trigger rate limiting
-                           on remote hosts."
+                           on remote hosts.
+  - win & buf, if provided use these for UI, otherwise opens a split window."
   (when (= (vim.fn.has :nvim-0.8) 0)
     (error "pact.nvim requires nvim-0.8 or later"))
   (local opts (or opts {}))
   (doto opts
     (tset :concurrency-limit (or opts.concurrency-limit 5)))
-  (let [ui (require :pact.ui)
+  (let [e-str "must provide both win and buf or neither"
+        (win buf) (match opts
+                    {: buf :win nil} (error e-str)
+                    {:buf nil : win} (error e-str)
+                    {: buf : win} (values win buf)
+                    _ (let [api vim.api
+                            _ (vim.cmd.split)
+                            win (api.nvim_get_current_win)
+                            buf (api.nvim_create_buf false true)]
+                        (doto win
+                          (api.nvim_win_set_buf buf)
+                          (api.nvim_win_set_option :wrap false))
+                        (values win buf)))
+        ui (require :pact.ui)
         ;; Convert proxy plugin calls to real plugins (technically ok-err values)
         ;; We pass those to the UI so it can effectively show broken plugin
         ;; configurations while still working for non-broken plugins.
         plugins (icollect [_ c (ipairs plugin-proxies)] (c))]
-    (ui.new plugins)))
+    (ui.attach win buf plugins)))
 
 {: open
  ; :git providers.git
