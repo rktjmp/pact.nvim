@@ -57,13 +57,16 @@
   (fn strip-peel [tag-name]
     (or (string.match tag-name "(.+)%^{}$") tag-name))
 
-  (match (string.match ref "(%x+)%s+refs/(.+)/(.+)")
+  ;; (.-) to minimally match inside / / but we want
+  ;; (.+) to catch branches and tags with slashes in them.
+  (match (string.match ref "(%x+)%s+refs/(.-)/(.+)")
     (sha :heads name) (commit sha {:branch name})
     (sha :tags name) (match (string.match name "v?(%d+%.%d+%.%d+)")
                        nil (commit sha {:tag (strip-peel name)})
                        ;; versions are tags, so pair them
                        version (commit sha {:tag (strip-peel name)
-                                            :version version}))))
+                                            :version version}))
+    other (error (string.format "unexpected remote-ref format: %s" other))))
 
 (fn ref-lines->commits [refs]
   "Convert list of ref lines into list of commits. When tag and peeled tag are

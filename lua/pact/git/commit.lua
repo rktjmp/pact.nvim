@@ -57,13 +57,16 @@
  local function strip_peel(tag_name)
  return (string.match(tag_name, "(.+)%^{}$") or tag_name) end
 
- local _90_, _91_, _92_ = string.match(ref, "(%x+)%s+refs/(.+)/(.+)") if ((nil ~= _90_) and (_91_ == "heads") and (nil ~= _92_)) then local sha = _90_ local name = _92_
+
+
+ local _90_, _91_, _92_ = string.match(ref, "(%x+)%s+refs/(.-)/(.+)") if ((nil ~= _90_) and (_91_ == "heads") and (nil ~= _92_)) then local sha = _90_ local name = _92_
  return commit(sha, {branch = name}) elseif ((nil ~= _90_) and (_91_ == "tags") and (nil ~= _92_)) then local sha = _90_ local name = _92_
  local _93_ = string.match(name, "v?(%d+%.%d+%.%d+)") if (_93_ == nil) then
  return commit(sha, {tag = strip_peel(name)}) elseif (nil ~= _93_) then local version = _93_
 
- return commit(sha, {tag = strip_peel(name), version = version}) else return nil end else return nil end end
+ return commit(sha, {tag = strip_peel(name), version = version}) else return nil end elseif (nil ~= _90_) then local other = _90_
 
+ return error(string.format("unexpected remote-ref format: %s", other)) else return nil end end
 
  local function ref_lines__3ecommits(refs)
 
