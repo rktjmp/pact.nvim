@@ -26,8 +26,7 @@
                   :gitlab (proxy :gitlab)
                   :sourcehut (proxy :sourcehut)
                   :srht (proxy :sourcehut)
-                  ;:git (proxy :git)
-                  })
+                  :git (proxy :git)})
 
 (fn open [opts]
   "Open pact in a lower split with an optional configuration table.
@@ -64,7 +63,7 @@
     (ui.attach win buf plugins)))
 
 {: open
- ; :git providers.git
+ :git providers.git
  :github providers.github
  :path providers.path
  :srht providers.sourcehut

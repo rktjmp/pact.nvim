@@ -49,6 +49,13 @@
       _ (values nil
                 "expected semver constraint string or table with branch, tag, commit or version"))))
 
+(fn make [basic opts]
+  (doto basic
+    (tset :opt? (not-nil? (or (. opts :opt?) (. opts :opt))))
+    (tset :id (generate-id))
+    (set-package-path)
+    (set-tostring)))
+
 (fn* forge
   (where [forge-name user-repo constraint] (and (string? user-repo)
                                                 (string? constraint)
@@ -57,18 +64,11 @@
   (where [forge-name user-repo opts] (and (string? user-repo)
                                                 (table? opts)))
   (-> (result-let [source ((. git-source forge-name) user-repo)
-                   ;; TODO this is kind of ugmo, exists because user gives {:branch :main}
-                   ;; but constraint fn is stricter (:branch :main) to ensure user can't 
-                   ;; give {:branch :main :tag :main} and we'd only use one value.
                    constraint (opts->constraint opts)]
-        (-> {:id (generate-id)
-             :name user-repo
-             :forge-name forge-name
-             :opt? (not-nil? (or (. opts :opt?) (. opts :opt)))
-             : source
-             : constraint}
-            (set-package-path)
-            (set-tostring)))
+        (make {:name user-repo
+               : forge-name
+               : source
+               : constraint} opts))
       (map-err (fn [e] (err (fmt "%s/%s %s" forge-name user-repo e)))))
   (where _)
   (err (fmt "requires user/repo and version-constraint string or constraint table, got %s"
@@ -84,24 +84,24 @@
   (forge :sourcehut user-repo opts))
 
 (fn* git
+  (where [url constraint] (and (string? url)
+                         (string? constraint)
+                         (valid-version-spec? constraint)))
+  (git url {:version constraint})
+  (where [url opts] (and (string? url) (table? opts)))
+  (-> (result-let [source (git-source.git url)
+                   forge-name :git
+                   name (if-let [name (. opts :name)]
+                          (values name)
+                          (values nil "requires name option"))
+                   constraint (opts->constraint opts)]
+        (make {: name
+               : forge-name
+               : source
+               : constraint} opts))
+      (map-err (fn [e] (err (fmt "%s/%s %s" :git url e)))))
   (where _)
-  ;; TODO
-  (error "currently unsupported, needs dir option support"))
-;; TODO: 
-  ; (where [url constraint] (valid-args url constraint))
-  ; (result-let [source (git-source.git url)
-  ;              ;; TODO this is kind of ugmo
-  ;              opts (opts->constraint constraint)
-  ;              constraint (constraints.git (enum.unpack opts))]
-  ;   (-> {:id (generate-id)
-  ;        :name url
-  ;        :forge :git
-  ;        : source
-  ;        : constraint}
-  ;         (set-package-path)
-  ;       (set-tostring)))
-  ; (where _)
-  ; (err "requires user/repo and constraint"))
+  (err "requires url and constraint/options table"))
 
 {: git
  : github
