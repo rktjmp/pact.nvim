@@ -46,7 +46,8 @@
                                 (enum.append$ (git-commit.commit HEAD-sha)))]
     (if (enum.any? #(satisfies-constraint? constraint $2) HEAD-commits)
       ;; currently satisfied, so all done
-      (ok nil)
+      (ok [:hold (->> (enum.filter #(satisfies-constraint? constraint $2) HEAD-commits)
+                      (enum.first))])
       ;; unsatisfied, can we find one to work?
       (if-some-let [target-commit (solve-constraint constraint remote-commits)]
         (ok [:sync target-commit])
