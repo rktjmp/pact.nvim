@@ -45,7 +45,9 @@
    [["" nil]]])
 
 (fn render-section [ui section-name previous-lines]
-  (let [relevant-plugins (enum.filter #(= $2.state section-name) ui.plugins-meta)
+  (let [relevant-plugins (->> (enum.filter #(= $2.state section-name) ui.plugins-meta)
+                              (enum.map #$2)
+                              (enum.sort$ #(<= $1.order $2.order)))
         new-lines (enum.reduce (fn [lines i meta]
                                  (let [name-length (length meta.plugin.name)
                                        line [[meta.plugin.name (highlight-for section-name :name)]
@@ -274,6 +276,7 @@
     ;; try to run...
     (if ok-plugins
       (let [plugins-meta (-> (enum.map #[$2.id {:events ["waiting for scheduler"]
+                                                :order $1
                                                 :state :waiting
                                                 :actions []
                                                 :action nil
