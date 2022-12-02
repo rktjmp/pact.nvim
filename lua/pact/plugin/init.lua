@@ -23,7 +23,7 @@
  local function _20_() return fmt("%s@%s", plugin.source, plugin.constraint) end return setmetatable(plugin, {__tostring = _20_}) end
 
  local function set_package_path(plugin)
- local dir local function _21_() if plugin["opt?"] then return "opt" else return "start" end end dir = ((vim.fn.stdpath("data") .. "/site/pack/pact" .. _21_()) .. "/" .. plugin["forge-name"] .. "-" .. string.gsub(plugin.name, "/", "-"))
+ local dir local function _21_() if plugin["opt?"] then return "opt" else return "start" end end dir = ((vim.fn.stdpath("data") .. "/site/pack/pact/" .. _21_()) .. "/" .. plugin["forge-name"] .. "-" .. string.gsub(plugin.name, "/", "-"))
 
  return enum["set$"](plugin, "package-path", dir) end
 
