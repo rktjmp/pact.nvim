@@ -1,8 +1,7 @@
-(import-macros {: use} :pact.lib.ruin.use)
+(import-macros {: ruin!} :pact.lib.ruin)
+(ruin!)
 
-(use {: 'fn* : 'fn+} :pact.lib.ruin.fn
-     {: string? : table?} :pact.lib.ruin.type
-     enum :pact.lib.ruin.enum
+(use enum :pact.lib.ruin.enum
      {: valid-sha?} :pact.valid
      {:format fmt} string)
 
@@ -55,16 +54,38 @@
   ;; see https://git-scm.com/docs/git-check-ref-format
   ;; Parse *expects* the input to be from `ls-remote --tags --heads url`
   ;; for best results.
+  (fn strip-peel [tag-name]
+    (or (string.match tag-name "(.+)%^{}$") tag-name))
+
   (match (string.match ref "(%x+)%s+refs/(.+)/(.+)")
     (sha :heads name) (commit sha {:branch name})
     (sha :tags name) (match (string.match name "v?(%d+%.%d+%.%d+)")
-                       nil (commit sha {:tag name})
+                       nil (commit sha {:tag (strip-peel name)})
                        ;; versions are tags, so pair them
-                       version (commit sha {:tag name
+                       version (commit sha {:tag (strip-peel name)
                                             :version version}))))
 
 (fn ref-lines->commits [refs]
-  "Convert list of ref lines into list of commits."
-  (enum.map #(ref-line->commit $2) refs))
+  "Convert list of ref lines into list of commits. When tag and peeled tag are
+  present, the peeled tag is retained and the plain tag is discarded."
+  (->> (enum.map #(let [commit (ref-line->commit $2)
+                        peeled? (not-nil? (string.match $2 "%^{}$"))]
+                    {: peeled? : commit}) refs)
+       (enum.group-by #(or $2.commit.tag false))
+       (enum.reduce (fn [acc group-name commits]
+                      (match [group-name (length commits)]
+                        ;; dont touch un-tagged, they dont need un-peeling
+                        [false _] (->> (enum.map #$2.commit commits)
+                                       (enum.concat$ acc))
+                        ;; one commit for tag, so keep as given
+                        [version 1] (enum.append$ acc (. commits 1 :commit))
+                        ;; many commits for one tag, only keep peeled
+                        ;; as thats what a checkout ends up as (at the commit).
+                        [version n] (->> (enum.filter #$2.peeled? commits)
+                                         (enum.map #$2.commit)
+                                         (enum.concat$ acc))))
+                    [])))
 
-{: commit : ref-line->commit : ref-lines->commits}
+{: commit : ref-lines->commits}
+
+
