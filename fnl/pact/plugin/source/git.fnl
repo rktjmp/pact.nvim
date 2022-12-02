@@ -25,7 +25,8 @@
   (values nil "expected https or ssh url string"))
 
 (fn* user-repo-ok?
-  (where [user-repo] (and (string? user-repo) (string.match user-repo ".+/.+")))
+  (where [user-repo] (and (string? user-repo)
+                          (string.match user-repo "^[^/]+/[^/]+$")))
   (values true)
   (where _)
   (values nil "expected user-name/repo-name"))
