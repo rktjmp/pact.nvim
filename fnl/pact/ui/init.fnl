@@ -10,27 +10,74 @@
      status-wf :pact.workflow.git.status
      clone-wf :pact.workflow.git.clone)
 
+(fn section-title [section-name]
+  (or (. {:error "Error"
+          :waiting "Waiting"
+          :active "Active"
+          :held "Held"
+          :updated "Updated"
+          :up-to-date "Up to date"
+          :unstaged "Unstaged"
+          :staged "Staged"} section-name)
+      section-name))
+
+(fn* highlight-for
+  (where [:updated field] (or (= :name field) (= :event field)))
+  :DiffAdd
+  (where [_ :name])
+  "@symbol"
+  (where [:staged :event])
+  "DiffAdd"
+  (where [_ :event])
+  "@comment"
+  (where _)
+  nil)
+
+(fn lede []
+  [[[";; 🔪🐐🩸" "@comment"]]
+   [[";;" "@comment"]]
+   [[";; usage:" "@comment"]]
+   [[";;" "@comment"]]
+   [[";; s  - stage plugin for update" "@comment"]]
+   [[";; u  - unstage plugin" "@comment"]]
+   [[";; cc - commit staging and fetch updates" "@comment"]]
+   [[";; = - view git log (staged/unstaged only) (not implemented)" "@comment"]]
+   [[";; rr - re-run status when git times out (not implemented)" "@comment"]]
+   [["" nil]]])
+
 (fn render-section [ui section-name previous-lines]
   (let [relevant-plugins (enum.filter #(= $2.state section-name) ui.plugins-meta)
         new-lines (enum.reduce (fn [lines i meta]
-                                 (let [line [[meta.plugin.name "@symbol"]
-                                             [(tostring  (+ 2 (length previous-lines) (length lines))) "@function"]
-                                             [(enum.last meta.events) "@comment"]]]
+                                 (let [name-length (length meta.plugin.name)
+                                       line [[meta.plugin.name (highlight-for section-name :name)]
+                                             [(string.rep " " (- (+ 1 ui.layout.max-name-length) name-length)) nil]
+                                             [(enum.last meta.events) (highlight-for section-name :event)]]]
                                    ;; todo ugly way to set offsets here
                                    (set meta.on-line (+ 2 (length previous-lines) (length lines)))
                                    (enum.append$ lines line)))
                                [] relevant-plugins)]
     (if (< 0 (length new-lines))
       (-> previous-lines
-          (enum.append$ [[section-name "@function"]])
+          (enum.append$ [[(section-title section-name)
+                          (match section-name
+                            :error :DiagnosticError
+                            :waiting :DiagnosticHint
+                            :active :DiffAdd
+                            :updated :DiffAdd
+                            :held :DiffChange
+                            :up-to-date :DiffChange
+                            _ "@function")]
+                         [" " nil]
+                         [(fmt "(%s)" (length new-lines)) "@comment"]
+                         ])
           (enum.concat$ new-lines)
           (enum.append$ [["" nil]]))
       (values previous-lines))))
 
 (fn output [ui]
-  (let [sections [:waiting :error :active :unstaged :staged :up-to-date :syncing :cloning]
+  (let [sections [:waiting :error :active :unstaged :staged :updated :held :up-to-date]
         lines (enum.reduce (fn [lines _ section] (render-section ui section lines))
-                           [] sections)
+                           (lede) sections)
         ;; pretty gnarly, we want to split the line data out into just flat text
         ;; to be inserted into the buffer, and a list of [start stop highlight] 
         ;; groups for extmark highlighting.
@@ -61,8 +108,8 @@
           handler (fn* handler
                     (where [[:ok]])
                     (let [meta (. ui :plugins-meta plugin.id)]
-                      (tset meta :state :up-to-date)
-                      (enum.append$ meta.events (fmt "cloned %s" plugin.constraint))
+                      (tset meta :state :updated)
+                      (enum.append$ meta.events (fmt "(cloned %s)" commit))
                       (unsubscribe wf handler)
                       (output ui))
 
@@ -81,11 +128,13 @@
                     nil)]
       (subscribe wf handler)
       (values wf)))
-  (output ui)
+  (->> (enum.filter #(and (= :unstaged $2.state)) ui.plugins-meta)
+       (enum.map (fn [_ meta] (tset meta :state :held))))
   (->> (enum.filter #(and (= :staged $2.state) (= :clone (. $2.action 1))) ui.plugins-meta)
        (enum.map (fn [_ meta]
                    (tset meta :state :active)
-                   (scheduler.add-workflow ui.scheduler (make-clone-wf meta.plugin (. meta.action 2)))))))
+                   (scheduler.add-workflow ui.scheduler (make-clone-wf meta.plugin (. meta.action 2))))))
+  (output ui))
 
 (fn exec-keymap-cc [ui]
   ;; TODO warn if zero staged
@@ -133,18 +182,18 @@
                             plugin.package-path
                             plugin.constraint)
           handler (fn* handler
+                    (where [[:ok [:hold commit]]])
+                    (let [meta (. ui :plugins-meta plugin.id)]
+                      (tset meta :state :up-to-date)
+                      (enum.append$ meta.events (fmt "(at %s)" commit))
+                      (unsubscribe wf handler)
+                      (output ui))
+
                     (where [[:ok [action commit]]])
                     (let [meta (. ui :plugins-meta plugin.id)]
                       (tset meta :action [action commit])
                       (tset meta :state :unstaged)
-                      (enum.append$ meta.events (fmt "%s %s" action commit))
-                      (unsubscribe wf handler)
-                      (output ui))
-
-                    (where [[:ok nil]])
-                    (let [meta (. ui :plugins-meta plugin.id)]
-                      (tset meta :state :up-to-date)
-                      (enum.append$ meta.events "up to date")
+                      (enum.append$ meta.events (fmt "(%s %s)" action commit))
                       (unsubscribe wf handler)
                       (output ui))
 
@@ -176,8 +225,10 @@
                                             :plugin $2}]
                                    plugins)
                          (enum.pairs->table))
+        max-name-length (enum.reduce #(math.max $1 (length $3.name)) 0 plugins)
         ui {: plugins
             : plugins-meta
+            :layout {: max-name-length}
             :scheduler (scheduler.new)}]
     (open-win ui)
     (values ui)))
