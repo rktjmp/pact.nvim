@@ -50,6 +50,7 @@
                       (enum.first))])
       ;; unsatisfied, can we find one to work?
       (if-some-let [target-commit (solve-constraint constraint remote-commits)]
+        ;; TODO: return current head, as per constraint if possible (ver for ver, etc) for UI
         (ok [:sync target-commit])
         (err (fmt "no commit satisfies %s" constraint))))))
 

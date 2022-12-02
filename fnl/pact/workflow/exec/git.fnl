@@ -62,6 +62,11 @@
     (0 _ _) (values sha)
     (code _ err) (values nil (dump-err code err))))
 
+(fn fetch [repo-path]
+  (match (await (run :git [:fetch :origin] repo-path const.ENV))
+    (0 _ _) (values true)
+    (code _ err) (values nil (dump-err code err))))
+
 (fn init [repo-path inited]
   ;; repo-path should be absolute, so local dir is fine for cwd
   (match (await (run :git [:init repo-path] "." const.ENV))
@@ -73,10 +78,32 @@
     (0 _ _) (values sha)
     (code _ err) (values nil (dump-err code err))))
 
+(fn shallow? [repo-path]
+  (match (await (run :git [:rev-parse :--is-shallow-repository] repo-path const.ENV))
+    (0 [:false] _) false
+    (0 [:true] _) true
+    (0 a b) (values nil (dump-err 0 [a b]))
+    (code _ err) (values nil (dump-err code err))))
+
+(fn unshallow [repo-path]
+  (match (await (run :git [:fetch :--unshallow] repo-path const.ENV))
+    (0 a b) (values true)
+    (code _ err) (values nil (dump-err code err))))
+
+(fn log-diff [repo-path old-sha new-sha]
+  (match (await (run :git [:log :--oneline (fmt "%s..%s" old-sha new-sha)] repo-path const.ENV))
+    (where (0 log _) (= 0 (length log))) (values nil "git log produced no output, are you moving backwards?")
+    (0 log _) (values log)
+    (code _ err) (values nil (dump-err code err))))
+
 {: init
  : HEAD-sha
  : ls-remote
  : set-origin
  : get-origin
  : fetch-sha
- : checkout-sha}
+ : fetch
+ : checkout-sha
+ : shallow?
+ : unshallow
+ : log-diff}

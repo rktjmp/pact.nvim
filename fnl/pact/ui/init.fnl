@@ -9,7 +9,8 @@
      {:format fmt} string
      status-wf :pact.workflow.git.status
      clone-wf :pact.workflow.git.clone
-     sync-wf :pact.workflow.git.sync)
+     sync-wf :pact.workflow.git.sync
+     diff-wf :pact.workflow.git.diff)
 
 (fn section-title [section-name]
   (or (. {:error "Error"
@@ -75,6 +76,17 @@
           (enum.append$ [["" nil]]))
       (values previous-lines))))
 
+(fn log-line-breaking? [log-line]
+  ;; matches break breaking, might be over-eager
+  (not-nil? (string.match (string.lower log-line) :break)))
+
+(fn log-line->chunks [log-line]
+  (let [(sha log) (string.match log-line "(%x+)%s(.+)")]
+    [["  " :comment]
+     [sha :comment]
+     [" " :comment]
+     [log (if (log-line-breaking? log) :DiagnosticError :DiagnosticHint)]]))
+
 (fn output [ui]
   (let [sections [:waiting :error :active :unstaged :staged :updated :held :up-to-date]
         lines (enum.reduce (fn [lines _ section] (render-section ui section lines))
@@ -96,9 +108,15 @@
     (api.nvim_buf_set_lines ui.buf 0 -1 false text)
     (enum.map (fn [i line-marks]
                 (enum.map (fn [_ [start stop hl]]
-                               (api.nvim_buf_add_highlight ui.buf 0 hl (- i 1) start stop))
+                               (api.nvim_buf_add_highlight ui.buf ui.ns-id hl (- i 1) start stop))
                           line-marks))
-              extmarks)))
+              extmarks)
+    (enum.map #(if $2.log-open
+                 (api.nvim_buf_set_extmark ui.buf ui.ns-id (- $2.on-line 1) 0
+                                           {:virt_lines (enum.map #(log-line->chunks $2)
+                                                                  $2.log)}))
+              ui.plugins-meta)
+    ))
 
 (fn exec-commit [ui]
   (fn make-wf [how plugin commit]
@@ -141,6 +159,36 @@
                      (tset meta :state :active)))))
   (output ui))
 
+(fn exec-diff [ui meta]
+  (fn make-wf [plugin commit]
+    (let [wf (diff-wf.new plugin.id plugin.package-path commit.sha)
+          handler (fn* handler
+                       (where [[:ok log]])
+                       (let [meta (. ui :plugins-meta plugin.id)]
+                         (tset meta :log log)
+                         (tset meta :log-open true)
+                         (unsubscribe wf handler)
+                         (output ui))
+
+                       (where [[:err e]])
+                       (let [meta (. ui :plugins-meta plugin.id)]
+                         ; (set meta.state :error)
+                         (enum.append$ meta.events e)
+                         (unsubscribe wf handler)
+                         (output ui))
+
+                       (where [msg] (string? msg))
+                       (let [meta (. ui :plugins-meta wf.id)]
+                         (enum.append$ meta.events msg)
+                         (output ui))
+                       (where _)
+                       nil)]
+      (subscribe wf handler)
+      (values wf)))
+  (let [wf (make-wf meta.plugin (. meta.action 2))]
+    (scheduler.add-workflow ui.scheduler wf))
+  (output ui))
+
 (fn exec-keymap-cc [ui]
   ;; TODO warn if zero staged
   (exec-commit ui))
@@ -148,16 +196,29 @@
 (fn exec-keymap-s [ui]
   (let [[line _] (api.nvim_win_get_cursor ui.win)
         meta (enum.find-value #(= line $2.on-line) ui.plugins-meta)]
-    (when (= :unstaged meta.state)
+    (when (and meta (= :unstaged meta.state))
       (tset meta :state :staged)
       (output ui))))
 
 (fn exec-keymap-u [ui]
   (let [[line _] (api.nvim_win_get_cursor ui.win)
         meta (enum.find-value #(= line $2.on-line) ui.plugins-meta)]
-    (when (= :staged meta.state)
+    (when (and meta (= :staged meta.state))
       (tset meta :state :unstaged)
       (output ui))))
+
+(fn exec-keymap-= [ui]
+  (let [[line _] (api.nvim_win_get_cursor ui.win)
+        meta (enum.find-value #(= line $2.on-line) ui.plugins-meta)]
+    (when (and meta
+               (or (= :staged meta.state) (= :unstaged meta.state))
+               (= :sync (. meta.action 1)))
+      ;; TODO: dont allow re-diff if already have log?
+      (if meta.log-open
+        (do
+          (tset meta :log-open false)
+          (output ui))
+        (exec-diff ui meta)))))
 
 (fn open-win [ui]
   (let [api vim.api
@@ -171,11 +232,13 @@
 
     (doto buf
       ;; TODO v mode
+      (api.nvim_buf_set_keymap :n := "" {:callback #(exec-keymap-= ui)})
       (api.nvim_buf_set_keymap :n :cc "" {:callback #(exec-keymap-cc ui)})
       (api.nvim_buf_set_keymap :n :s "" {:callback #(exec-keymap-s ui)})
       (api.nvim_buf_set_keymap :n :u "" {:callback #(exec-keymap-u ui)}))
 
     (doto ui
+      (tset :ns-id (api.nvim_create_namespace :pact-ui))
       (tset :buf buf)
       (tset :win win))))
 
