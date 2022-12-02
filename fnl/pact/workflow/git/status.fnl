@@ -19,9 +19,28 @@
 (fn git-dir? [path]
   (= :directory (fs-tasks.what-is-at (.. path "/.git"))))
 
-(fn status-new-repo-impl [repo-url constraint]
-  ;; we have no local repo but we can still check if the remote + constraint is
-  ;; valid.
+;; TODO move these into constraint mod
+(fn commit-constraint? [c]
+  (match? [:git :commit any] c))
+
+(fn tag-constraint? [c]
+  (match? [:git :tag any] c))
+
+(fn branch-constraint? [c]
+  (match? [:git :branch any] c))
+
+(fn version-constraint? [c]
+  (match? [:git :version any] c))
+
+(fn* status-new-repo-impl)
+
+(fn+ status-new-repo-impl (where [repo-url constraint] (commit-constraint? constraint))
+  ;; cant check remote shas so just return an ok-commit and hope
+  (ok [:clone (git-commit.commit (. constraint 3))]))
+
+(fn+ status-new-repo-impl (where [repo-url constraint] (or (tag-constraint? constraint)
+                                                           (branch-constraint? constraint)
+                                                           (version-constraint? constraint)))
   (result-let [_ (yield "fetching remote refs")
                remote-commits (result->> (git-tasks.ls-remote repo-url)
                                          (ref-lines->commits))]
@@ -30,29 +49,80 @@
       (ok [:clone target-commit])
       (err (fmt "no commit satisfies %s" constraint)))))
 
+(fn* status-existing-repo-impl)
 
-(fn status-existing-repo-impl [path repo-url constraint]
-  ;; TODO check that current repo origin matches given repo-url
+(fn+ status-existing-repo-impl (where [path repo-url constraint] (commit-constraint? constraint))
+  ;; commit shas can't actually check, that a sha exists on a remote so we just
+  ;; see if the local head matches the requested, otherwise assume we need to
+  ;; sync.
+  (vim.pretty_print path repo-url constraint)
+  (result-let [_ (yield "checking local sha")
+               HEAD-sha (git-tasks.HEAD-sha path)
+               _ (yield "reticulating splines")
+               HEAD-commit (git-commit.commit HEAD-sha)]
+    (if (satisfies-constraint? constraint HEAD-commit)
+      (ok [:hold HEAD-commit])
+      (ok [:sync (git-commit.commit (. constraint 3))]))))
+
+(fn+ status-existing-repo-impl (where [path repo-url constraint]
+                                      (or (tag-constraint? constraint)
+                                          (branch-constraint? constraint)))
+  ;; tags and branches should have only one sha value (as we discard ^{} peeled)
+  ;; so we're pretty ok to just fetch remotes, see if our curret head
+  ;; matches any and if that matches the constraint, otherwise we need to
+  ;; sync.
   (result-let [_ (yield "checking local sha")
                HEAD-sha (git-tasks.HEAD-sha path)
                _ (yield "fetching remote refs")
                remote-commits (result->> (git-tasks.ls-remote repo-url)
                                          (ref-lines->commits))
                _ (yield "reticulating splines")
-               ;; see if current head matches any possible constrainable commits
-               ;; note that one sha may map to multiple tags or branches.
-               HEAD-commits (-> (enum.filter #(= HEAD-sha $2.sha) remote-commits)
-                                ;; check against raw sha too for commit constraint
-                                (enum.append$ (git-commit.commit HEAD-sha)))]
-    (if (enum.any? #(satisfies-constraint? constraint $2) HEAD-commits)
-      ;; currently satisfied, so all done
-      (ok [:hold (->> (enum.filter #(satisfies-constraint? constraint $2) HEAD-commits)
-                      (enum.first))])
-      ;; unsatisfied, can we find one to work?
+               ;; Get tags and branches from remote commits, see if our current
+               ;; head matches any of them and construct a commit if so, then
+               ;; see if our current head-commit passes our constraint, otherwise
+               ;; check all remotes for one that might.
+               ;; Note, we get a plural of commits, as multiple branches and
+               ;; tags may point to the same sha.
+               HEAD-commits (->> remote-commits
+                                 (enum.filter #(and (or (not-nil? $2.branch)
+                                                        (not-nil? $2.tag))
+                                               (= HEAD-sha $2.sha)))
+                                 (enum.filter #(satisfies-constraint? constraint $2)))]
+    (if (enum.hd HEAD-commits)
+      ;; One of the head commits satisfies the constraint. This *should* only be one-long
+      ;; as branches and tags should be unique in name, if not in sha...
+      (ok [:hold (enum.hd HEAD-commits)])
+      ;; Current head did not satisfy, so we need to see if any remotes *do* satisfy
       (if-some-let [target-commit (solve-constraint constraint remote-commits)]
         ;; TODO: return current head, as per constraint if possible (ver for ver, etc) for UI
         (ok [:sync target-commit])
         (err (fmt "no commit satisfies %s" constraint))))))
+
+(fn+ status-existing-repo-impl (where [path repo-url constraint] (version-constraint? constraint))
+  ;; Version constraints can be checked similar to tags and branches, except that we must 
+  ;; watch out for under-eager satisfing constraints. Given a constraint >= 3,
+  ;; an on disk check out of 3 and a remote of 5, both 3 and 5 satisfy, but 3
+  ;; exists on disk and it's easy to see that and declare no work need be done.
+  (result-let [_ (yield "checking local sha")
+               HEAD-sha (git-tasks.HEAD-sha path)
+               _ (yield "fetching remote refs")
+               remote-commits (result->> (git-tasks.ls-remote repo-url)
+                                         (ref-lines->commits))
+               _ (yield "reticulating splines")]
+    ;; this will give us the *best* satisaction result (newest version)
+    (if-some-let [target-commit (solve-constraint constraint remote-commits)
+                  ;; Now we'll find any remote version commits that match our local HEAD
+                  HEAD-commits (->> remote-commits
+                                    (enum.filter #(and (not-nil? $2.version) (= HEAD-sha $2.sha)))
+                                    (enum.filter #(satisfies-constraint? constraint $2)))]
+      ;; if HEAD-commits contains the target-commit, then we already have the
+      ;; best checkout on disk and dont need to do any sync, otherwise we need to sync
+      (if (enum.any? #(= target-commit.sha $2.sha) HEAD-commits)
+        ;; TODO: return current head, as per constraint if possible (ver for ver, etc) for UI
+        (ok [:hold target-commit])
+        (ok [:sync target-commit]))
+      ;; or we never got a target commit
+      (err (fmt "no commit satisfies %s" constraint)))))
 
 (fn detect-kind [repo-url path constraint]
   (result-> (yield "starting git-status workflow")
