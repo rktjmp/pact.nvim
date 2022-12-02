@@ -11,13 +11,15 @@
 `pact` is a *semver focused*, *pessimistic* plugin manager for Neovim.
 
 <div align="center">
-<img src="https://user-images.githubusercontent.com/866010/205318053-9d29892d-6307-4dfd-a22f-dfc2af335f85.gif" style="width: 80%" alt="pact.nvim demo"/>
+<img src="https://user-images.githubusercontent.com/866010/205318053-9d29892d-6307-4dfd-a22f-dfc2af335f85.gif"
+     style="width: 80%"
+     alt="pact.nvim demo"/>
 </div>
 
 ## Goals
 
--  `pact` (currently) aims for an intentionally reduced configuration API,
-   think `paq-nvim` not `packer.nvim`.
+- `pact` (currently) aims for an intentionally reduced configuration API,
+  think `paq-nvim` not `packer.nvim`.
 
 ## Anti Goals
 
@@ -70,6 +72,8 @@ You may also open `pact` in your own (non-split) window by passing `win` and
   `master`), you must explicitly define it when pinning to a branch.
 
 ## TODO
+
+Expect things to mostly improve, sometims change.
 
 [https://github.com/rktjmp/pact.nvim/issues/1](https://github.com/rktjmp/pact.nvim/issues/1)
 
