@@ -45,7 +45,7 @@
   (where [])
   (new {})
   (where [{: ?concurrency-limit}])
-  {:concurrency-limit (or ?concurrency-limit 10)
+  {:concurrency-limit (or ?concurrency-limit 5)
    :queue []
    :active []
    :idle-handle nil})
