@@ -1,5 +1,5 @@
 <div align="center">
-<img src="pact.png" style="width: 80%" alt="pact.nvim logo"/>
+<img src="pact.png" style="width: 100%" alt="pact.nvim logo"/>
 </div>
 
 # `pact`
@@ -12,18 +12,9 @@
 
 <div align="center">
 <img src="https://user-images.githubusercontent.com/866010/205425753-7a68dfb1-66b5-4c5d-ae16-8ffbca648657.gif"
-     style="width: 80%"
+     style="width: 100%"
      alt="pact.nvim demo"/>
 </div>
-
-## Goals
-
-- `pact` (currently) aims for an intentionally reduced configuration API,
-  think `paq-nvim` not `packer.nvim`.
-
-## Anti Goals
-
-- Becoming the next packer.nvim
 
 ## Making Pacts
 
@@ -72,7 +63,7 @@ You may also open `pact` in your own (non-split) window by passing `win` and
 
 ## TODO
 
-Expect things to mostly improve, sometims change.
+Expect things to mostly improve, sometimes change.
 
 [https://github.com/rktjmp/pact.nvim/issues/1](https://github.com/rktjmp/pact.nvim/issues/1)
 
