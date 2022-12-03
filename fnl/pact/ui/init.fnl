@@ -296,7 +296,7 @@
 
 
 (fn exec-keymap-cc [ui]
-  (if (enum.any? #(= :staged $2.state) ui.plugins)
+  (if (enum.any? #(= :staged $2.state) ui.plugins-meta)
     (exec-commit ui)
     (vim.notify "Nothing staged, refusing to commit")))
 
