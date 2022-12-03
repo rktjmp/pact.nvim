@@ -97,18 +97,28 @@
                                         [(enum.append$ lines new-lines)
                                          (enum.append$ extmarks new-extmarks)]))
                                     [[] []] lines)]
+    (when (enum.any? #(string.match $2 "\n") text)
+      (print "pact.ui text had unexpected new lines")
+      (print (vim.inspect text)))
     (api.nvim_buf_set_lines ui.buf 0 -1 false text)
     (enum.map (fn [i line-marks]
                 (enum.map (fn [_ [start stop hl]]
-                               (api.nvim_buf_add_highlight ui.buf ui.ns-id hl (- i 1) start stop))
+                            (api.nvim_buf_add_highlight ui.buf ui.ns-id hl (- i 1) start stop))
                           line-marks))
               extmarks)
     (enum.map #(if $2.log-open
                  (api.nvim_buf_set_extmark ui.buf ui.ns-id (- $2.on-line 1) 0
                                            {:virt_lines (enum.map #(log-line->chunks $2)
                                                                   $2.log)}))
-              ui.plugins-meta)
-    ))
+              ui.plugins-meta))
+  ;; seems we need this?
+  (vim.cmd.redraw)
+  (tset ui :will-render false))
+
+(fn schedule-redraw [ui]
+  (when (not ui.will-render)
+    (tset ui :will-render true)
+    (vim.schedule #(output ui))))
 
 (fn exec-commit [ui]
   (fn make-wf [how plugin commit]
@@ -124,19 +134,19 @@
                                                         (match how :clone :cloned :sync :synced)
                                                         commit))
                          (unsubscribe wf handler)
-                         (output ui))
+                         (schedule-redraw ui))
 
                        (where [[:err e]])
                        (let [meta (. ui :plugins-meta plugin.id)]
                          (set meta.state :error)
                          (enum.append$ meta.events e)
                          (unsubscribe wf handler)
-                         (output ui))
+                         (schedule-redraw ui))
 
                        (where [msg] (string? msg))
                        (let [meta (. ui :plugins-meta wf.id)]
                          (enum.append$ meta.events msg)
-                         (output ui))
+                         (schedule-redraw ui))
                        (where _)
                        nil)]
       (subscribe wf handler)
@@ -149,7 +159,7 @@
                    (let [wf (make-wf (. meta.action 1) meta.plugin (. meta.action 2))]
                      (scheduler.add-workflow ui.scheduler wf)
                      (tset meta :state :active)))))
-  (output ui))
+  (schedule-redraw ui))
 
 (fn exec-diff [ui meta]
   (fn make-wf [plugin commit]
@@ -160,30 +170,84 @@
                          (tset meta :log log)
                          (tset meta :log-open true)
                          (unsubscribe wf handler)
-                         (output ui))
+                         (schedule-redraw ui))
 
                        (where [[:err e]])
                        (let [meta (. ui :plugins-meta plugin.id)]
                          ; (set meta.state :error)
                          (enum.append$ meta.events e)
                          (unsubscribe wf handler)
-                         (output ui))
+                         (schedule-redraw ui))
 
                        (where [msg] (string? msg))
                        (let [meta (. ui :plugins-meta wf.id)]
                          (enum.append$ meta.events msg)
-                         (output ui))
+                         (schedule-redraw ui))
                        (where _)
                        nil)]
       (subscribe wf handler)
       (values wf)))
   (let [wf (make-wf meta.plugin (. meta.action 2))]
     (scheduler.add-workflow ui.scheduler wf))
-  (output ui))
+  (schedule-redraw ui))
+
+(fn exec-status [ui]
+  (fn make-status-wf [plugin]
+    (let [wf (status-wf.new plugin.id
+                            (. plugin.source 2)
+                            plugin.package-path
+                            plugin.constraint)
+          handler (fn* handler
+                    (where [[:ok [:hold commit] ?maybe-latest]])
+                    (let [meta (. ui :plugins-meta plugin.id)]
+                      (tset meta :state :up-to-date)
+                      (enum.append$ meta.events (if ?maybe-latest
+                                                  (fmt "(at %s) (latest: %s)" commit ?maybe-latest)
+                                                  (fmt "(at %s)" commit)))
+                      (unsubscribe wf handler)
+                      (schedule-redraw ui))
+
+                    (where [[:ok [action commit] ?maybe-latest]])
+                    (let [meta (. ui :plugins-meta plugin.id)]
+                      (tset meta :action [action commit])
+                      (tset meta :state :unstaged)
+                      (enum.append$ meta.events (if ?maybe-latest
+                                                  (fmt "(%s %s) (latest: %s)" action commit ?maybe-latest)
+                                                  (fmt "(%s %s)" action commit)))
+                      (unsubscribe wf handler)
+                      (schedule-redraw ui))
+
+                    (where [[:err e]])
+                    (let [meta (. ui :plugins-meta plugin.id)]
+                      (set meta.state :error)
+                      (enum.append$ meta.events e)
+                      (unsubscribe wf handler)
+                      (schedule-redraw ui))
+
+                    (where [msg] (string? msg))
+                    (let [meta (. ui :plugins-meta wf.id)]
+                      (enum.append$ meta.events msg)
+                      (schedule-redraw ui))
+
+                    (where [future] (thread? future))
+                    (let [meta (. ui :plugins-meta wf.id)]
+                      (enum.append$ meta.events (.. (enum.hd meta.events) "."))
+                      (schedule-redraw ui))
+
+                    (where _)
+                    nil)]
+      (subscribe wf handler)
+      (values wf)))
+  (schedule-redraw ui)
+  (enum.map (fn [_ plugin]
+              (scheduler.add-workflow ui.scheduler (make-status-wf plugin)))
+            ui.plugins))
+
 
 (fn exec-keymap-cc [ui]
-  ;; TODO warn if zero staged
-  (exec-commit ui))
+  (if (enum.any? #(= :staged $2.state) ui.plugins)
+    (exec-commit ui)
+    (vim.notify "Nothing staged, refusing to commit")))
 
 (fn exec-keymap-s [ui]
   (let [[line _] (api.nvim_win_get_cursor ui.win)
@@ -191,7 +255,7 @@
     (if (and meta (= :unstaged meta.state))
       (do
         (tset meta :state :staged)
-        (output ui))
+        (schedule-redraw ui))
       (vim.notify "May only stage unstaged plugins"))))
 
 (fn exec-keymap-u [ui]
@@ -200,7 +264,7 @@
     (if (and meta (= :staged meta.state))
       (do
         (tset meta :state :unstaged)
-        (output ui))
+        (schedule-redraw ui))
       (vim.notify "May only unstage staged plugins"))))
 
 
@@ -213,57 +277,9 @@
       (if meta.log
         (do
           (tset meta :log-open (not meta.log-open))
-          (output ui))
+          (schedule-redraw ui))
         (exec-diff ui meta))
       (vim.notify "May only view diff of staged or unstaged sync-able plugins"))))
-
-(fn exec-status [ui]
-  (fn make-status-wf [plugin]
-    (let [wf (status-wf.new plugin.id
-                            (. plugin.source 2)
-                            plugin.package-path
-                            plugin.constraint)
-          handler (fn* handler
-                    (where [[:ok [:hold commit]]])
-                    (let [meta (. ui :plugins-meta plugin.id)]
-                      (tset meta :state :up-to-date)
-                      (enum.append$ meta.events (fmt "(at %s)" commit))
-                      (unsubscribe wf handler)
-                      (output ui))
-
-                    (where [[:ok [action commit]]])
-                    (let [meta (. ui :plugins-meta plugin.id)]
-                      (tset meta :action [action commit])
-                      (tset meta :state :unstaged)
-                      (enum.append$ meta.events (fmt "(%s %s)" action commit))
-                      (unsubscribe wf handler)
-                      (output ui))
-
-                    (where [[:err e]])
-                    (let [meta (. ui :plugins-meta plugin.id)]
-                      (set meta.state :error)
-                      (enum.append$ meta.events e)
-                      (unsubscribe wf handler)
-                      (output ui))
-
-                    (where [msg] (string? msg))
-                    (let [meta (. ui :plugins-meta wf.id)]
-                      (enum.append$ meta.events msg)
-                      (output ui))
-
-                    (where [future] (thread? future))
-                    (let [meta (. ui :plugins-meta wf.id)]
-                      (enum.append$ meta.events (.. (enum.hd meta.events) "."))
-                      (output ui))
-
-                    (where _)
-                    nil)]
-      (subscribe wf handler)
-      (values wf)))
-  (output ui)
-  (enum.map (fn [_ plugin]
-              (scheduler.add-workflow ui.scheduler (make-status-wf plugin)))
-            ui.plugins))
 
 (fn M.attach [win buf plugins]
   "Attach user-provided win+buf to pact view"
