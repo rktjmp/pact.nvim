@@ -247,11 +247,11 @@
                     (where [event] (ok? event))
                     (let [(command ?maybe-latest) (result.unwrap event)
                           text (-> (match command
-                                     [:hold commit] (fmt "(at %s)" commit)
-                                     [action commit] (fmt "(%s %s)" action commit))
+                                     [:hold commit] (fmt "(at %s" commit)
+                                     [action commit] (fmt "(%s %s" action commit))
                                    (#(match ?maybe-latest
-                                       commit (fmt "%s (latest: %s)" $1 commit)
-                                       nil $1)))]
+                                       commit (fmt "%s, latest: %s)" $1 commit)
+                                       nil (fmt "%s)" $1))))]
                       (enum.append$ meta.events event)
                       (set meta.text text)
                       (set meta.progress nil)
