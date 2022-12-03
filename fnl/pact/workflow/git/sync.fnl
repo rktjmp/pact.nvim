@@ -15,10 +15,12 @@
   (= :directory (fs-tasks.what-is-at (.. path "/.git"))))
 
 (fn sync-repo-impl [path sha]
-  (result-let [_ (yield "fetching sha")
+  (result-let [_ (yield (fmt "git fetch %s" sha))
                _ (git-tasks.fetch-sha path sha)
-               _ (yield "checking out sha")
-               _ (git-tasks.checkout-sha path sha)]
+               _ (yield (fmt "git checkout %s" sha))
+               _ (git-tasks.checkout-sha path sha)
+               _ (yield (fmt "git submodules update"))
+               _ (git-tasks.update-submodules path)]
     (ok)))
 
 (fn sync [path sha]

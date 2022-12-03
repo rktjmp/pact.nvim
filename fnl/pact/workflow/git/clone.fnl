@@ -22,7 +22,9 @@
                _ (yield "fetching sha")
                _ (git-tasks.fetch-sha path sha)
                _ (yield "checking out sha")
-               _ (git-tasks.checkout-sha path sha)]
+               _ (git-tasks.checkout-sha path sha)
+               _ (yield "updating submodules")
+               _ (git-tasks.update-submodules path)]
     (ok sha)))
 
 (fn clone [repo-url sha path]
