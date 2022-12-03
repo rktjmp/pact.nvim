@@ -23,8 +23,11 @@
   (setmetatable plugin {:__tostring #(fmt "%s@%s" plugin.source plugin.constraint)}))
 
 (fn set-package-path [plugin]
-  (let [dir (-> (.. (vim.fn.stdpath :data) :/site/pack/pact/ (if plugin.opt? :opt :start))
-                (.. :/ plugin.forge-name "-" (string.gsub plugin.name "/" "-")))]
+  (let [[_ source] plugin.source
+        folder (-> (. plugin.source 2)
+                   (string.match ".+/([^/]-)$"))
+        dir (-> [(vim.fn.stdpath :data) :site/pack/pact (if plugin.opt? :opt :start) folder]
+                (table.concat "/"))]
     (enum.set$ plugin :package-path dir)))
 
 (fn opts->constraint [opts]
