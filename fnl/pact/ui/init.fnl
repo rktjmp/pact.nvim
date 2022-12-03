@@ -4,6 +4,7 @@
 (use enum :pact.lib.ruin.enum
      scheduler :pact.workflow.scheduler
      {: subscribe : unsubscribe} :pact.pubsub
+     {: ok? : err?} :pact.lib.ruin.result
      result :pact.lib.ruin.result
      api vim.api
      {:format fmt} string
@@ -44,6 +45,21 @@
    [[";;   =  - view git log (staged/unstaged only)" :PactComment]]
    [["" nil]]])
 
+(fn rate-limited-inc [[t n]]
+  ;; only increment n at a fixed fps
+  ;; uv.now increments only at the event loop start, but this is ok for us.
+  (let [every-n-ms (/ 1000 6)
+        now (vim.loop.now)]
+    (if (< every-n-ms (- now t))
+      [now (+ n 1)]
+      [t n])))
+
+(fn progress-symbol [progress]
+  (match progress
+    nil ""
+    [_ n] (let [symbols [:◐ :◓ :◑ :◒ ]]
+            (. symbols (+ 1 (% n (length symbols)))))))
+
 (fn render-section [ui section-name previous-lines]
   (let [relevant-plugins (->> (enum.filter #(= $2.state section-name) ui.plugins-meta)
                               (enum.map #$2)
@@ -52,7 +68,9 @@
                                  (let [name-length (length meta.plugin.name)
                                        line [[meta.plugin.name (highlight-for section-name :name)]
                                              [(string.rep " " (- (+ 1 ui.layout.max-name-length) name-length)) nil]
-                                             [(enum.last meta.events) (highlight-for section-name :text)]]]
+                                             [(.. (or meta.text "did-not-set-text")
+                                                  (progress-symbol meta.progress))
+                                              (highlight-for section-name :text)]]]
                                    ;; todo ugly way to set offsets here
                                    (set meta.on-line (+ 2 (length previous-lines) (length lines)))
                                    (enum.append$ lines line)))
@@ -120,33 +138,47 @@
     (tset ui :will-render true)
     (vim.schedule #(output ui))))
 
+
 (fn exec-commit [ui]
   (fn make-wf [how plugin commit]
     (let [wf (match how
                :clone (clone-wf.new plugin.id plugin.package-path (. plugin.source 2) commit.sha)
                :sync (sync-wf.new plugin.id plugin.package-path commit.sha)
                other (error (fmt "unknown staging action %s" other)))
+          meta (. ui :plugins-meta plugin.id)
           handler (fn* handler
-                       (where [[:ok]])
-                       (let [meta (. ui :plugins-meta plugin.id)]
-                         (tset meta :state :updated)
-                         (enum.append$ meta.events (fmt "(%s %s)"
-                                                        (match how :clone :cloned :sync :synced)
-                                                        commit))
+                       (where [event] (ok? event))
+                       (do
+                         (enum.append$ meta.events event)
+                         (set meta.state :updated)
+                         (set meta.text (fmt "(%s %s)"
+                                             (match how :clone :cloned :sync :synced)
+                                             commit))
+                         (set meta.progress nil)
                          (unsubscribe wf handler)
                          (schedule-redraw ui))
 
-                       (where [[:err e]])
-                       (let [meta (. ui :plugins-meta plugin.id)]
+                       (where [event] (err? event))
+                       (let [[_ e] event]
+                         (enum.append$ meta.events event)
                          (set meta.state :error)
-                         (enum.append$ meta.events e)
+                         (set meta.text e)
+                         (set meta.progress nil)
                          (unsubscribe wf handler)
                          (schedule-redraw ui))
 
                        (where [msg] (string? msg))
-                       (let [meta (. ui :plugins-meta wf.id)]
+                       (do
                          (enum.append$ meta.events msg)
+                         (set meta.text msg)
+                         (set meta.progress nil)
                          (schedule-redraw ui))
+
+                       (where [future] (thread? future))
+                       (do
+                         (set meta.progress (rate-limited-inc (or meta.progress [0 0])))
+                         (schedule-redraw ui))
+
                        (where _)
                        nil)]
       (subscribe wf handler)
@@ -164,25 +196,38 @@
 (fn exec-diff [ui meta]
   (fn make-wf [plugin commit]
     (let [wf (diff-wf.new plugin.id plugin.package-path commit.sha)
+          previous-text meta.text
+          meta (. ui :plugins-meta plugin.id)
           handler (fn* handler
-                       (where [[:ok log]])
-                       (let [meta (. ui :plugins-meta plugin.id)]
-                         (tset meta :log log)
-                         (tset meta :log-open true)
+                       (where [event] (ok? event))
+                       (let [[_ log] event]
+                         (enum.append$ meta.events event)
+                         (set meta.text previous-text)
+                         (set meta.progress nil)
+                         (set meta.log log)
+                         (set meta.log-open true)
                          (unsubscribe wf handler)
                          (schedule-redraw ui))
 
-                       (where [[:err e]])
-                       (let [meta (. ui :plugins-meta plugin.id)]
-                         ; (set meta.state :error)
-                         (enum.append$ meta.events e)
+                       (where [event] (err? event))
+                       (let [[_ e] event]
+                         (enum.append$ meta.events event)
+                         (set meta.text e)
+                         (set meta.progress nil)
                          (unsubscribe wf handler)
                          (schedule-redraw ui))
 
                        (where [msg] (string? msg))
                        (let [meta (. ui :plugins-meta wf.id)]
                          (enum.append$ meta.events msg)
+                         (tset meta :text msg)
                          (schedule-redraw ui))
+
+                       (where [future] (thread? future))
+                       (do
+                         (set meta.progress (rate-limited-inc (or meta.progress [0 0])))
+                         (schedule-redraw ui))
+
                        (where _)
                        nil)]
       (subscribe wf handler)
@@ -197,41 +242,47 @@
                             (. plugin.source 2)
                             plugin.package-path
                             plugin.constraint)
+          meta (. ui :plugins-meta plugin.id)
           handler (fn* handler
-                    (where [[:ok [:hold commit] ?maybe-latest]])
-                    (let [meta (. ui :plugins-meta plugin.id)]
-                      (tset meta :state :up-to-date)
-                      (enum.append$ meta.events (if ?maybe-latest
-                                                  (fmt "(at %s) (latest: %s)" commit ?maybe-latest)
-                                                  (fmt "(at %s)" commit)))
+                    (where [event] (ok? event))
+                    (let [(command ?maybe-latest) (result.unwrap event)
+                          text (-> (match command
+                                     [:hold commit] (fmt "(at %s)" commit)
+                                     [action commit] (fmt "(%s %s)" action commit))
+                                   (#(match ?maybe-latest
+                                       commit (fmt "%s (latest: %s)" $1 commit)
+                                       nil $1)))]
+                      (enum.append$ meta.events event)
+                      (set meta.text text)
+                      (set meta.progress nil)
+                      (match command
+                        [:hold commit] (do
+                                         (set meta.state :up-to-date))
+                        [action commit] (do
+                                          (set meta.state :unstaged)
+                                          (set meta.action [action commit])))
                       (unsubscribe wf handler)
                       (schedule-redraw ui))
 
-                    (where [[:ok [action commit] ?maybe-latest]])
-                    (let [meta (. ui :plugins-meta plugin.id)]
-                      (tset meta :action [action commit])
-                      (tset meta :state :unstaged)
-                      (enum.append$ meta.events (if ?maybe-latest
-                                                  (fmt "(%s %s) (latest: %s)" action commit ?maybe-latest)
-                                                  (fmt "(%s %s)" action commit)))
-                      (unsubscribe wf handler)
-                      (schedule-redraw ui))
-
-                    (where [[:err e]])
-                    (let [meta (. ui :plugins-meta plugin.id)]
+                    (where [event] (err? event))
+                    (do
                       (set meta.state :error)
-                      (enum.append$ meta.events e)
+                      (enum.append$ meta.events event)
+                      (set meta.progress nil)
+                      (set meta.text (result.unwrap event))
                       (unsubscribe wf handler)
                       (schedule-redraw ui))
 
                     (where [msg] (string? msg))
-                    (let [meta (. ui :plugins-meta wf.id)]
+                    (do
                       (enum.append$ meta.events msg)
+                      (set meta.progress nil)
+                      (set meta.text msg)
                       (schedule-redraw ui))
 
                     (where [future] (thread? future))
-                    (let [meta (. ui :plugins-meta wf.id)]
-                      (enum.append$ meta.events (.. (enum.hd meta.events) "."))
+                    (do
+                      (set meta.progress (rate-limited-inc (or meta.progress [0 0])))
                       (schedule-redraw ui))
 
                     (where _)
@@ -297,10 +348,10 @@
 
     ;; try to run...
     (if ok-plugins
-      (let [plugins-meta (-> (enum.map #[$2.id {:events ["waiting for scheduler"]
+      (let [plugins-meta (-> (enum.map #[$2.id {:events []
+                                                :text "waiting for scheduler"
                                                 :order $1
                                                 :state :waiting
-                                                :actions []
                                                 :action nil
                                                 :plugin $2}]
                                        ok-plugins)
