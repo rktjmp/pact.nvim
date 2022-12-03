@@ -29,7 +29,7 @@ if vim.fn.empty(vim.fn.glob(pact_path)) > 0 then
     'git',
     'clone',
     '--depth', '1',
-    '--branch', 'v0.0.2',
+    '--branch', 'v0.0.4',
     'https://github.com/rktjmp/pact.nvim',
     pact_path
   })
@@ -42,7 +42,6 @@ And somewhere in your configuration,
 ```lua
 local pact = require("pact")
 local github = pact.github
-
 github("rktjmp/pact.nvim", ">= 0.0.0")
 ```
 
