@@ -77,6 +77,11 @@
     (0 _ _) (values sha)
     (code _ err) (values nil (dump-err code err))))
 
+(fn update-submodules [repo-path]
+  (match (await (run :git [:submodule :update :--init :--recursive] repo-path const.ENV))
+    (0 _ _) (values sha)
+    (code _ err) (values nil (dump-err code err))))
+
 (fn shallow? [repo-path]
   (match (await (run :git [:rev-parse :--is-shallow-repository] repo-path const.ENV))
     (0 [:false] _) false
@@ -103,6 +108,7 @@
  : fetch-sha
  : fetch
  : checkout-sha
+ : update-submodules
  : shallow?
  : unshallow
  : log-diff}
