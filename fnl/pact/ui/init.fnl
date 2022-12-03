@@ -155,6 +155,8 @@
                                              (match how :clone :cloned :sync :synced)
                                              commit))
                          (set meta.progress nil)
+                         ;; TODO: packloadall! ?
+                         (vim.schedule #(vim.cmd "silent! helptags ALL"))
                          (unsubscribe wf handler)
                          (schedule-redraw ui))
 
