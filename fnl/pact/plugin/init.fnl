@@ -50,7 +50,7 @@
 
 (fn make [basic opts]
   (doto basic
-    (tset :opt? (not-nil? (or (. opts :opt?) (. opts :opt))))
+    (tset :opt? (= true (or (. opts :opt?) (. opts :opt))))
     (tset :id (generate-id))
     (set-package-path)
     (set-tostring)))
