@@ -16,6 +16,38 @@
      alt="pact.nvim demo"/>
 </div>
 
+## Install
+
+To automatically install `pact`,
+
+```lua
+-- in your init.lua
+local pact_path = vim.fn.stdpath('data') .. '/site/pack/pact/start/pact.nvim'
+if vim.fn.empty(vim.fn.glob(pact_path)) > 0 then
+  print("Could not find pact.nvim, cloning new copy to", pact_path)
+  vim.fn.system({
+    'git',
+    'clone',
+    '--depth', '1',
+    '--branch', 'v0.0.2',
+    'https://github.com/rktjmp/pact.nvim',
+    pact_path
+  })
+  vim.cmd("helptags " .. pact_path .. "/doc")
+end
+```
+
+And somewhere in your configuration,
+
+```lua
+local pact = require("pact")
+local github = pact.github
+
+github("rktjmp/pact.nvim", ">= 0.0.0")
+```
+
+Then run `:Pact` to open `pact` (and probably update `pact`).
+
 ## Making Pacts
 
 `pact` currently provides the following forge shortcuts:
