@@ -32,6 +32,18 @@
 (fn version-constraint? [c]
   (match? [:git :version any] c))
 
+(fn same-sha? [a b]
+  (match [a b]
+    [{: sha} {: sha}] true
+    _ false))
+
+(fn maybe-latest-version [remote-commits]
+  (solve-constraint [:git :version "> 0.0.0"] remote-commits))
+
+(fn maybe-newer-commit [target remote-commits]
+  (let [?latest (maybe-latest-version remote-commits)]
+    (if (not (same-sha? target ?latest)) ?latest)))
+
 (fn* status-new-repo-impl)
 
 (fn+ status-new-repo-impl (where [repo-url constraint] (commit-constraint? constraint))
@@ -46,7 +58,7 @@
                                          (ref-lines->commits))]
     (yield "solving for constraint")
     (if-some-let [target-commit (solve-constraint constraint remote-commits)]
-      (ok [:clone target-commit])
+      (ok [:clone target-commit] (maybe-latest-version remote-commits))
       (err (fmt "no commit satisfies %s" constraint)))))
 
 (fn* status-existing-repo-impl)
@@ -57,11 +69,14 @@
   ;; sync.
   (result-let [_ (yield "checking local sha")
                HEAD-sha (git-tasks.HEAD-sha path)
+               _ (yield "fetching remote refs")
+               remote-commits (result->> (git-tasks.ls-remote repo-url)
+                                         (ref-lines->commits))
                _ (yield "reticulating splines")
                HEAD-commit (git-commit.commit HEAD-sha)]
     (if (satisfies-constraint? constraint HEAD-commit)
-      (ok [:hold HEAD-commit])
-      (ok [:sync (git-commit.commit (. constraint 3))]))))
+      (ok [:hold HEAD-commit] (maybe-latest-version remote-commits))
+      (ok [:sync (git-commit.commit (. constraint 3))] (maybe-latest-version remote-commits)))))
 
 (fn+ status-existing-repo-impl (where [path repo-url constraint]
                                       (or (tag-constraint? constraint)
@@ -85,16 +100,16 @@
                HEAD-commits (->> remote-commits
                                  (enum.filter #(and (or (not-nil? $2.branch)
                                                         (not-nil? $2.tag))
-                                               (= HEAD-sha $2.sha)))
+                                                (= HEAD-sha $2.sha)))
                                  (enum.filter #(satisfies-constraint? constraint $2)))]
     (if (enum.hd HEAD-commits)
       ;; One of the head commits satisfies the constraint. This *should* only be one-long
       ;; as branches and tags should be unique in name, if not in sha...
-      (ok [:hold (enum.hd HEAD-commits)])
+      (ok [:hold (enum.hd HEAD-commits)] (maybe-latest-version remote-commits))
       ;; Current head did not satisfy, so we need to see if any remotes *do* satisfy
       (if-some-let [target-commit (solve-constraint constraint remote-commits)]
         ;; TODO: return current head, as per constraint if possible (ver for ver, etc) for UI
-        (ok [:sync target-commit])
+        (ok [:sync target-commit] (maybe-latest-version remote-commits))
         (err (fmt "no commit satisfies %s" constraint))))))
 
 (fn+ status-existing-repo-impl (where [path repo-url constraint] (version-constraint? constraint))
@@ -118,8 +133,11 @@
       ;; best checkout on disk and dont need to do any sync, otherwise we need to sync
       (if (enum.any? #(= target-commit.sha $2.sha) HEAD-commits)
         ;; TODO: return current head, as per constraint if possible (ver for ver, etc) for UI
-        (ok [:hold target-commit])
-        (ok [:sync target-commit]))
+        ;; we explictly look for a newer version and only show it *if* its newer
+        ;; vs other types where we always show any semver that shows up, to encourage
+        ;; its usage.
+        (ok [:hold target-commit] (maybe-newer-commit target-commit remote-commits))
+        (ok [:sync target-commit] (maybe-newer-commit target-commit remote-commits)))
       ;; or we never got a target commit
       (err (fmt "no commit satisfies %s" constraint)))))
 
