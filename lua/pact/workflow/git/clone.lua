@@ -49,10 +49,16 @@ local function clone_repo_impl(repo_url, sha, path)
             local function _26_(_4)
               local function _27_(_5)
                 local function _28_(_6)
-                  local function _29_()
-                    return ok(sha)
+                  local function _29_(_7)
+                    local function _30_(_8)
+                      local function _31_()
+                        return ok(sha)
+                      end
+                      return unit_20_(_31_())
+                    end
+                    return unit_20_(bind_19_(unit_20_(git_tasks["update-submodules"](path)), _30_))
                   end
-                  return unit_20_(_29_())
+                  return unit_20_(bind_19_(unit_20_(yield("updating submodules")), _29_))
                 end
                 return unit_20_(bind_19_(unit_20_(git_tasks["checkout-sha"](path, sha)), _28_))
               end
@@ -71,53 +77,53 @@ local function clone_repo_impl(repo_url, sha, path)
   return bind_19_(unit_20_(yield("init new local repo")), _21_)
 end
 local function clone(repo_url, sha, path)
-  local _let_30_ = require("pact.lib.ruin.result")
-  local map_ok_24_auto = _let_30_["map-ok"]
-  local result_25_auto = _let_30_["result"]
-  local unwrap_26_auto = _let_30_["unwrap"]
-  local function _31_(_241)
+  local _let_32_ = require("pact.lib.ruin.result")
+  local map_ok_24_auto = _let_32_["map-ok"]
+  local result_25_auto = _let_32_["result"]
+  local unwrap_26_auto = _let_32_["unwrap"]
+  local function _33_(_241)
     return (_241 or absolute_path_3f(path) or nil or fmt("plugin path must be absolute, got %s", path))
   end
-  local function _32_(_241)
-    local function _33_()
+  local function _34_(_241)
+    local function _35_()
       if not dir_exists_3f(path) then
         return clone_repo_impl(repo_url, sha, path)
       else
         return err(fmt("unable to clone, directory %s already exists", path))
       end
     end
-    return _33_(_241)
+    return _35_(_241)
   end
-  return map_ok_24_auto(map_ok_24_auto(result_25_auto(yield("starting git-clone workflow")), _31_), _32_)
+  return map_ok_24_auto(map_ok_24_auto(result_25_auto(yield("starting git-clone workflow")), _33_), _34_)
 end
 local __fn_2a_new_dispatch = {bodies = {}, help = {}}
 local new
-local function _39_(...)
+local function _41_(...)
   if (0 == #(__fn_2a_new_dispatch).bodies) then
     error(("multi-arity function " .. "new" .. " has no bodies"))
   else
   end
-  local _41_
+  local _43_
   do
     local f_74_auto = nil
     for __75_auto, match_3f_76_auto in ipairs((__fn_2a_new_dispatch).bodies) do
       if f_74_auto then break end
       f_74_auto = match_3f_76_auto(...)
     end
-    _41_ = f_74_auto
+    _43_ = f_74_auto
   end
-  if (nil ~= _41_) then
-    local f_74_auto = _41_
+  if (nil ~= _43_) then
+    local f_74_auto = _43_
     return f_74_auto(...)
-  elseif (_41_ == nil) then
+  elseif (_43_ == nil) then
     local view_77_auto
     do
-      local _42_, _43_ = pcall(require, "fennel")
-      if ((_42_ == true) and ((_G.type(_43_) == "table") and (nil ~= (_43_).view))) then
-        local view_77_auto0 = (_43_).view
+      local _44_, _45_ = pcall(require, "fennel")
+      if ((_44_ == true) and ((_G.type(_45_) == "table") and (nil ~= (_45_).view))) then
+        local view_77_auto0 = (_45_).view
         view_77_auto = view_77_auto0
-      elseif ((_42_ == false) and true) then
-        local __75_auto = _43_
+      elseif ((_44_ == false) and true) then
+        local __75_auto = _45_
         view_77_auto = (_G.vim.inspect or print)
       else
         view_77_auto = nil
@@ -129,32 +135,32 @@ local function _39_(...)
     return nil
   end
 end
-new = _39_
-local function _46_()
-  local function _47_()
+new = _41_
+local function _48_()
+  local function _49_()
     table.insert((__fn_2a_new_dispatch).help, "(where [id path repo-url sha])")
-    local function _48_(...)
+    local function _50_(...)
       if (4 == select("#", ...)) then
-        local _49_ = {...}
-        local function _50_(...)
-          local id_35_ = (_49_)[1]
-          local path_36_ = (_49_)[2]
-          local repo_url_37_ = (_49_)[3]
-          local sha_38_ = (_49_)[4]
+        local _51_ = {...}
+        local function _52_(...)
+          local id_37_ = (_51_)[1]
+          local path_38_ = (_51_)[2]
+          local repo_url_39_ = (_51_)[3]
+          local sha_40_ = (_51_)[4]
           return true
         end
-        if (((_G.type(_49_) == "table") and (nil ~= (_49_)[1]) and (nil ~= (_49_)[2]) and (nil ~= (_49_)[3]) and (nil ~= (_49_)[4])) and _50_(...)) then
-          local id_35_ = (_49_)[1]
-          local path_36_ = (_49_)[2]
-          local repo_url_37_ = (_49_)[3]
-          local sha_38_ = (_49_)[4]
-          local function _51_(id, path, repo_url, sha)
-            local function _52_()
+        if (((_G.type(_51_) == "table") and (nil ~= (_51_)[1]) and (nil ~= (_51_)[2]) and (nil ~= (_51_)[3]) and (nil ~= (_51_)[4])) and _52_(...)) then
+          local id_37_ = (_51_)[1]
+          local path_38_ = (_51_)[2]
+          local repo_url_39_ = (_51_)[3]
+          local sha_40_ = (_51_)[4]
+          local function _53_(id, path, repo_url, sha)
+            local function _54_()
               return clone(repo_url, sha, path)
             end
-            return new_workflow(id, _52_)
+            return new_workflow(id, _54_)
           end
-          return _51_
+          return _53_
         else
           return nil
         end
@@ -162,11 +168,11 @@ local function _46_()
         return nil
       end
     end
-    table.insert((__fn_2a_new_dispatch).bodies, _48_)
+    table.insert((__fn_2a_new_dispatch).bodies, _50_)
     return new
   end
-  do local _ = {_47_()} end
+  do local _ = {_49_()} end
   return new
 end
-setmetatable({nil, nil}, {__call = _46_})()
+setmetatable({nil, nil}, {__call = _48_})()
 return {new = new}

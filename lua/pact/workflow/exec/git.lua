@@ -213,23 +213,17 @@ local function checkout_sha(repo_path, sha)
     return nil
   end
 end
-local function shallow_3f(repo_path)
+local function update_submodules(repo_path)
   local _64_, _65_, _66_ = nil, nil, nil
   do
     local _let_67_ = require("pact.async-await")
     local await_wrap_3_auto = _let_67_["await-wrap"]
-    _64_, _65_, _66_ = await_wrap_3_auto(run, {"git", {"rev-parse", "--is-shallow-repository"}, repo_path, const.ENV})
+    _64_, _65_, _66_ = await_wrap_3_auto(run, {"git", {"submodule", "update", "--init", "--recursive"}, repo_path, const.ENV})
   end
-  if ((_64_ == 0) and ((_G.type(_65_) == "table") and ((_65_)[1] == "false")) and true) then
-    local _ = _66_
-    return false
-  elseif ((_64_ == 0) and ((_G.type(_65_) == "table") and ((_65_)[1] == "true")) and true) then
-    local _ = _66_
-    return true
-  elseif ((_64_ == 0) and (nil ~= _65_) and (nil ~= _66_)) then
-    local a = _65_
-    local b = _66_
-    return nil, dump_err(0, {a, b})
+  if ((_64_ == 0) and true and true) then
+    local _ = _65_
+    local _0 = _66_
+    return sha
   elseif ((nil ~= _64_) and true and (nil ~= _66_)) then
     local code = _64_
     local _ = _65_
@@ -239,17 +233,23 @@ local function shallow_3f(repo_path)
     return nil
   end
 end
-local function unshallow(repo_path)
+local function shallow_3f(repo_path)
   local _69_, _70_, _71_ = nil, nil, nil
   do
     local _let_72_ = require("pact.async-await")
     local await_wrap_3_auto = _let_72_["await-wrap"]
-    _69_, _70_, _71_ = await_wrap_3_auto(run, {"git", {"fetch", "--unshallow"}, repo_path, const.ENV})
+    _69_, _70_, _71_ = await_wrap_3_auto(run, {"git", {"rev-parse", "--is-shallow-repository"}, repo_path, const.ENV})
   end
-  if ((_69_ == 0) and (nil ~= _70_) and (nil ~= _71_)) then
+  if ((_69_ == 0) and ((_G.type(_70_) == "table") and ((_70_)[1] == "false")) and true) then
+    local _ = _71_
+    return false
+  elseif ((_69_ == 0) and ((_G.type(_70_) == "table") and ((_70_)[1] == "true")) and true) then
+    local _ = _71_
+    return true
+  elseif ((_69_ == 0) and (nil ~= _70_) and (nil ~= _71_)) then
     local a = _70_
     local b = _71_
-    return true
+    return nil, dump_err(0, {a, b})
   elseif ((nil ~= _69_) and true and (nil ~= _71_)) then
     local code = _69_
     local _ = _70_
@@ -259,26 +259,17 @@ local function unshallow(repo_path)
     return nil
   end
 end
-local function log_diff(repo_path, old_sha, new_sha)
+local function unshallow(repo_path)
   local _74_, _75_, _76_ = nil, nil, nil
   do
     local _let_77_ = require("pact.async-await")
     local await_wrap_3_auto = _let_77_["await-wrap"]
-    _74_, _75_, _76_ = await_wrap_3_auto(run, {"git", {"log", "--oneline", fmt("%s..%s", old_sha, new_sha)}, repo_path, const.ENV})
+    _74_, _75_, _76_ = await_wrap_3_auto(run, {"git", {"fetch", "--unshallow"}, repo_path, const.ENV})
   end
-  local function _78_()
-    local log = _75_
-    local _ = _76_
-    return (0 == #log)
-  end
-  if (((_74_ == 0) and (nil ~= _75_) and true) and _78_()) then
-    local log = _75_
-    local _ = _76_
-    return nil, "git log produced no output, are you moving backwards?"
-  elseif ((_74_ == 0) and (nil ~= _75_) and true) then
-    local log = _75_
-    local _ = _76_
-    return log
+  if ((_74_ == 0) and (nil ~= _75_) and (nil ~= _76_)) then
+    local a = _75_
+    local b = _76_
+    return true
   elseif ((nil ~= _74_) and true and (nil ~= _76_)) then
     local code = _74_
     local _ = _75_
@@ -288,4 +279,33 @@ local function log_diff(repo_path, old_sha, new_sha)
     return nil
   end
 end
-return {init = init, ["HEAD-sha"] = HEAD_sha, ["ls-remote"] = ls_remote, ["set-origin"] = set_origin, ["get-origin"] = get_origin, ["fetch-sha"] = fetch_sha, fetch = fetch, ["checkout-sha"] = checkout_sha, ["shallow?"] = shallow_3f, unshallow = unshallow, ["log-diff"] = log_diff}
+local function log_diff(repo_path, old_sha, new_sha)
+  local _79_, _80_, _81_ = nil, nil, nil
+  do
+    local _let_82_ = require("pact.async-await")
+    local await_wrap_3_auto = _let_82_["await-wrap"]
+    _79_, _80_, _81_ = await_wrap_3_auto(run, {"git", {"log", "--oneline", fmt("%s..%s", old_sha, new_sha)}, repo_path, const.ENV})
+  end
+  local function _83_()
+    local log = _80_
+    local _ = _81_
+    return (0 == #log)
+  end
+  if (((_79_ == 0) and (nil ~= _80_) and true) and _83_()) then
+    local log = _80_
+    local _ = _81_
+    return nil, "git log produced no output, are you moving backwards?"
+  elseif ((_79_ == 0) and (nil ~= _80_) and true) then
+    local log = _80_
+    local _ = _81_
+    return log
+  elseif ((nil ~= _79_) and true and (nil ~= _81_)) then
+    local code = _79_
+    local _ = _80_
+    local err = _81_
+    return nil, dump_err(code, err)
+  else
+    return nil
+  end
+end
+return {init = init, ["HEAD-sha"] = HEAD_sha, ["ls-remote"] = ls_remote, ["set-origin"] = set_origin, ["get-origin"] = get_origin, ["fetch-sha"] = fetch_sha, fetch = fetch, ["checkout-sha"] = checkout_sha, ["update-submodules"] = update_submodules, ["shallow?"] = shallow_3f, unshallow = unshallow, ["log-diff"] = log_diff}

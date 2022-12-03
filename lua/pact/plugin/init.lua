@@ -152,7 +152,7 @@ local function opts__3econstraint(opts)
   return down_18_auto(enum.keys(opts))
 end
 local function make(basic, opts)
-  basic["opt?"] = not_nil_3f((opts["opt?"] or opts.opt))
+  basic["opt?"] = (true == (opts["opt?"] or opts.opt))
   do end (basic)["id"] = generate_id()
   set_package_path(basic)
   set_tostring(basic)
