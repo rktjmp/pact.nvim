@@ -47,76 +47,79 @@ local function set_tostring(plugin)
   return setmetatable(plugin, {__tostring = _20_})
 end
 local function set_package_path(plugin)
+  local _let_21_ = plugin.source
+  local _ = _let_21_[1]
+  local source = _let_21_[2]
+  local folder = string.match(plugin.source[2], ".+/([^/]-)$")
   local dir
-  local function _21_()
-    if plugin["opt?"] then
-      return "opt"
-    else
-      return "start"
-    end
+  local _22_
+  if plugin["opt?"] then
+    _22_ = "opt"
+  else
+    _22_ = "start"
   end
-  dir = ((vim.fn.stdpath("data") .. "/site/pack/pact/" .. _21_()) .. "/" .. plugin["forge-name"] .. "-" .. string.gsub(plugin.name, "/", "-"))
+  dir = table.concat({vim.fn.stdpath("data"), "site/pack/pact", _22_, folder}, "/")
   return enum["set$"](plugin, "package-path", dir)
 end
 local function opts__3econstraint(opts)
-  local else_fn_22_
-  local function _23_(...)
+  local else_fn_24_
+  local function _25_(...)
     return ...
   end
-  else_fn_22_ = _23_
+  else_fn_24_ = _25_
   local function down_18_auto(...)
-    local _24_ = ...
-    if (nil ~= _24_) then
-      local keys = _24_
+    local _26_ = ...
+    if (nil ~= _26_) then
+      local keys = _26_
       local function down_18_auto0(...)
-        local _25_ = ...
-        if (_25_ == true) then
-          local _26_ = opts
-          local function _27_(...)
-            local version = (_26_).version
+        local _27_ = ...
+        if (_27_ == true) then
+          local _28_ = opts
+          local function _29_(...)
+            local version = (_28_).version
             return valid_version_spec_3f(version)
           end
-          if (((_G.type(_26_) == "table") and (nil ~= (_26_).version)) and _27_(...)) then
-            local version = (_26_).version
+          if (((_G.type(_28_) == "table") and (nil ~= (_28_).version)) and _29_(...)) then
+            local version = (_28_).version
             return constraints.git("version", version)
-          elseif ((_G.type(_26_) == "table") and (nil ~= (_26_).version)) then
-            local version = (_26_).version
+          elseif ((_G.type(_28_) == "table") and (nil ~= (_28_).version)) then
+            local version = (_28_).version
             return nil, "invalid version spec"
           else
-            local function _28_(...)
-              local commit = (_26_).commit
+            local function _30_(...)
+              local commit = (_28_).commit
               return valid_sha_3f(commit)
             end
-            if (((_G.type(_26_) == "table") and (nil ~= (_26_).commit)) and _28_(...)) then
-              local commit = (_26_).commit
+            if (((_G.type(_28_) == "table") and (nil ~= (_28_).commit)) and _30_(...)) then
+              local commit = (_28_).commit
               return constraints.git("commit", commit)
-            elseif ((_G.type(_26_) == "table") and (nil ~= (_26_).commit)) then
-              local commit = (_26_).commit
+            elseif ((_G.type(_28_) == "table") and (nil ~= (_28_).commit)) then
+              local commit = (_28_).commit
               return nil, "invalid commit sha, must be full 40 characters"
             else
-              local function _29_(...)
-                local branch = (_26_).branch
+              local function _31_(...)
+                local branch = (_28_).branch
                 return (string_3f(branch) and (1 <= #branch))
               end
-              if (((_G.type(_26_) == "table") and (nil ~= (_26_).branch)) and _29_(...)) then
-                local branch = (_26_).branch
+              if (((_G.type(_28_) == "table") and (nil ~= (_28_).branch)) and _31_(...)) then
+                local branch = (_28_).branch
                 return constraints.git("branch", branch)
-              elseif ((_G.type(_26_) == "table") and (nil ~= (_26_).branch)) then
-                local branch = (_26_).branch
+              elseif ((_G.type(_28_) == "table") and (nil ~= (_28_).branch)) then
+                local branch = (_28_).branch
                 return nil, "invalid branch, must be non-empty string"
               else
-                local function _30_(...)
-                  local tag = (_26_).tag
+                local function _32_(...)
+                  local tag = (_28_).tag
                   return (string_3f(tag) and (1 <= #tag))
                 end
-                if (((_G.type(_26_) == "table") and (nil ~= (_26_).tag)) and _30_(...)) then
-                  local tag = (_26_).tag
+                if (((_G.type(_28_) == "table") and (nil ~= (_28_).tag)) and _32_(...)) then
+                  local tag = (_28_).tag
                   return constraints.git("tag", tag)
-                elseif ((_G.type(_26_) == "table") and (nil ~= (_26_).tag)) then
-                  local tag = (_26_).tag
+                elseif ((_G.type(_28_) == "table") and (nil ~= (_28_).tag)) then
+                  local tag = (_28_).tag
                   return nil, "invalid tag, must be non-empty string"
                 elseif true then
-                  local _ = _26_
+                  local _ = _28_
                   return nil, "expected semver constraint string or table with branch, tag, commit or version"
                 else
                   return nil
@@ -125,26 +128,26 @@ local function opts__3econstraint(opts)
             end
           end
         elseif true then
-          local _ = _25_
-          return else_fn_22_(...)
+          local _ = _27_
+          return else_fn_24_(...)
         else
           return nil
         end
       end
-      local function _33_(_241)
+      local function _35_(_241)
         if (1 == _241) then
           return true
         else
           return err("options table must contain at most one constraint key")
         end
       end
-      local function _35_(_241)
+      local function _37_(_241)
         return (("branch" == _241) or ("tag" == _241) or ("commit" == _241) or ("version" == _241))
       end
-      return down_18_auto0(_33_(#enum["table->pairs"](enum.filter(_35_, opts))))
+      return down_18_auto0(_35_(#enum["table->pairs"](enum.filter(_37_, opts))))
     elseif true then
-      local _ = _24_
-      return else_fn_22_(...)
+      local _ = _26_
+      return else_fn_24_(...)
     else
       return nil
     end
@@ -160,32 +163,32 @@ local function make(basic, opts)
 end
 local __fn_2a_forge_dispatch = {bodies = {}, help = {}}
 local forge
-local function _43_(...)
+local function _45_(...)
   if (0 == #(__fn_2a_forge_dispatch).bodies) then
     error(("multi-arity function " .. "forge" .. " has no bodies"))
   else
   end
-  local _45_
+  local _47_
   do
     local f_74_auto = nil
     for __75_auto, match_3f_76_auto in ipairs((__fn_2a_forge_dispatch).bodies) do
       if f_74_auto then break end
       f_74_auto = match_3f_76_auto(...)
     end
-    _45_ = f_74_auto
+    _47_ = f_74_auto
   end
-  if (nil ~= _45_) then
-    local f_74_auto = _45_
+  if (nil ~= _47_) then
+    local f_74_auto = _47_
     return f_74_auto(...)
-  elseif (_45_ == nil) then
+  elseif (_47_ == nil) then
     local view_77_auto
     do
-      local _46_, _47_ = pcall(require, "fennel")
-      if ((_46_ == true) and ((_G.type(_47_) == "table") and (nil ~= (_47_).view))) then
-        local view_77_auto0 = (_47_).view
+      local _48_, _49_ = pcall(require, "fennel")
+      if ((_48_ == true) and ((_G.type(_49_) == "table") and (nil ~= (_49_).view))) then
+        local view_77_auto0 = (_49_).view
         view_77_auto = view_77_auto0
-      elseif ((_46_ == false) and true) then
-        local __75_auto = _47_
+      elseif ((_48_ == false) and true) then
+        local __75_auto = _49_
         view_77_auto = (_G.vim.inspect or print)
       else
         view_77_auto = nil
@@ -197,28 +200,28 @@ local function _43_(...)
     return nil
   end
 end
-forge = _43_
-local function _50_()
-  local _51_
+forge = _45_
+local function _52_()
+  local _53_
   do
     table.insert((__fn_2a_forge_dispatch).help, "(where [forge-name user-repo constraint] (and (string? user-repo) (string? constraint) (valid-version-spec? constraint)))")
-    local function _52_(...)
+    local function _54_(...)
       if (3 == select("#", ...)) then
-        local _53_ = {...}
-        local function _54_(...)
-          local forge_name_37_ = (_53_)[1]
-          local user_repo_38_ = (_53_)[2]
-          local constraint_39_ = (_53_)[3]
-          return (string_3f(user_repo_38_) and string_3f(constraint_39_) and valid_version_spec_3f(constraint_39_))
+        local _55_ = {...}
+        local function _56_(...)
+          local forge_name_39_ = (_55_)[1]
+          local user_repo_40_ = (_55_)[2]
+          local constraint_41_ = (_55_)[3]
+          return (string_3f(user_repo_40_) and string_3f(constraint_41_) and valid_version_spec_3f(constraint_41_))
         end
-        if (((_G.type(_53_) == "table") and (nil ~= (_53_)[1]) and (nil ~= (_53_)[2]) and (nil ~= (_53_)[3])) and _54_(...)) then
-          local forge_name_37_ = (_53_)[1]
-          local user_repo_38_ = (_53_)[2]
-          local constraint_39_ = (_53_)[3]
-          local function _55_(forge_name, user_repo, constraint)
+        if (((_G.type(_55_) == "table") and (nil ~= (_55_)[1]) and (nil ~= (_55_)[2]) and (nil ~= (_55_)[3])) and _56_(...)) then
+          local forge_name_39_ = (_55_)[1]
+          local user_repo_40_ = (_55_)[2]
+          local constraint_41_ = (_55_)[3]
+          local function _57_(forge_name, user_repo, constraint)
             return forge(forge_name, user_repo, {version = constraint})
           end
-          return _55_
+          return _57_
         else
           return nil
         end
@@ -226,50 +229,50 @@ local function _50_()
         return nil
       end
     end
-    table.insert((__fn_2a_forge_dispatch).bodies, _52_)
-    _51_ = forge
+    table.insert((__fn_2a_forge_dispatch).bodies, _54_)
+    _53_ = forge
   end
-  local _58_
+  local _60_
   do
     table.insert((__fn_2a_forge_dispatch).help, "(where [forge-name user-repo opts] (and (string? user-repo) (table? opts)))")
-    local function _59_(...)
+    local function _61_(...)
       if (3 == select("#", ...)) then
-        local _60_ = {...}
-        local function _61_(...)
-          local forge_name_40_ = (_60_)[1]
-          local user_repo_41_ = (_60_)[2]
-          local opts_42_ = (_60_)[3]
-          return (string_3f(user_repo_41_) and table_3f(opts_42_))
+        local _62_ = {...}
+        local function _63_(...)
+          local forge_name_42_ = (_62_)[1]
+          local user_repo_43_ = (_62_)[2]
+          local opts_44_ = (_62_)[3]
+          return (string_3f(user_repo_43_) and table_3f(opts_44_))
         end
-        if (((_G.type(_60_) == "table") and (nil ~= (_60_)[1]) and (nil ~= (_60_)[2]) and (nil ~= (_60_)[3])) and _61_(...)) then
-          local forge_name_40_ = (_60_)[1]
-          local user_repo_41_ = (_60_)[2]
-          local opts_42_ = (_60_)[3]
-          local function _62_(forge_name, user_repo, opts)
-            local _63_
+        if (((_G.type(_62_) == "table") and (nil ~= (_62_)[1]) and (nil ~= (_62_)[2]) and (nil ~= (_62_)[3])) and _63_(...)) then
+          local forge_name_42_ = (_62_)[1]
+          local user_repo_43_ = (_62_)[2]
+          local opts_44_ = (_62_)[3]
+          local function _64_(forge_name, user_repo, opts)
+            local _65_
             do
-              local _let_65_ = require("pact.lib.ruin.result")
-              local bind_15_auto = _let_65_["bind"]
-              local unit_16_auto = _let_65_["unit"]
-              local bind_66_ = bind_15_auto
-              local unit_67_ = unit_16_auto
-              local function _69_(source)
-                local function _70_(constraint)
-                  local function _71_()
+              local _let_67_ = require("pact.lib.ruin.result")
+              local bind_15_auto = _let_67_["bind"]
+              local unit_16_auto = _let_67_["unit"]
+              local bind_68_ = bind_15_auto
+              local unit_69_ = unit_16_auto
+              local function _71_(source)
+                local function _72_(constraint)
+                  local function _73_()
                     return make({name = user_repo, ["forge-name"] = forge_name, source = source, constraint = constraint}, opts)
                   end
-                  return unit_67_(_71_())
+                  return unit_69_(_73_())
                 end
-                return unit_67_(bind_66_(unit_67_(opts__3econstraint(opts)), _70_))
+                return unit_69_(bind_68_(unit_69_(opts__3econstraint(opts)), _72_))
               end
-              _63_ = bind_66_(unit_67_(git_source[forge_name](user_repo)), _69_)
+              _65_ = bind_68_(unit_69_(git_source[forge_name](user_repo)), _71_)
             end
-            local function _72_(e)
+            local function _74_(e)
               return err(fmt("%s/%s %s", forge_name, user_repo, e))
             end
-            return map_err(_63_, _72_)
+            return map_err(_65_, _74_)
           end
-          return _62_
+          return _64_
         else
           return nil
         end
@@ -277,22 +280,22 @@ local function _50_()
         return nil
       end
     end
-    table.insert((__fn_2a_forge_dispatch).bodies, _59_)
-    _58_ = forge
+    table.insert((__fn_2a_forge_dispatch).bodies, _61_)
+    _60_ = forge
   end
-  local function _75_()
+  local function _77_()
     table.insert((__fn_2a_forge_dispatch).help, "(where _)")
-    local function _76_(...)
+    local function _78_(...)
       if true then
-        local _77_ = {...}
-        local function _78_(...)
+        local _79_ = {...}
+        local function _80_(...)
           return true
         end
-        if ((_G.type(_77_) == "table") and _78_(...)) then
-          local function _79_(...)
+        if ((_G.type(_79_) == "table") and _80_(...)) then
+          local function _81_(...)
             return err(fmt("requires user/repo and version-constraint string or constraint table, got %s", inspect({...})))
           end
-          return _79_
+          return _81_
         else
           return nil
         end
@@ -300,13 +303,13 @@ local function _50_()
         return nil
       end
     end
-    table.insert((__fn_2a_forge_dispatch).bodies, _76_)
+    table.insert((__fn_2a_forge_dispatch).bodies, _78_)
     return forge
   end
-  do local _ = {_51_, _58_, _75_()} end
+  do local _ = {_53_, _60_, _77_()} end
   return forge
 end
-setmetatable({nil, nil}, {__call = _50_})()
+setmetatable({nil, nil}, {__call = _52_})()
 local function github(user_repo, opts)
   return forge("github", user_repo, opts)
 end
@@ -318,32 +321,32 @@ local function sourcehut(user_repo, opts)
 end
 local __fn_2a_git_dispatch = {bodies = {}, help = {}}
 local git
-local function _86_(...)
+local function _88_(...)
   if (0 == #(__fn_2a_git_dispatch).bodies) then
     error(("multi-arity function " .. "git" .. " has no bodies"))
   else
   end
-  local _88_
+  local _90_
   do
     local f_74_auto = nil
     for __75_auto, match_3f_76_auto in ipairs((__fn_2a_git_dispatch).bodies) do
       if f_74_auto then break end
       f_74_auto = match_3f_76_auto(...)
     end
-    _88_ = f_74_auto
+    _90_ = f_74_auto
   end
-  if (nil ~= _88_) then
-    local f_74_auto = _88_
+  if (nil ~= _90_) then
+    local f_74_auto = _90_
     return f_74_auto(...)
-  elseif (_88_ == nil) then
+  elseif (_90_ == nil) then
     local view_77_auto
     do
-      local _89_, _90_ = pcall(require, "fennel")
-      if ((_89_ == true) and ((_G.type(_90_) == "table") and (nil ~= (_90_).view))) then
-        local view_77_auto0 = (_90_).view
+      local _91_, _92_ = pcall(require, "fennel")
+      if ((_91_ == true) and ((_G.type(_92_) == "table") and (nil ~= (_92_).view))) then
+        local view_77_auto0 = (_92_).view
         view_77_auto = view_77_auto0
-      elseif ((_89_ == false) and true) then
-        local __75_auto = _90_
+      elseif ((_91_ == false) and true) then
+        local __75_auto = _92_
         view_77_auto = (_G.vim.inspect or print)
       else
         view_77_auto = nil
@@ -355,26 +358,26 @@ local function _86_(...)
     return nil
   end
 end
-git = _86_
-local function _93_()
-  local _94_
+git = _88_
+local function _95_()
+  local _96_
   do
     table.insert((__fn_2a_git_dispatch).help, "(where [url constraint] (and (string? url) (string? constraint) (valid-version-spec? constraint)))")
-    local function _95_(...)
+    local function _97_(...)
       if (2 == select("#", ...)) then
-        local _96_ = {...}
-        local function _97_(...)
-          local url_82_ = (_96_)[1]
-          local constraint_83_ = (_96_)[2]
-          return (string_3f(url_82_) and string_3f(constraint_83_) and valid_version_spec_3f(constraint_83_))
+        local _98_ = {...}
+        local function _99_(...)
+          local url_84_ = (_98_)[1]
+          local constraint_85_ = (_98_)[2]
+          return (string_3f(url_84_) and string_3f(constraint_85_) and valid_version_spec_3f(constraint_85_))
         end
-        if (((_G.type(_96_) == "table") and (nil ~= (_96_)[1]) and (nil ~= (_96_)[2])) and _97_(...)) then
-          local url_82_ = (_96_)[1]
-          local constraint_83_ = (_96_)[2]
-          local function _98_(url, constraint)
+        if (((_G.type(_98_) == "table") and (nil ~= (_98_)[1]) and (nil ~= (_98_)[2])) and _99_(...)) then
+          local url_84_ = (_98_)[1]
+          local constraint_85_ = (_98_)[2]
+          local function _100_(url, constraint)
             return git(url, {version = constraint})
           end
-          return _98_
+          return _100_
         else
           return nil
         end
@@ -382,39 +385,39 @@ local function _93_()
         return nil
       end
     end
-    table.insert((__fn_2a_git_dispatch).bodies, _95_)
-    _94_ = git
+    table.insert((__fn_2a_git_dispatch).bodies, _97_)
+    _96_ = git
   end
-  local _101_
+  local _103_
   do
     table.insert((__fn_2a_git_dispatch).help, "(where [url opts] (and (string? url) (table? opts)))")
-    local function _102_(...)
+    local function _104_(...)
       if (2 == select("#", ...)) then
-        local _103_ = {...}
-        local function _104_(...)
-          local url_84_ = (_103_)[1]
-          local opts_85_ = (_103_)[2]
-          return (string_3f(url_84_) and table_3f(opts_85_))
+        local _105_ = {...}
+        local function _106_(...)
+          local url_86_ = (_105_)[1]
+          local opts_87_ = (_105_)[2]
+          return (string_3f(url_86_) and table_3f(opts_87_))
         end
-        if (((_G.type(_103_) == "table") and (nil ~= (_103_)[1]) and (nil ~= (_103_)[2])) and _104_(...)) then
-          local url_84_ = (_103_)[1]
-          local opts_85_ = (_103_)[2]
-          local function _105_(url, opts)
-            local _106_
+        if (((_G.type(_105_) == "table") and (nil ~= (_105_)[1]) and (nil ~= (_105_)[2])) and _106_(...)) then
+          local url_86_ = (_105_)[1]
+          local opts_87_ = (_105_)[2]
+          local function _107_(url, opts)
+            local _108_
             do
-              local _let_108_ = require("pact.lib.ruin.result")
-              local bind_15_auto = _let_108_["bind"]
-              local unit_16_auto = _let_108_["unit"]
-              local bind_109_ = bind_15_auto
-              local unit_110_ = unit_16_auto
-              local function _112_(source)
-                local function _113_(forge_name)
-                  local function _116_()
+              local _let_110_ = require("pact.lib.ruin.result")
+              local bind_15_auto = _let_110_["bind"]
+              local unit_16_auto = _let_110_["unit"]
+              local bind_111_ = bind_15_auto
+              local unit_112_ = unit_16_auto
+              local function _114_(source)
+                local function _115_(forge_name)
+                  local function _118_()
                     local all_1_auto, val_2_auto = nil, nil
                     do
-                      local nil_114_ = opts.name
-                      if nil_114_ then
-                        local name = nil_114_
+                      local nil_116_ = opts.name
+                      if nil_116_ then
+                        local name = nil_116_
                         all_1_auto, val_2_auto = true, name
                       else
                         all_1_auto, val_2_auto = false
@@ -426,27 +429,27 @@ local function _93_()
                       return nil, "requires name option"
                     end
                   end
-                  local function _118_(name)
-                    local function _119_(constraint)
-                      local function _120_()
+                  local function _120_(name)
+                    local function _121_(constraint)
+                      local function _122_()
                         return make({name = name, ["forge-name"] = forge_name, source = source, constraint = constraint}, opts)
                       end
-                      return unit_110_(_120_())
+                      return unit_112_(_122_())
                     end
-                    return unit_110_(bind_109_(unit_110_(opts__3econstraint(opts)), _119_))
+                    return unit_112_(bind_111_(unit_112_(opts__3econstraint(opts)), _121_))
                   end
-                  return unit_110_(bind_109_(unit_110_(_116_()), _118_))
+                  return unit_112_(bind_111_(unit_112_(_118_()), _120_))
                 end
-                return unit_110_(bind_109_(unit_110_("git"), _113_))
+                return unit_112_(bind_111_(unit_112_("git"), _115_))
               end
-              _106_ = bind_109_(unit_110_(git_source.git(url)), _112_)
+              _108_ = bind_111_(unit_112_(git_source.git(url)), _114_)
             end
-            local function _121_(e)
+            local function _123_(e)
               return err(fmt("%s/%s %s", "git", url, e))
             end
-            return map_err(_106_, _121_)
+            return map_err(_108_, _123_)
           end
-          return _105_
+          return _107_
         else
           return nil
         end
@@ -454,22 +457,22 @@ local function _93_()
         return nil
       end
     end
-    table.insert((__fn_2a_git_dispatch).bodies, _102_)
-    _101_ = git
+    table.insert((__fn_2a_git_dispatch).bodies, _104_)
+    _103_ = git
   end
-  local function _124_()
+  local function _126_()
     table.insert((__fn_2a_git_dispatch).help, "(where _)")
-    local function _125_(...)
+    local function _127_(...)
       if true then
-        local _126_ = {...}
-        local function _127_(...)
+        local _128_ = {...}
+        local function _129_(...)
           return true
         end
-        if ((_G.type(_126_) == "table") and _127_(...)) then
-          local function _128_(...)
+        if ((_G.type(_128_) == "table") and _129_(...)) then
+          local function _130_(...)
             return err("requires url and constraint/options table")
           end
-          return _128_
+          return _130_
         else
           return nil
         end
@@ -477,11 +480,11 @@ local function _93_()
         return nil
       end
     end
-    table.insert((__fn_2a_git_dispatch).bodies, _125_)
+    table.insert((__fn_2a_git_dispatch).bodies, _127_)
     return git
   end
-  do local _ = {_94_, _101_, _124_()} end
+  do local _ = {_96_, _103_, _126_()} end
   return git
 end
-setmetatable({nil, nil}, {__call = _93_})()
+setmetatable({nil, nil}, {__call = _95_})()
 return {git = git, github = github, gitlab = gitlab, sourcehut = sourcehut, srht = sourcehut}
