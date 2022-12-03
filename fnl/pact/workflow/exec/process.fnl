@@ -8,6 +8,7 @@
 (import-macros {: use} :pact.lib.ruin.use)
 
 (use enum :pact.lib.ruin.enum
+     inspect :pact.inspect
      {: spawn
       : fs_open : fs_close
       : new_pipe : pipe_open
@@ -49,10 +50,9 @@
       ;; pid is actually an error string in some cases, if the command isn't
       ;; found for example.
       nil
-      (let [{: view} (require :fennel)]
-        (values nil (fmt (.. "Could not spawn process, "
-                             "maybe the command wasn't found? %s (for %s)")
-                         pid (view [cmd args cwd]))))
+      (values nil (fmt (.. "Could not spawn process, "
+                           "maybe the command wasn't found? %s (for %s)")
+                       pid (inspect [cmd args cwd])))
       ;; (on-exit -1 nil pid)
       ;; otherwise assume the process handle is fine and act as normal.
       _

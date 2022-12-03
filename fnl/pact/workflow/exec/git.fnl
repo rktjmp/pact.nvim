@@ -2,6 +2,7 @@
 (ruin!)
 
 (use enum :pact.lib.ruin.enum
+     inspect :pact.inspect
      {: run} :pact.workflow.exec.process
      {:loop uv} vim
      {:format fmt} string
@@ -11,9 +12,7 @@
 
 (fn dump-err [code err]
   ;; TODO drop fennel req
-  (let [{: view} (require :fennel)
-        msg (view err {:one-line? true})]
-    (fmt "git-error: [%d] %s" code msg)))
+  (fmt "git-error: [%d] %s" code (inspect err)))
 
 (fn HEAD-sha [repo-root]
   (assert repo-root "must provide repo root")
