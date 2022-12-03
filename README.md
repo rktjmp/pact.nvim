@@ -86,3 +86,8 @@ Pact makes the following assumptions:
   - Ranges and boolean operations are not supported.
   - Pre-release versions (the `alpha` in `v1.2.3-alpha`) are not currently supported.
   - Should be given as `<operator> <version>` or `<operator><version`.
+
+## See Also
+
+- [paq-nvim](https://github.com/savq/paq-nvim), used as a reference for a tiny,
+  no-fuss package manager.
