@@ -11,7 +11,7 @@
 `pact` is a *semver focused*, *pessimistic* plugin manager for Neovim.
 
 <div align="center">
-<img src="https://user-images.githubusercontent.com/866010/205318053-9d29892d-6307-4dfd-a22f-dfc2af335f85.gif"
+<img src="https://user-images.githubusercontent.com/866010/205425753-7a68dfb1-66b5-4c5d-ae16-8ffbca648657.gif"
      style="width: 80%"
      alt="pact.nvim demo"/>
 </div>
@@ -52,11 +52,10 @@ You may also open `pact` in your own (non-split) window by passing `win` and
 `buf` options to `open`.
 
 ```fennel
-(let [{: open} (require :pact)
-      (win buf) (make-some-window-and-buffer)]
-  (open {: win
-         : buf
-         :concurrency-limit 10})) ;; concurrency-limit defaults to 5 to avoid remote rate limiting
+(let [{: open} (require :pact)]
+  (open {:win 0 :buf 0
+         ;; concurrency-limit defaults to 5 to avoid remote rate limiting
+         :concurrency-limit 10}))
 ```
 
 ## Limitations
