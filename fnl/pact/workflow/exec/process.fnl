@@ -25,10 +25,6 @@
 (fn stream->lines [bytes]
   (enum.map #$1 #(string.gmatch (table.concat bytes) "[^\r\n]+")))
 
-(fn close-io [log pipe]
-  (fs_close log)
-  (close pipe))
-
 (fn run [cmd args cwd env on-exit]
   "spawns a new process"
   (let [stdout (new_pipe)
