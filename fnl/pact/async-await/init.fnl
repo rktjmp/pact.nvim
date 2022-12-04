@@ -83,10 +83,10 @@
   (fn create-thread [func argv]
     (let [await-co (co.running)
           resolve-future (fn [...]
-                      ;; store the return value
-                      (set awaited-value (pack ...))
-                      ;; kill our future
-                      (co.resume await-co))
+                           ;; store the return value
+                           (set awaited-value (pack ...))
+                           ;; kill our future
+                           (co.resume await-co))
           _ (table.insert argv resolve-future)
           ;; this *can* throw, which we will rethrow
           ;; nil, x is caught and returned as nil, ex
