@@ -32,10 +32,10 @@ do local _ = {nil, nil} end
 local function absolute_path_3f(path)
   return not_nil_3f(string.match(path, "^/"))
 end
-local function git_dir_3f(path)
-  return ("directory" == fs_tasks["what-is-at"]((path .. "/.git")))
+local function dir_exists_3f(path)
+  return ("directory" == fs_tasks["what-is-at"](path))
 end
-local function sync_repo_impl(path, sha)
+local function clone_repo_impl(repo_url, sha, path)
   local _let_18_ = require("pact.lib.ruin.result")
   local bind_15_auto = _let_18_["bind"]
   local unit_16_auto = _let_18_["unit"]
@@ -44,43 +44,39 @@ local function sync_repo_impl(path, sha)
   local function _21_(_)
     local function _22_(_0)
       local function _23_(_1)
-        local function _24_(dirty_3f)
-          local function _25_()
-            if dirty_3f then
-              return nil, fmt("%s checkout is dirty, refusing to sync", path)
-            else
-              return nil
-            end
-          end
-          local function _26_(_2)
-            local function _27_(_3)
-              local function _28_(_4)
-                local function _29_(_5)
-                  local function _30_(_6)
-                    local function _31_()
-                      return ok()
+        local function _24_(_2)
+          local function _25_(_3)
+            local function _26_(_4)
+              local function _27_(_5)
+                local function _28_(_6)
+                  local function _29_(_7)
+                    local function _30_(_8)
+                      local function _31_()
+                        return ok(sha)
+                      end
+                      return unit_20_(_31_())
                     end
-                    return unit_20_(_31_())
+                    return unit_20_(bind_19_(unit_20_(git_tasks["update-submodules"](path)), _30_))
                   end
-                  return unit_20_(bind_19_(unit_20_(git_tasks["update-submodules"](path)), _30_))
+                  return unit_20_(bind_19_(unit_20_(yield("updating submodules")), _29_))
                 end
-                return unit_20_(bind_19_(unit_20_(yield(fmt("git submodules update"))), _29_))
+                return unit_20_(bind_19_(unit_20_(git_tasks["checkout-sha"](path, sha)), _28_))
               end
-              return unit_20_(bind_19_(unit_20_(git_tasks["checkout-sha"](path, sha)), _28_))
+              return unit_20_(bind_19_(unit_20_(yield("checking out sha")), _27_))
             end
-            return unit_20_(bind_19_(unit_20_(yield(fmt("git checkout %s", sha))), _27_))
+            return unit_20_(bind_19_(unit_20_(git_tasks["fetch-sha"](path, sha)), _26_))
           end
-          return unit_20_(bind_19_(unit_20_(_25_()), _26_))
+          return unit_20_(bind_19_(unit_20_(yield("fetching sha")), _25_))
         end
-        return unit_20_(bind_19_(unit_20_(git_tasks["dirty?"](path)), _24_))
+        return unit_20_(bind_19_(unit_20_(git_tasks["set-origin"](path, repo_url)), _24_))
       end
-      return unit_20_(bind_19_(unit_20_(yield(fmt("git status dirty?"))), _23_))
+      return unit_20_(bind_19_(unit_20_(yield("set remote origin")), _23_))
     end
-    return unit_20_(bind_19_(unit_20_(git_tasks["fetch-sha"](path, sha)), _22_))
+    return unit_20_(bind_19_(unit_20_(git_tasks.init(path)), _22_))
   end
-  return bind_19_(unit_20_(yield(fmt("git fetch %s", sha))), _21_)
+  return bind_19_(unit_20_(yield("init new local repo")), _21_)
 end
-local function sync(path, sha)
+local function clone(repo_url, sha, path)
   local _let_32_ = require("pact.lib.ruin.result")
   local map_ok_24_auto = _let_32_["map-ok"]
   local result_25_auto = _let_32_["result"]
@@ -90,44 +86,44 @@ local function sync(path, sha)
   end
   local function _34_(_241)
     local function _35_()
-      if git_dir_3f(path) then
-        return sync_repo_impl(path, sha)
+      if not dir_exists_3f(path) then
+        return clone_repo_impl(repo_url, sha, path)
       else
-        return err(fmt("unable to sync, directory %s is not a git repo", path))
+        return err(fmt("unable to clone, directory %s already exists", path))
       end
     end
     return _35_(_241)
   end
-  return map_ok_24_auto(map_ok_24_auto(result_25_auto(yield("starting git-sync workflow")), _33_), _34_)
+  return map_ok_24_auto(map_ok_24_auto(result_25_auto(yield("starting git-clone workflow")), _33_), _34_)
 end
 local __fn_2a_new_dispatch = {bodies = {}, help = {}}
 local new
-local function _40_(...)
+local function _41_(...)
   if (0 == #(__fn_2a_new_dispatch).bodies) then
     error(("multi-arity function " .. "new" .. " has no bodies"))
   else
   end
-  local _42_
+  local _43_
   do
     local f_74_auto = nil
     for __75_auto, match_3f_76_auto in ipairs((__fn_2a_new_dispatch).bodies) do
       if f_74_auto then break end
       f_74_auto = match_3f_76_auto(...)
     end
-    _42_ = f_74_auto
+    _43_ = f_74_auto
   end
-  if (nil ~= _42_) then
-    local f_74_auto = _42_
+  if (nil ~= _43_) then
+    local f_74_auto = _43_
     return f_74_auto(...)
-  elseif (_42_ == nil) then
+  elseif (_43_ == nil) then
     local view_77_auto
     do
-      local _43_, _44_ = pcall(require, "fennel")
-      if ((_43_ == true) and ((_G.type(_44_) == "table") and (nil ~= (_44_).view))) then
-        local view_77_auto0 = (_44_).view
+      local _44_, _45_ = pcall(require, "fennel")
+      if ((_44_ == true) and ((_G.type(_45_) == "table") and (nil ~= (_45_).view))) then
+        local view_77_auto0 = (_45_).view
         view_77_auto = view_77_auto0
-      elseif ((_43_ == false) and true) then
-        local __75_auto = _44_
+      elseif ((_44_ == false) and true) then
+        local __75_auto = _45_
         view_77_auto = (_G.vim.inspect or print)
       else
         view_77_auto = nil
@@ -139,30 +135,32 @@ local function _40_(...)
     return nil
   end
 end
-new = _40_
-local function _47_()
-  local function _48_()
-    table.insert((__fn_2a_new_dispatch).help, "(where [id path sha])")
-    local function _49_(...)
-      if (3 == select("#", ...)) then
-        local _50_ = {...}
-        local function _51_(...)
-          local id_37_ = (_50_)[1]
-          local path_38_ = (_50_)[2]
-          local sha_39_ = (_50_)[3]
+new = _41_
+local function _48_()
+  local function _49_()
+    table.insert((__fn_2a_new_dispatch).help, "(where [id path repo-url sha])")
+    local function _50_(...)
+      if (4 == select("#", ...)) then
+        local _51_ = {...}
+        local function _52_(...)
+          local id_37_ = (_51_)[1]
+          local path_38_ = (_51_)[2]
+          local repo_url_39_ = (_51_)[3]
+          local sha_40_ = (_51_)[4]
           return true
         end
-        if (((_G.type(_50_) == "table") and (nil ~= (_50_)[1]) and (nil ~= (_50_)[2]) and (nil ~= (_50_)[3])) and _51_(...)) then
-          local id_37_ = (_50_)[1]
-          local path_38_ = (_50_)[2]
-          local sha_39_ = (_50_)[3]
-          local function _52_(id, path, sha)
-            local function _53_()
-              return sync(path, sha)
+        if (((_G.type(_51_) == "table") and (nil ~= (_51_)[1]) and (nil ~= (_51_)[2]) and (nil ~= (_51_)[3]) and (nil ~= (_51_)[4])) and _52_(...)) then
+          local id_37_ = (_51_)[1]
+          local path_38_ = (_51_)[2]
+          local repo_url_39_ = (_51_)[3]
+          local sha_40_ = (_51_)[4]
+          local function _53_(id, path, repo_url, sha)
+            local function _54_()
+              return clone(repo_url, sha, path)
             end
-            return new_workflow(id, _53_)
+            return new_workflow(id, _54_)
           end
-          return _52_
+          return _53_
         else
           return nil
         end
@@ -170,11 +168,11 @@ local function _47_()
         return nil
       end
     end
-    table.insert((__fn_2a_new_dispatch).bodies, _49_)
+    table.insert((__fn_2a_new_dispatch).bodies, _50_)
     return new
   end
-  do local _ = {_48_()} end
+  do local _ = {_49_()} end
   return new
 end
-setmetatable({nil, nil}, {__call = _47_})()
+setmetatable({nil, nil}, {__call = _48_})()
 return {new = new}

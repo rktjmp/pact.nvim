@@ -1,5 +1,10 @@
 # 🔪🩸🐐 `pact` Changelog
 
+## 0.0.7
+
+- Added orphaned package removal
+- Shows current version in addition to latest if possible in sync UI
+
 ## 0.0.6
 
 - Rename plugin `run` option to `after`
