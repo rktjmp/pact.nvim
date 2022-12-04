@@ -41,7 +41,7 @@
     (error "pact.nvim requires nvim-0.8 or later"))
   (local opts (or opts {}))
   (doto opts
-    (tset :concurrency-limit (or opts.concurrency-limit 5)))
+    (tset :concurrency-limit (or opts.concurrency-limit opts.concurrency_limit)))
   (let [e-str "must provide both win and buf or neither"
         (win buf) (match opts
                     {: buf :win nil} (error e-str)
@@ -60,7 +60,7 @@
         ;; We pass those to the UI so it can effectively show broken plugin
         ;; configurations while still working for non-broken plugins.
         plugins (icollect [_ c (ipairs plugin-proxies)] (c))]
-    (ui.attach win buf plugins)))
+    (ui.attach win buf plugins opts)))
 
 {: open
  :git providers.git
