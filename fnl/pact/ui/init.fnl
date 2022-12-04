@@ -134,15 +134,15 @@
                  (api.nvim_buf_set_extmark ui.buf ui.ns-id (- $2.on-line 1) 0
                                            {:virt_lines (enum.map #(log-line->chunks $2)
                                                                   $2.log)}))
-              ui.plugins-meta))
-  ;; seems we need this?
-  (vim.cmd.redraw)
-  (tset ui :will-render false))
+              ui.plugins-meta)))
 
 (fn schedule-redraw [ui]
-  (when (not ui.will-render)
-    (tset ui :will-render true)
-    (vim.schedule #(output ui))))
+  ;; asked to render, we only want to hit 60fps otherwise we can really pin
+  ;; with lots of workflows pinging back to us.
+  (local rate (/ 1000 30))
+  (when (< (or ui.will-render 0) (vim.loop.now))
+    (tset ui :will-render (+ rate (vim.loop.now)))
+    (vim.defer_fn #(output ui) rate)))
 
 (fn exec-commit [ui]
   (fn make-wf [how plugin action-data]
@@ -382,10 +382,8 @@
       (subscribe wf handler)
       (values wf)))
   (schedule-redraw ui)
-  (enum.map (fn [_ plugin]
-              (scheduler.add-workflow ui.scheduler (make-status-wf plugin)))
+  (enum.map #(scheduler.add-workflow ui.scheduler (make-status-wf $2))
             ui.plugins))
-
 
 (fn exec-keymap-cc [ui]
   (if (enum.any? #(= :staged $2.state) ui.plugins-meta)
