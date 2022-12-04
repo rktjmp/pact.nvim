@@ -2,6 +2,7 @@
 (ruin!)
 
 (use enum :pact.lib.ruin.enum
+     inspect :pact.inspect
      scheduler :pact.workflow.scheduler
      {: subscribe : unsubscribe} :pact.pubsub
      {: ok? : err?} :pact.lib.ruin.result
@@ -138,7 +139,6 @@
     (tset ui :will-render true)
     (vim.schedule #(output ui))))
 
-
 (fn exec-commit [ui]
   (fn make-wf [how plugin commit]
     (let [wf (match how
@@ -157,6 +157,41 @@
                          (set meta.progress nil)
                          ;; TODO: packloadall! ?
                          (vim.schedule #(vim.cmd "silent! helptags ALL"))
+                         (when plugin.run
+                           (let [{: new} (require :pact.workflow.run)
+                                 old-text meta.text
+                                 run-wf (new wf.id plugin.run plugin.package-path)]
+                             (set meta.text "running...")
+                              (subscribe run-wf
+                                         (fn [event]
+                                           (match event
+                                             ;; handle ok and err events specially as we don't want
+                                             ;; to swap sections etc.
+                                             (where _ (ok? event))
+                                             (do
+                                               (set meta.text (.. old-text (fmt " ran: %s" (result.unwrap event))))
+                                               (set meta.progress nil)
+                                               (unsubscribe run-wf handler)
+                                               (schedule-redraw ui))
+                                             (where _ (err? event))
+                                             (do
+                                               (set meta.text (.. old-text (fmt " error: %s" (inspect (result.unwrap event)))))
+                                               (set meta.progress nil)
+                                               (unsubscribe run-wf handler)
+                                               (schedule-redraw ui))
+                                             ;; we can pass these up to
+                                             ;; the normal handler for
+                                             ;; sting logging and
+                                             ;; progress meter
+                                             (where _ (string? event))
+                                             (do
+                                               (print "string-event" event)
+                                               (handler (fmt "run: %s" event)))
+                                             (where _ (thread? event))
+                                             (do
+                                               (unsubscribe run-wf handler)
+                                               (handler event)))))
+                              (scheduler.add-workflow ui.scheduler run-wf)))
                          (unsubscribe wf handler)
                          (schedule-redraw ui))
 
