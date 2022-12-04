@@ -106,7 +106,7 @@
     (nil err) (values nil err)))
 
 (fn log-diff [repo-path old-sha new-sha]
-  (match (await (run :git [:log :--oneline (fmt "%s..%s" old-sha new-sha)] repo-path const.ENV))
+  (match (await (run :git [:log :--oneline :--decorate (fmt "%s..%s" old-sha new-sha)] repo-path const.ENV))
     (where (0 log _) (= 0 (length log))) (values nil "git log produced no output, are you moving backwards?")
     (0 log _) (values log)
     (code _ err) (values nil (dump-err code err))
