@@ -1,5 +1,10 @@
 # 🔪🐐🩸 `pact` Changelog
 
+## 0.0.6
+
+- Rename plugin `run` option to `after`
+- Added container demo
+
 ## 0.0.5
 
 - Added plugin `run` option support

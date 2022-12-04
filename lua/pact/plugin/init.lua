@@ -156,7 +156,7 @@ local function opts__3econstraint(opts)
 end
 local function make(basic, opts)
   basic["opt?"] = (true == (opts["opt?"] or opts.opt))
-  do end (basic)["run"] = opts.run
+  do end (basic)["after"] = opts.after
   basic["id"] = generate_id()
   set_package_path(basic)
   set_tostring(basic)

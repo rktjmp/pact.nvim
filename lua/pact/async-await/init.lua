@@ -1,3 +1,8 @@
+local _local_1_ = require("pact.lib.ruin.enum")
+local pack = _local_1_["pack"]
+local unpack = _local_1_["unpack"]
+local _local_2_ = require("pact.lib.ruin.type")
+local thread_3f = _local_2_["thread?"]
 local function async_wrap(func)
   local future = nil
   local final_value = nil
@@ -12,32 +17,32 @@ local function async_wrap(func)
   end
   local function awaitable_fn(...)
     while (final_value == nil) do
-      local _1_ = future
-      if (_1_ == nil) then
-        local _2_ = {resume_with_correct_args(function_co, {...})}
-        local function _3_(...)
-          local thread = (_2_)[2]
+      local _3_ = future
+      if (_3_ == nil) then
+        local _4_ = {resume_with_correct_args(function_co, {...})}
+        local function _5_(...)
+          local thread = (_4_)[2]
           return ("thread" == type(thread))
         end
-        if (((_G.type(_2_) == "table") and ((_2_)[1] == true) and (nil ~= (_2_)[2])) and _3_(...)) then
-          local thread = (_2_)[2]
+        if (((_G.type(_4_) == "table") and ((_4_)[1] == true) and (nil ~= (_4_)[2])) and _5_(...)) then
+          local thread = (_4_)[2]
           future = thread
-        elseif ((_G.type(_2_) == "table") and ((_2_)[1] == true) and ((_2_)[2] == "info")) then
-          local info = {select(3, (table.unpack or _G.unpack)(_2_))}
-        elseif ((_G.type(_2_) == "table") and ((_2_)[1] == true)) then
-          local value = {select(2, (table.unpack or _G.unpack)(_2_))}
+        elseif ((_G.type(_4_) == "table") and ((_4_)[1] == true) and ((_4_)[2] == "info")) then
+          local info = {select(3, (table.unpack or _G.unpack)(_4_))}
+        elseif ((_G.type(_4_) == "table") and ((_4_)[1] == true)) then
+          local value = {select(2, (table.unpack or _G.unpack)(_4_))}
           final_value = value
-        elseif ((_G.type(_2_) == "table") and ((_2_)[1] == false) and (nil ~= (_2_)[2])) then
-          local err = (_2_)[2]
+        elseif ((_G.type(_4_) == "table") and ((_4_)[1] == false) and (nil ~= (_4_)[2])) then
+          local err = (_4_)[2]
           error(err)
         else
         end
-      elseif (_1_ == future) then
-        local _5_ = coroutine.status(future)
-        if (_5_ == "dead") then
+      elseif (_3_ == future) then
+        local _7_ = coroutine.status(future)
+        if (_7_ == "dead") then
           future = nil
-        elseif (nil ~= _5_) then
-          local status = _5_
+        elseif (nil ~= _7_) then
+          local status = _7_
           coroutine.yield(future)
         else
         end
@@ -46,17 +51,12 @@ local function async_wrap(func)
     end
     return unpack(final_value)
   end
-  local function _8_(...)
+  local function _10_(...)
     first_call_args = {...}
     return coroutine.create(awaitable_fn)
   end
-  return _8_
+  return _10_
 end
-local _local_9_ = require("pact.lib.ruin.enum")
-local pack = _local_9_["pack"]
-local unpack = _local_9_["unpack"]
-local _local_10_ = require("pact.lib.ruin.type")
-local thread_3f = _local_10_["thread?"]
 local function await_wrap(func, argv)
   assert(coroutine.running(), "must call await inside (async ...)")
   local co = coroutine

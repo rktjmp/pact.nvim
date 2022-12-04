@@ -293,14 +293,15 @@ local function exec_commit(ui)
                 meta.text = fmt("(%s %s)", _81_, commit)
                 meta.progress = nil
                 local function _85_()
+                  vim.cmd("packloadall!")
                   return vim.cmd("silent! helptags ALL")
                 end
                 vim.schedule(_85_)
-                if plugin.run then
-                  local _let_86_ = require("pact.workflow.run")
+                if plugin.after then
+                  local _let_86_ = require("pact.workflow.after")
                   local new = _let_86_["new"]
                   local old_text = meta.text
-                  local run_wf = new(wf.id, plugin.run, plugin["package-path"])
+                  local after_wf = new(wf.id, plugin.after, plugin["package-path"])
                   meta.text = "running..."
                   local function _87_(event0)
                     local _88_ = event0
@@ -310,9 +311,9 @@ local function exec_commit(ui)
                     end
                     if (true and _89_()) then
                       local _ = _88_
-                      meta.text = (old_text .. fmt(" ran: %s", result.unwrap(event0)))
+                      meta.text = fmt("%s after: %s", old_text, (result.unwrap(event0) or "finished with no value"))
                       meta.progress = nil
-                      unsubscribe(run_wf, handler0)
+                      unsubscribe(after_wf, handler0)
                       return schedule_redraw(ui)
                     else
                       local function _90_()
@@ -323,7 +324,7 @@ local function exec_commit(ui)
                         local _ = _88_
                         meta.text = (old_text .. fmt(" error: %s", inspect(result.unwrap(event0))))
                         meta.progress = nil
-                        unsubscribe(run_wf, handler0)
+                        unsubscribe(after_wf, handler0)
                         return schedule_redraw(ui)
                       else
                         local function _91_()
@@ -332,8 +333,7 @@ local function exec_commit(ui)
                         end
                         if (true and _91_()) then
                           local _ = _88_
-                          print("string-event", event0)
-                          return handler0(fmt("run: %s", event0))
+                          return handler0(fmt("after: %s", event0))
                         else
                           local function _92_()
                             local _ = _88_
@@ -341,7 +341,6 @@ local function exec_commit(ui)
                           end
                           if (true and _92_()) then
                             local _ = _88_
-                            unsubscribe(run_wf, handler0)
                             return handler0(event0)
                           else
                             return nil
@@ -350,8 +349,8 @@ local function exec_commit(ui)
                       end
                     end
                   end
-                  subscribe(run_wf, _87_)
-                  scheduler["add-workflow"](ui.scheduler, run_wf)
+                  subscribe(after_wf, _87_)
+                  scheduler["add-workflow"](ui.scheduler, after_wf)
                 else
                 end
                 unsubscribe(wf, handler0)
