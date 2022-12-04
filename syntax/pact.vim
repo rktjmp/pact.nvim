@@ -40,9 +40,9 @@ hi def link PactActiveTitle PactTitle
 hi def link PactActiveName PactName
 hi def link PactActiveText PactText
 
-hi def link PactWaitingTitle PactTitle
-hi def link PactWaitingName PactName
-hi def link PactWaitingText PactText
+hi def link PactWaitingTitle PactComment
+hi def link PactWaitingName PactComment
+hi def link PactWaitingText PactComment
 
 hi def link PactUpdatedTitle PactTitle
 hi def link PactUpdatedName PactName
