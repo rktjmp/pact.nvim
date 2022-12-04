@@ -334,9 +334,10 @@
         (exec-diff ui meta))
       (vim.notify "May only view diff of staged or unstaged sync-able plugins"))))
 
-(fn M.attach [win buf plugins]
+(fn M.attach [win buf plugins opts]
   "Attach user-provided win+buf to pact view"
-  (let [{true ok-plugins false err-plugins} (enum.group-by #(values (result.ok? $2) (result.unwrap $2))
+  (let [opts (or opts {})
+        {true ok-plugins false err-plugins} (enum.group-by #(values (result.ok? $2) (result.unwrap $2))
                                                            plugins)]
     ;; warn user which plugins failed
     (if err-plugins
@@ -365,7 +366,8 @@
                 : buf
                 :ns-id (api.nvim_create_namespace :pact-ui)
                 :layout {: max-name-length}
-                :scheduler (scheduler.new)}]
+                :scheduler (scheduler.new {:concurrency-limit opts.concurrency-limit})
+                :opts opts}]
         (doto buf
           ;; TODO v mode
           (api.nvim_buf_set_option :ft :pact)
