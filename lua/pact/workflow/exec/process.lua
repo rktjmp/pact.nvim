@@ -62,7 +62,7 @@ local function run(cmd, args, cwd, env, on_exit)
   process_h, pid = spawn(cmd, {args = args, cwd = cwd, env = env, stdio = stdio}, _16_)
   local _17_ = process_h
   if (_17_ == nil) then
-    return nil, fmt(("Could not spawn process, " .. "maybe the command wasn't found? %s (for %s)"), pid, inspect({cmd, args, cwd}))
+    return nil, fmt("Could not spawn process, maybe the command wasn't found? %s (for %s)", pid, inspect({cmd, args, cwd}))
   elseif true then
     local _ = _17_
     read_start(stdout, into_table(out_bytes))

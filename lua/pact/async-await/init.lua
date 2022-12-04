@@ -52,6 +52,11 @@ local function async_wrap(func)
   end
   return _8_
 end
+local _local_9_ = require("pact.lib.ruin.enum")
+local pack = _local_9_["pack"]
+local unpack = _local_9_["unpack"]
+local _local_10_ = require("pact.lib.ruin.type")
+local thread_3f = _local_10_["thread?"]
 local function await_wrap(func, argv)
   assert(coroutine.running(), "must call await inside (async ...)")
   local co = coroutine
@@ -59,25 +64,46 @@ local function await_wrap(func, argv)
   local function create_thread(func0, argv0)
     local await_co = co.running()
     local resolve_future
-    local function _9_(...)
-      awaited_value = {...}
+    local function _11_(...)
+      awaited_value = pack(...)
       return co.resume(await_co)
     end
-    resolve_future = _9_
+    resolve_future = _11_
     local _ = table.insert(argv0, resolve_future)
-    func0(unpack(argv0))
-    return co.yield(await_co)
+    local first_return = pack(func0(unpack(argv0)))
+    local _12_ = first_return
+    if ((_G.type(_12_) == "table") and ((_12_)[1] == nil)) then
+      local rest = {select(2, (table.unpack or _G.unpack)(_12_))}
+      return unpack(first_return)
+    elseif true then
+      local _0 = _12_
+      return co.yield(await_co, unpack(first_return))
+    else
+      return nil
+    end
   end
   local await_co = co.create(create_thread)
+  local vals = pack(co.resume(await_co, func, argv))
   do
-    local _10_, _11_ = co.resume(await_co, func, argv)
-    if ((_10_ == true) and (nil ~= _11_)) then
-      local thread = _11_
-      co.yield(thread)
-    elseif ((_10_ == false) and (nil ~= _11_)) then
-      local err = _11_
+    local _14_ = vals
+    if ((_G.type(_14_) == "table") and ((_14_)[1] == false) and (nil ~= (_14_)[2])) then
+      local err = (_14_)[2]
       error(err)
+    elseif ((_G.type(_14_) == "table") and ((_14_)[1] == true) and ((_14_)[2] == nil)) then
+      local rest = {select(3, (table.unpack or _G.unpack)(_14_))}
+      awaited_value = pack(unpack(vals, 2))
     else
+      local function _15_()
+        local thread = (_14_)[2]
+        local rest = {select(3, (table.unpack or _G.unpack)(_14_))}
+        return thread_3f(thread)
+      end
+      if (((_G.type(_14_) == "table") and ((_14_)[1] == true) and (nil ~= (_14_)[2])) and _15_()) then
+        local thread = (_14_)[2]
+        local rest = {select(3, (table.unpack or _G.unpack)(_14_))}
+        co.yield(unpack(vals, 2))
+      else
+      end
     end
   end
   return unpack(awaited_value)

@@ -141,22 +141,28 @@ local function _40_()
     _41_ = new
   end
   local function _48_()
-    table.insert((__fn_2a_new_dispatch).help, "(where [{:?concurrency-limit ?concurrency-limit}])")
+    table.insert((__fn_2a_new_dispatch).help, "(where [opts])")
     local function _49_(...)
       if (1 == select("#", ...)) then
         local _50_ = {...}
         local function _51_(...)
-          local _3fconcurrency_limit_32_ = ((_50_)[1])["?concurrency-limit"]
+          local opts_32_ = (_50_)[1]
           return true
         end
-        if (((_G.type(_50_) == "table") and ((_G.type((_50_)[1]) == "table") and true)) and _51_(...)) then
-          local _3fconcurrency_limit_32_ = ((_50_)[1])["?concurrency-limit"]
-          local function _54_(_52_)
-            local _arg_53_ = _52_
-            local _3fconcurrency_limit = _arg_53_["?concurrency-limit"]
-            return {["concurrency-limit"] = (_3fconcurrency_limit or 5), queue = {}, active = {}, ["idle-handle"] = nil}
+        if (((_G.type(_50_) == "table") and (nil ~= (_50_)[1])) and _51_(...)) then
+          local opts_32_ = (_50_)[1]
+          local function _52_(opts)
+            local function _53_()
+              local t_54_ = opts
+              if (nil ~= t_54_) then
+                t_54_ = (t_54_)["concurrency-limit"]
+              else
+              end
+              return t_54_
+            end
+            return {["concurrency-limit"] = (_53_() or 5), queue = {}, active = {}, ["idle-handle"] = nil}
           end
-          return _54_
+          return _52_
         else
           return nil
         end

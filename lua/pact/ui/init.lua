@@ -11,42 +11,43 @@ local table_3f = _local_6_["table?"]
 local thread_3f = _local_6_["thread?"]
 local userdata_3f = _local_6_["userdata?"]
 do local _ = {nil, nil, nil, nil, nil, nil, nil, nil, nil, nil} end
-local enum, scheduler, _local_18_, _local_19_, result, api, _local_20_, status_wf, clone_wf, sync_wf, diff_wf = nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil
+local enum, inspect, scheduler, _local_19_, _local_20_, result, api, _local_21_, status_wf, clone_wf, sync_wf, diff_wf = nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil
 do
-  local _17_ = require("pact.workflow.git.diff")
-  local _16_ = require("pact.workflow.git.sync")
-  local _15_ = require("pact.workflow.git.clone")
-  local _14_ = require("pact.workflow.git.status")
-  local _13_ = string
-  local _12_ = vim.api
+  local _18_ = require("pact.workflow.git.diff")
+  local _17_ = require("pact.workflow.git.sync")
+  local _16_ = require("pact.workflow.git.clone")
+  local _15_ = require("pact.workflow.git.status")
+  local _14_ = string
+  local _13_ = vim.api
+  local _12_ = require("pact.lib.ruin.result")
   local _11_ = require("pact.lib.ruin.result")
-  local _10_ = require("pact.lib.ruin.result")
-  local _9_ = require("pact.pubsub")
-  local _8_ = require("pact.workflow.scheduler")
+  local _10_ = require("pact.pubsub")
+  local _9_ = require("pact.workflow.scheduler")
+  local _8_ = require("pact.inspect")
   local _7_ = require("pact.lib.ruin.enum")
-  enum, scheduler, _local_18_, _local_19_, result, api, _local_20_, status_wf, clone_wf, sync_wf, diff_wf = _7_, _8_, _9_, _10_, _11_, _12_, _13_, _14_, _15_, _16_, _17_
+  enum, inspect, scheduler, _local_19_, _local_20_, result, api, _local_21_, status_wf, clone_wf, sync_wf, diff_wf = _7_, _8_, _9_, _10_, _11_, _12_, _13_, _14_, _15_, _16_, _17_, _18_
 end
-local _local_21_ = _local_18_
-local subscribe = _local_21_["subscribe"]
-local unsubscribe = _local_21_["unsubscribe"]
 local _local_22_ = _local_19_
-local err_3f = _local_22_["err?"]
-local ok_3f = _local_22_["ok?"]
+local subscribe = _local_22_["subscribe"]
+local unsubscribe = _local_22_["unsubscribe"]
 local _local_23_ = _local_20_
-local fmt = _local_23_["format"]
+local err_3f = _local_23_["err?"]
+local ok_3f = _local_23_["ok?"]
+local _local_24_ = _local_21_
+local fmt = _local_24_["format"]
 local M = {}
 local function section_title(section_name)
   return (({error = "Error", waiting = "Waiting", active = "Active", held = "Held", updated = "Updated", ["up-to-date"] = "Up to date", unstaged = "Unstaged", staged = "Staged"})[section_name] or section_name)
 end
 local function highlight_for(section_name, field)
   local joined = table.concat({"pact", section_name, field}, "-")
-  local function _24_(_241, _242, _243)
+  local function _25_(_241, _242, _243)
     return (_241 .. string.upper(_242) .. _243)
   end
-  local function _25_()
+  local function _26_()
     return string.gmatch(joined, "(%w)([%w]+)")
   end
-  return enum.reduce(_24_, "", _25_)
+  return enum.reduce(_25_, "", _26_)
 end
 local function lede()
   return {{{";; \240\159\148\170\240\159\144\144\240\159\169\184", "PactComment"}}, {{"", "PactComment"}}}
@@ -54,10 +55,10 @@ end
 local function usage()
   return {{{";; usage:", "PactComment"}}, {{";;", "PactComment"}}, {{";;   s  - stage plugin for update", "PactComment"}}, {{";;   u  - unstage plugin", "PactComment"}}, {{";;   cc - commit staging and fetch updates", "PactComment"}}, {{";;   =  - view git log (staged/unstaged only)", "PactComment"}}, {{"", nil}}}
 end
-local function rate_limited_inc(_26_)
-  local _arg_27_ = _26_
-  local t = _arg_27_[1]
-  local n = _arg_27_[2]
+local function rate_limited_inc(_27_)
+  local _arg_28_ = _27_
+  local t = _arg_28_[1]
+  local n = _arg_28_[2]
   local every_n_ms = (1000 / 6)
   local now = vim.loop.now()
   if (every_n_ms < (now - t)) then
@@ -67,12 +68,12 @@ local function rate_limited_inc(_26_)
   end
 end
 local function progress_symbol(progress)
-  local _29_ = progress
-  if (_29_ == nil) then
+  local _30_ = progress
+  if (_30_ == nil) then
     return ""
-  elseif ((_G.type(_29_) == "table") and true and (nil ~= (_29_)[2])) then
-    local _ = (_29_)[1]
-    local n = (_29_)[2]
+  elseif ((_G.type(_30_) == "table") and true and (nil ~= (_30_)[2])) then
+    local _ = (_30_)[1]
+    local n = (_30_)[2]
     local symbols = {"\226\151\144", "\226\151\147", "\226\151\145", "\226\151\146"}
     return symbols[(1 + (n % #symbols))]
   else
@@ -81,24 +82,24 @@ local function progress_symbol(progress)
 end
 local function render_section(ui, section_name, previous_lines)
   local relevant_plugins
-  local function _31_(_241, _242)
+  local function _32_(_241, _242)
     return (_241.order <= _242.order)
   end
-  local function _32_(_241, _242)
+  local function _33_(_241, _242)
     return _242
   end
-  local function _33_(_241, _242)
+  local function _34_(_241, _242)
     return (_242.state == section_name)
   end
-  relevant_plugins = enum["sort$"](_31_, enum.map(_32_, enum.filter(_33_, ui["plugins-meta"])))
+  relevant_plugins = enum["sort$"](_32_, enum.map(_33_, enum.filter(_34_, ui["plugins-meta"])))
   local new_lines
-  local function _34_(lines, i, meta)
+  local function _35_(lines, i, meta)
     local name_length = #meta.plugin.name
     local line = {{meta.plugin.name, highlight_for(section_name, "name")}, {string.rep(" ", ((1 + ui.layout["max-name-length"]) - name_length)), nil}, {((meta.text or "did-not-set-text") .. progress_symbol(meta.progress)), highlight_for(section_name, "text")}}
     meta["on-line"] = (2 + #previous_lines + #lines)
     return enum["append$"](lines, line)
   end
-  new_lines = enum.reduce(_34_, {}, relevant_plugins)
+  new_lines = enum.reduce(_35_, {}, relevant_plugins)
   if (0 < #new_lines) then
     return enum["append$"](enum["concat$"](enum["append$"](previous_lines, {{section_title(section_name), highlight_for(section_name, "title")}, {" ", nil}, {fmt("(%s)", #new_lines), "PactComment"}}), new_lines), {{"", nil}})
   else
@@ -110,84 +111,84 @@ local function log_line_breaking_3f(log_line)
 end
 local function log_line__3echunks(log_line)
   local sha, log = string.match(log_line, "(%x+)%s(.+)")
-  local function _36_()
+  local function _37_()
     if log_line_breaking_3f(log) then
       return "DiagnosticError"
     else
       return "DiagnosticHint"
     end
   end
-  return {{"  ", "comment"}, {sha, "comment"}, {" ", "comment"}, {log, _36_()}}
+  return {{"  ", "comment"}, {sha, "comment"}, {" ", "comment"}, {log, _37_()}}
 end
 local function output(ui)
   do
     local sections = {"waiting", "error", "active", "unstaged", "staged", "updated", "held", "up-to-date"}
     local lines
-    local function _37_(lines0, _, section)
+    local function _38_(lines0, _, section)
       return render_section(ui, section, lines0)
     end
-    lines = enum["concat$"](enum.reduce(_37_, lede(), sections), usage())
+    lines = enum["concat$"](enum.reduce(_38_, lede(), sections), usage())
     local lines__3etext_and_extmarks
-    local function _42_(_38_, _, _40_)
-      local _arg_39_ = _38_
-      local str = _arg_39_[1]
-      local extmarks = _arg_39_[2]
-      local _arg_41_ = _40_
-      local txt = _arg_41_[1]
-      local _3fextmarks = _arg_41_[2]
-      local function _43_()
+    local function _43_(_39_, _, _41_)
+      local _arg_40_ = _39_
+      local str = _arg_40_[1]
+      local extmarks = _arg_40_[2]
+      local _arg_42_ = _41_
+      local txt = _arg_42_[1]
+      local _3fextmarks = _arg_42_[2]
+      local function _44_()
         if _3fextmarks then
           return enum["append$"](extmarks, {#str, (#str + #txt), _3fextmarks})
         else
           return extmarks
         end
       end
-      return {(str .. txt), _43_()}
+      return {(str .. txt), _44_()}
     end
-    lines__3etext_and_extmarks = enum.reduce(_42_)
-    local function _47_(_45_, _, line)
-      local _arg_46_ = _45_
-      local lines0 = _arg_46_[1]
-      local extmarks = _arg_46_[2]
-      local _let_48_ = lines__3etext_and_extmarks({"", {}}, line)
-      local new_lines = _let_48_[1]
-      local new_extmarks = _let_48_[2]
+    lines__3etext_and_extmarks = enum.reduce(_43_)
+    local function _48_(_46_, _, line)
+      local _arg_47_ = _46_
+      local lines0 = _arg_47_[1]
+      local extmarks = _arg_47_[2]
+      local _let_49_ = lines__3etext_and_extmarks({"", {}}, line)
+      local new_lines = _let_49_[1]
+      local new_extmarks = _let_49_[2]
       return {enum["append$"](lines0, new_lines), enum["append$"](extmarks, new_extmarks)}
     end
-    local _let_44_ = enum.reduce(_47_, {{}, {}}, lines)
-    local text = _let_44_[1]
-    local extmarks = _let_44_[2]
-    local function _49_(_241, _242)
+    local _let_45_ = enum.reduce(_48_, {{}, {}}, lines)
+    local text = _let_45_[1]
+    local extmarks = _let_45_[2]
+    local function _50_(_241, _242)
       return string.match(_242, "\n")
     end
-    if enum["any?"](_49_, text) then
+    if enum["any?"](_50_, text) then
       print("pact.ui text had unexpected new lines")
       print(vim.inspect(text))
     else
     end
     api.nvim_buf_set_lines(ui.buf, 0, -1, false, text)
-    local function _51_(i, line_marks)
-      local function _54_(_, _52_)
-        local _arg_53_ = _52_
-        local start = _arg_53_[1]
-        local stop = _arg_53_[2]
-        local hl = _arg_53_[3]
+    local function _52_(i, line_marks)
+      local function _55_(_, _53_)
+        local _arg_54_ = _53_
+        local start = _arg_54_[1]
+        local stop = _arg_54_[2]
+        local hl = _arg_54_[3]
         return api.nvim_buf_add_highlight(ui.buf, ui["ns-id"], hl, (i - 1), start, stop)
       end
-      return enum.map(_54_, line_marks)
+      return enum.map(_55_, line_marks)
     end
-    enum.map(_51_, extmarks)
-    local function _55_(_241, _242)
+    enum.map(_52_, extmarks)
+    local function _56_(_241, _242)
       if _242["log-open"] then
-        local function _56_(_2410, _2420)
+        local function _57_(_2410, _2420)
           return log_line__3echunks(_2420)
         end
-        return api.nvim_buf_set_extmark(ui.buf, ui["ns-id"], (_242["on-line"] - 1), 0, {virt_lines = enum.map(_56_, _242.log)})
+        return api.nvim_buf_set_extmark(ui.buf, ui["ns-id"], (_242["on-line"] - 1), 0, {virt_lines = enum.map(_57_, _242.log)})
       else
         return nil
       end
     end
-    enum.map(_55_, ui["plugins-meta"])
+    enum.map(_56_, ui["plugins-meta"])
   end
   vim.cmd.redraw()
   do end (ui)["will-render"] = false
@@ -196,10 +197,10 @@ end
 local function schedule_redraw(ui)
   if not ui["will-render"] then
     ui["will-render"] = true
-    local function _58_()
+    local function _59_()
       return output(ui)
     end
-    return vim.schedule(_58_)
+    return vim.schedule(_59_)
   else
     return nil
   end
@@ -208,13 +209,13 @@ local function exec_commit(ui)
   local function make_wf(how, plugin, commit)
     local wf
     do
-      local _60_ = how
-      if (_60_ == "clone") then
+      local _61_ = how
+      if (_61_ == "clone") then
         wf = clone_wf.new(plugin.id, plugin["package-path"], plugin.source[2], commit.sha)
-      elseif (_60_ == "sync") then
+      elseif (_61_ == "sync") then
         wf = sync_wf.new(plugin.id, plugin["package-path"], commit.sha)
-      elseif (nil ~= _60_) then
-        local other = _60_
+      elseif (nil ~= _61_) then
+        local other = _61_
         wf = error(fmt("unknown staging action %s", other))
       else
         wf = nil
@@ -224,32 +225,32 @@ local function exec_commit(ui)
     local handler
     local __fn_2a_handler_dispatch = {bodies = {}, help = {}}
     local handler0
-    local function _66_(...)
+    local function _67_(...)
       if (0 == #(__fn_2a_handler_dispatch).bodies) then
         error(("multi-arity function " .. "handler" .. " has no bodies"))
       else
       end
-      local _68_
+      local _69_
       do
         local f_74_auto = nil
         for __75_auto, match_3f_76_auto in ipairs((__fn_2a_handler_dispatch).bodies) do
           if f_74_auto then break end
           f_74_auto = match_3f_76_auto(...)
         end
-        _68_ = f_74_auto
+        _69_ = f_74_auto
       end
-      if (nil ~= _68_) then
-        local f_74_auto = _68_
+      if (nil ~= _69_) then
+        local f_74_auto = _69_
         return f_74_auto(...)
-      elseif (_68_ == nil) then
+      elseif (_69_ == nil) then
         local view_77_auto
         do
-          local _69_, _70_ = pcall(require, "fennel")
-          if ((_69_ == true) and ((_G.type(_70_) == "table") and (nil ~= (_70_).view))) then
-            local view_77_auto0 = (_70_).view
+          local _70_, _71_ = pcall(require, "fennel")
+          if ((_70_ == true) and ((_G.type(_71_) == "table") and (nil ~= (_71_).view))) then
+            local view_77_auto0 = (_71_).view
             view_77_auto = view_77_auto0
-          elseif ((_69_ == false) and true) then
-            local __75_auto = _70_
+          elseif ((_70_ == false) and true) then
+            local __75_auto = _71_
             view_77_auto = (_G.vim.inspect or print)
           else
             view_77_auto = nil
@@ -261,44 +262,102 @@ local function exec_commit(ui)
         return nil
       end
     end
-    handler0 = _66_
-    local function _73_()
-      local _74_
+    handler0 = _67_
+    local function _74_()
+      local _75_
       do
         table.insert((__fn_2a_handler_dispatch).help, "(where [event] (ok? event))")
-        local function _75_(...)
+        local function _76_(...)
           if (1 == select("#", ...)) then
-            local _76_ = {...}
-            local function _77_(...)
-              local event_62_ = (_76_)[1]
-              return ok_3f(event_62_)
+            local _77_ = {...}
+            local function _78_(...)
+              local event_63_ = (_77_)[1]
+              return ok_3f(event_63_)
             end
-            if (((_G.type(_76_) == "table") and (nil ~= (_76_)[1])) and _77_(...)) then
-              local event_62_ = (_76_)[1]
-              local function _78_(event)
+            if (((_G.type(_77_) == "table") and (nil ~= (_77_)[1])) and _78_(...)) then
+              local event_63_ = (_77_)[1]
+              local function _79_(event)
                 enum["append$"](meta.events, event)
                 meta.state = "updated"
-                local _80_
+                local _81_
                 do
-                  local _79_ = how
-                  if (_79_ == "clone") then
-                    _80_ = "cloned"
-                  elseif (_79_ == "sync") then
-                    _80_ = "synced"
+                  local _80_ = how
+                  if (_80_ == "clone") then
+                    _81_ = "cloned"
+                  elseif (_80_ == "sync") then
+                    _81_ = "synced"
                   else
-                    _80_ = nil
+                    _81_ = nil
                   end
                 end
-                meta.text = fmt("(%s %s)", _80_, commit)
+                meta.text = fmt("(%s %s)", _81_, commit)
                 meta.progress = nil
-                local function _84_()
+                local function _85_()
                   return vim.cmd("silent! helptags ALL")
                 end
-                vim.schedule(_84_)
+                vim.schedule(_85_)
+                if plugin.run then
+                  local _let_86_ = require("pact.workflow.run")
+                  local new = _let_86_["new"]
+                  local old_text = meta.text
+                  local run_wf = new(wf.id, plugin.run, plugin["package-path"])
+                  meta.text = "running..."
+                  local function _87_(event0)
+                    local _88_ = event0
+                    local function _89_()
+                      local _ = _88_
+                      return ok_3f(event0)
+                    end
+                    if (true and _89_()) then
+                      local _ = _88_
+                      meta.text = (old_text .. fmt(" ran: %s", result.unwrap(event0)))
+                      meta.progress = nil
+                      unsubscribe(run_wf, handler0)
+                      return schedule_redraw(ui)
+                    else
+                      local function _90_()
+                        local _ = _88_
+                        return err_3f(event0)
+                      end
+                      if (true and _90_()) then
+                        local _ = _88_
+                        meta.text = (old_text .. fmt(" error: %s", inspect(result.unwrap(event0))))
+                        meta.progress = nil
+                        unsubscribe(run_wf, handler0)
+                        return schedule_redraw(ui)
+                      else
+                        local function _91_()
+                          local _ = _88_
+                          return string_3f(event0)
+                        end
+                        if (true and _91_()) then
+                          local _ = _88_
+                          print("string-event", event0)
+                          return handler0(fmt("run: %s", event0))
+                        else
+                          local function _92_()
+                            local _ = _88_
+                            return thread_3f(event0)
+                          end
+                          if (true and _92_()) then
+                            local _ = _88_
+                            unsubscribe(run_wf, handler0)
+                            return handler0(event0)
+                          else
+                            return nil
+                          end
+                        end
+                      end
+                    end
+                  end
+                  subscribe(run_wf, _87_)
+                  scheduler["add-workflow"](ui.scheduler, run_wf)
+                else
+                end
                 unsubscribe(wf, handler0)
                 return schedule_redraw(ui)
               end
-              return _78_
+              return _79_
             else
               return nil
             end
@@ -306,25 +365,25 @@ local function exec_commit(ui)
             return nil
           end
         end
-        table.insert((__fn_2a_handler_dispatch).bodies, _75_)
-        _74_ = handler0
+        table.insert((__fn_2a_handler_dispatch).bodies, _76_)
+        _75_ = handler0
       end
-      local _87_
+      local _97_
       do
         table.insert((__fn_2a_handler_dispatch).help, "(where [event] (err? event))")
-        local function _88_(...)
+        local function _98_(...)
           if (1 == select("#", ...)) then
-            local _89_ = {...}
-            local function _90_(...)
-              local event_63_ = (_89_)[1]
-              return err_3f(event_63_)
+            local _99_ = {...}
+            local function _100_(...)
+              local event_64_ = (_99_)[1]
+              return err_3f(event_64_)
             end
-            if (((_G.type(_89_) == "table") and (nil ~= (_89_)[1])) and _90_(...)) then
-              local event_63_ = (_89_)[1]
-              local function _91_(event)
-                local _let_92_ = event
-                local _ = _let_92_[1]
-                local e = _let_92_[2]
+            if (((_G.type(_99_) == "table") and (nil ~= (_99_)[1])) and _100_(...)) then
+              local event_64_ = (_99_)[1]
+              local function _101_(event)
+                local _let_102_ = event
+                local _ = _let_102_[1]
+                local e = _let_102_[2]
                 enum["append$"](meta.events, event)
                 meta.state = "error"
                 meta.text = e
@@ -332,7 +391,7 @@ local function exec_commit(ui)
                 unsubscribe(wf, handler0)
                 return schedule_redraw(ui)
               end
-              return _91_
+              return _101_
             else
               return nil
             end
@@ -340,28 +399,28 @@ local function exec_commit(ui)
             return nil
           end
         end
-        table.insert((__fn_2a_handler_dispatch).bodies, _88_)
-        _87_ = handler0
+        table.insert((__fn_2a_handler_dispatch).bodies, _98_)
+        _97_ = handler0
       end
-      local _95_
+      local _105_
       do
         table.insert((__fn_2a_handler_dispatch).help, "(where [msg] (string? msg))")
-        local function _96_(...)
+        local function _106_(...)
           if (1 == select("#", ...)) then
-            local _97_ = {...}
-            local function _98_(...)
-              local msg_64_ = (_97_)[1]
-              return string_3f(msg_64_)
+            local _107_ = {...}
+            local function _108_(...)
+              local msg_65_ = (_107_)[1]
+              return string_3f(msg_65_)
             end
-            if (((_G.type(_97_) == "table") and (nil ~= (_97_)[1])) and _98_(...)) then
-              local msg_64_ = (_97_)[1]
-              local function _99_(msg)
+            if (((_G.type(_107_) == "table") and (nil ~= (_107_)[1])) and _108_(...)) then
+              local msg_65_ = (_107_)[1]
+              local function _109_(msg)
                 enum["append$"](meta.events, msg)
                 meta.text = msg
                 meta.progress = nil
                 return schedule_redraw(ui)
               end
-              return _99_
+              return _109_
             else
               return nil
             end
@@ -369,26 +428,26 @@ local function exec_commit(ui)
             return nil
           end
         end
-        table.insert((__fn_2a_handler_dispatch).bodies, _96_)
-        _95_ = handler0
+        table.insert((__fn_2a_handler_dispatch).bodies, _106_)
+        _105_ = handler0
       end
-      local _102_
+      local _112_
       do
         table.insert((__fn_2a_handler_dispatch).help, "(where [future] (thread? future))")
-        local function _103_(...)
+        local function _113_(...)
           if (1 == select("#", ...)) then
-            local _104_ = {...}
-            local function _105_(...)
-              local future_65_ = (_104_)[1]
-              return thread_3f(future_65_)
+            local _114_ = {...}
+            local function _115_(...)
+              local future_66_ = (_114_)[1]
+              return thread_3f(future_66_)
             end
-            if (((_G.type(_104_) == "table") and (nil ~= (_104_)[1])) and _105_(...)) then
-              local future_65_ = (_104_)[1]
-              local function _106_(future)
+            if (((_G.type(_114_) == "table") and (nil ~= (_114_)[1])) and _115_(...)) then
+              local future_66_ = (_114_)[1]
+              local function _116_(future)
                 meta.progress = rate_limited_inc((meta.progress or {0, 0}))
                 return schedule_redraw(ui)
               end
-              return _106_
+              return _116_
             else
               return nil
             end
@@ -396,22 +455,22 @@ local function exec_commit(ui)
             return nil
           end
         end
-        table.insert((__fn_2a_handler_dispatch).bodies, _103_)
-        _102_ = handler0
+        table.insert((__fn_2a_handler_dispatch).bodies, _113_)
+        _112_ = handler0
       end
-      local function _109_()
+      local function _119_()
         table.insert((__fn_2a_handler_dispatch).help, "(where _)")
-        local function _110_(...)
+        local function _120_(...)
           if true then
-            local _111_ = {...}
-            local function _112_(...)
+            local _121_ = {...}
+            local function _122_(...)
               return true
             end
-            if ((_G.type(_111_) == "table") and _112_(...)) then
-              local function _113_(...)
+            if ((_G.type(_121_) == "table") and _122_(...)) then
+              local function _123_(...)
                 return nil
               end
-              return _113_
+              return _123_
             else
               return nil
             end
@@ -419,34 +478,34 @@ local function exec_commit(ui)
             return nil
           end
         end
-        table.insert((__fn_2a_handler_dispatch).bodies, _110_)
+        table.insert((__fn_2a_handler_dispatch).bodies, _120_)
         return handler0
       end
-      do local _ = {_74_, _87_, _95_, _102_, _109_()} end
+      do local _ = {_75_, _97_, _105_, _112_, _119_()} end
       return handler0
     end
-    handler = setmetatable({nil, nil}, {__call = _73_})()
+    handler = setmetatable({nil, nil}, {__call = _74_})()
     subscribe(wf, handler)
     return wf
   end
-  local function _116_(_, meta)
+  local function _126_(_, meta)
     meta["state"] = "held"
     return nil
   end
-  local function _117_(_241, _242)
+  local function _127_(_241, _242)
     return ("unstaged" == _242.state)
   end
-  enum.map(_116_, enum.filter(_117_, ui["plugins-meta"]))
-  local function _118_(_, meta)
+  enum.map(_126_, enum.filter(_127_, ui["plugins-meta"]))
+  local function _128_(_, meta)
     local wf = make_wf(meta.action[1], meta.plugin, meta.action[2])
     scheduler["add-workflow"](ui.scheduler, wf)
     do end (meta)["state"] = "active"
     return nil
   end
-  local function _119_(_241, _242)
+  local function _129_(_241, _242)
     return ("staged" == _242.state)
   end
-  enum.map(_118_, enum.filter(_119_, ui["plugins-meta"]))
+  enum.map(_128_, enum.filter(_129_, ui["plugins-meta"]))
   return schedule_redraw(ui)
 end
 local function exec_diff(ui, meta)
@@ -457,32 +516,32 @@ local function exec_diff(ui, meta)
     local handler
     local __fn_2a_handler_dispatch = {bodies = {}, help = {}}
     local handler0
-    local function _124_(...)
+    local function _134_(...)
       if (0 == #(__fn_2a_handler_dispatch).bodies) then
         error(("multi-arity function " .. "handler" .. " has no bodies"))
       else
       end
-      local _126_
+      local _136_
       do
         local f_74_auto = nil
         for __75_auto, match_3f_76_auto in ipairs((__fn_2a_handler_dispatch).bodies) do
           if f_74_auto then break end
           f_74_auto = match_3f_76_auto(...)
         end
-        _126_ = f_74_auto
+        _136_ = f_74_auto
       end
-      if (nil ~= _126_) then
-        local f_74_auto = _126_
+      if (nil ~= _136_) then
+        local f_74_auto = _136_
         return f_74_auto(...)
-      elseif (_126_ == nil) then
+      elseif (_136_ == nil) then
         local view_77_auto
         do
-          local _127_, _128_ = pcall(require, "fennel")
-          if ((_127_ == true) and ((_G.type(_128_) == "table") and (nil ~= (_128_).view))) then
-            local view_77_auto0 = (_128_).view
+          local _137_, _138_ = pcall(require, "fennel")
+          if ((_137_ == true) and ((_G.type(_138_) == "table") and (nil ~= (_138_).view))) then
+            local view_77_auto0 = (_138_).view
             view_77_auto = view_77_auto0
-          elseif ((_127_ == false) and true) then
-            local __75_auto = _128_
+          elseif ((_137_ == false) and true) then
+            local __75_auto = _138_
             view_77_auto = (_G.vim.inspect or print)
           else
             view_77_auto = nil
@@ -494,24 +553,24 @@ local function exec_diff(ui, meta)
         return nil
       end
     end
-    handler0 = _124_
-    local function _131_()
-      local _132_
+    handler0 = _134_
+    local function _141_()
+      local _142_
       do
         table.insert((__fn_2a_handler_dispatch).help, "(where [event] (ok? event))")
-        local function _133_(...)
+        local function _143_(...)
           if (1 == select("#", ...)) then
-            local _134_ = {...}
-            local function _135_(...)
-              local event_120_ = (_134_)[1]
-              return ok_3f(event_120_)
+            local _144_ = {...}
+            local function _145_(...)
+              local event_130_ = (_144_)[1]
+              return ok_3f(event_130_)
             end
-            if (((_G.type(_134_) == "table") and (nil ~= (_134_)[1])) and _135_(...)) then
-              local event_120_ = (_134_)[1]
-              local function _136_(event)
-                local _let_137_ = event
-                local _ = _let_137_[1]
-                local log = _let_137_[2]
+            if (((_G.type(_144_) == "table") and (nil ~= (_144_)[1])) and _145_(...)) then
+              local event_130_ = (_144_)[1]
+              local function _146_(event)
+                local _let_147_ = event
+                local _ = _let_147_[1]
+                local log = _let_147_[2]
                 enum["append$"](meta0.events, event)
                 meta0.text = previous_text
                 meta0.progress = nil
@@ -520,7 +579,7 @@ local function exec_diff(ui, meta)
                 unsubscribe(wf, handler0)
                 return schedule_redraw(ui)
               end
-              return _136_
+              return _146_
             else
               return nil
             end
@@ -528,32 +587,32 @@ local function exec_diff(ui, meta)
             return nil
           end
         end
-        table.insert((__fn_2a_handler_dispatch).bodies, _133_)
-        _132_ = handler0
+        table.insert((__fn_2a_handler_dispatch).bodies, _143_)
+        _142_ = handler0
       end
-      local _140_
+      local _150_
       do
         table.insert((__fn_2a_handler_dispatch).help, "(where [event] (err? event))")
-        local function _141_(...)
+        local function _151_(...)
           if (1 == select("#", ...)) then
-            local _142_ = {...}
-            local function _143_(...)
-              local event_121_ = (_142_)[1]
-              return err_3f(event_121_)
+            local _152_ = {...}
+            local function _153_(...)
+              local event_131_ = (_152_)[1]
+              return err_3f(event_131_)
             end
-            if (((_G.type(_142_) == "table") and (nil ~= (_142_)[1])) and _143_(...)) then
-              local event_121_ = (_142_)[1]
-              local function _144_(event)
-                local _let_145_ = event
-                local _ = _let_145_[1]
-                local e = _let_145_[2]
+            if (((_G.type(_152_) == "table") and (nil ~= (_152_)[1])) and _153_(...)) then
+              local event_131_ = (_152_)[1]
+              local function _154_(event)
+                local _let_155_ = event
+                local _ = _let_155_[1]
+                local e = _let_155_[2]
                 enum["append$"](meta0.events, event)
                 meta0.text = e
                 meta0.progress = nil
                 unsubscribe(wf, handler0)
                 return schedule_redraw(ui)
               end
-              return _144_
+              return _154_
             else
               return nil
             end
@@ -561,28 +620,28 @@ local function exec_diff(ui, meta)
             return nil
           end
         end
-        table.insert((__fn_2a_handler_dispatch).bodies, _141_)
-        _140_ = handler0
+        table.insert((__fn_2a_handler_dispatch).bodies, _151_)
+        _150_ = handler0
       end
-      local _148_
+      local _158_
       do
         table.insert((__fn_2a_handler_dispatch).help, "(where [msg] (string? msg))")
-        local function _149_(...)
+        local function _159_(...)
           if (1 == select("#", ...)) then
-            local _150_ = {...}
-            local function _151_(...)
-              local msg_122_ = (_150_)[1]
-              return string_3f(msg_122_)
+            local _160_ = {...}
+            local function _161_(...)
+              local msg_132_ = (_160_)[1]
+              return string_3f(msg_132_)
             end
-            if (((_G.type(_150_) == "table") and (nil ~= (_150_)[1])) and _151_(...)) then
-              local msg_122_ = (_150_)[1]
-              local function _152_(msg)
+            if (((_G.type(_160_) == "table") and (nil ~= (_160_)[1])) and _161_(...)) then
+              local msg_132_ = (_160_)[1]
+              local function _162_(msg)
                 local meta1 = ui["plugins-meta"][wf.id]
                 enum["append$"](meta1.events, msg)
                 do end (meta1)["text"] = msg
                 return schedule_redraw(ui)
               end
-              return _152_
+              return _162_
             else
               return nil
             end
@@ -590,26 +649,26 @@ local function exec_diff(ui, meta)
             return nil
           end
         end
-        table.insert((__fn_2a_handler_dispatch).bodies, _149_)
-        _148_ = handler0
+        table.insert((__fn_2a_handler_dispatch).bodies, _159_)
+        _158_ = handler0
       end
-      local _155_
+      local _165_
       do
         table.insert((__fn_2a_handler_dispatch).help, "(where [future] (thread? future))")
-        local function _156_(...)
+        local function _166_(...)
           if (1 == select("#", ...)) then
-            local _157_ = {...}
-            local function _158_(...)
-              local future_123_ = (_157_)[1]
-              return thread_3f(future_123_)
+            local _167_ = {...}
+            local function _168_(...)
+              local future_133_ = (_167_)[1]
+              return thread_3f(future_133_)
             end
-            if (((_G.type(_157_) == "table") and (nil ~= (_157_)[1])) and _158_(...)) then
-              local future_123_ = (_157_)[1]
-              local function _159_(future)
+            if (((_G.type(_167_) == "table") and (nil ~= (_167_)[1])) and _168_(...)) then
+              local future_133_ = (_167_)[1]
+              local function _169_(future)
                 meta0.progress = rate_limited_inc((meta0.progress or {0, 0}))
                 return schedule_redraw(ui)
               end
-              return _159_
+              return _169_
             else
               return nil
             end
@@ -617,22 +676,22 @@ local function exec_diff(ui, meta)
             return nil
           end
         end
-        table.insert((__fn_2a_handler_dispatch).bodies, _156_)
-        _155_ = handler0
+        table.insert((__fn_2a_handler_dispatch).bodies, _166_)
+        _165_ = handler0
       end
-      local function _162_()
+      local function _172_()
         table.insert((__fn_2a_handler_dispatch).help, "(where _)")
-        local function _163_(...)
+        local function _173_(...)
           if true then
-            local _164_ = {...}
-            local function _165_(...)
+            local _174_ = {...}
+            local function _175_(...)
               return true
             end
-            if ((_G.type(_164_) == "table") and _165_(...)) then
-              local function _166_(...)
+            if ((_G.type(_174_) == "table") and _175_(...)) then
+              local function _176_(...)
                 return nil
               end
-              return _166_
+              return _176_
             else
               return nil
             end
@@ -640,13 +699,13 @@ local function exec_diff(ui, meta)
             return nil
           end
         end
-        table.insert((__fn_2a_handler_dispatch).bodies, _163_)
+        table.insert((__fn_2a_handler_dispatch).bodies, _173_)
         return handler0
       end
-      do local _ = {_132_, _140_, _148_, _155_, _162_()} end
+      do local _ = {_142_, _150_, _158_, _165_, _172_()} end
       return handler0
     end
-    handler = setmetatable({nil, nil}, {__call = _131_})()
+    handler = setmetatable({nil, nil}, {__call = _141_})()
     subscribe(wf, handler)
     return wf
   end
@@ -663,32 +722,32 @@ local function exec_status(ui)
     local handler
     local __fn_2a_handler_dispatch = {bodies = {}, help = {}}
     local handler0
-    local function _173_(...)
+    local function _183_(...)
       if (0 == #(__fn_2a_handler_dispatch).bodies) then
         error(("multi-arity function " .. "handler" .. " has no bodies"))
       else
       end
-      local _175_
+      local _185_
       do
         local f_74_auto = nil
         for __75_auto, match_3f_76_auto in ipairs((__fn_2a_handler_dispatch).bodies) do
           if f_74_auto then break end
           f_74_auto = match_3f_76_auto(...)
         end
-        _175_ = f_74_auto
+        _185_ = f_74_auto
       end
-      if (nil ~= _175_) then
-        local f_74_auto = _175_
+      if (nil ~= _185_) then
+        local f_74_auto = _185_
         return f_74_auto(...)
-      elseif (_175_ == nil) then
+      elseif (_185_ == nil) then
         local view_77_auto
         do
-          local _176_, _177_ = pcall(require, "fennel")
-          if ((_176_ == true) and ((_G.type(_177_) == "table") and (nil ~= (_177_).view))) then
-            local view_77_auto0 = (_177_).view
+          local _186_, _187_ = pcall(require, "fennel")
+          if ((_186_ == true) and ((_G.type(_187_) == "table") and (nil ~= (_187_).view))) then
+            local view_77_auto0 = (_187_).view
             view_77_auto = view_77_auto0
-          elseif ((_176_ == false) and true) then
-            local __75_auto = _177_
+          elseif ((_186_ == false) and true) then
+            local __75_auto = _187_
             view_77_auto = (_G.vim.inspect or print)
           else
             view_77_auto = nil
@@ -700,59 +759,59 @@ local function exec_status(ui)
         return nil
       end
     end
-    handler0 = _173_
-    local function _180_()
-      local _181_
+    handler0 = _183_
+    local function _190_()
+      local _191_
       do
         table.insert((__fn_2a_handler_dispatch).help, "(where [event] (ok? event))")
-        local function _182_(...)
+        local function _192_(...)
           if (1 == select("#", ...)) then
-            local _183_ = {...}
-            local function _184_(...)
-              local event_169_ = (_183_)[1]
-              return ok_3f(event_169_)
+            local _193_ = {...}
+            local function _194_(...)
+              local event_179_ = (_193_)[1]
+              return ok_3f(event_179_)
             end
-            if (((_G.type(_183_) == "table") and (nil ~= (_183_)[1])) and _184_(...)) then
-              local event_169_ = (_183_)[1]
-              local function _185_(event)
+            if (((_G.type(_193_) == "table") and (nil ~= (_193_)[1])) and _194_(...)) then
+              local event_179_ = (_193_)[1]
+              local function _195_(event)
                 local command, _3fmaybe_latest = result.unwrap(event)
                 local text
-                local function _186_(_241)
-                  local _187_ = _3fmaybe_latest
-                  if (nil ~= _187_) then
-                    local commit = _187_
+                local function _196_(_241)
+                  local _197_ = _3fmaybe_latest
+                  if (nil ~= _197_) then
+                    local commit = _197_
                     return fmt("%s, latest: %s)", _241, commit)
-                  elseif (_187_ == nil) then
+                  elseif (_197_ == nil) then
                     return fmt("%s)", _241)
                   else
                     return nil
                   end
                 end
-                local function _190_()
-                  local _189_ = command
-                  if ((_G.type(_189_) == "table") and ((_189_)[1] == "hold") and (nil ~= (_189_)[2])) then
-                    local commit = (_189_)[2]
+                local function _200_()
+                  local _199_ = command
+                  if ((_G.type(_199_) == "table") and ((_199_)[1] == "hold") and (nil ~= (_199_)[2])) then
+                    local commit = (_199_)[2]
                     return fmt("(at %s", commit)
-                  elseif ((_G.type(_189_) == "table") and (nil ~= (_189_)[1]) and (nil ~= (_189_)[2])) then
-                    local action = (_189_)[1]
-                    local commit = (_189_)[2]
+                  elseif ((_G.type(_199_) == "table") and (nil ~= (_199_)[1]) and (nil ~= (_199_)[2])) then
+                    local action = (_199_)[1]
+                    local commit = (_199_)[2]
                     return fmt("(%s %s", action, commit)
                   else
                     return nil
                   end
                 end
-                text = _186_(_190_())
+                text = _196_(_200_())
                 enum["append$"](meta.events, event)
                 meta.text = text
                 meta.progress = nil
                 do
-                  local _192_ = command
-                  if ((_G.type(_192_) == "table") and ((_192_)[1] == "hold") and (nil ~= (_192_)[2])) then
-                    local commit = (_192_)[2]
+                  local _202_ = command
+                  if ((_G.type(_202_) == "table") and ((_202_)[1] == "hold") and (nil ~= (_202_)[2])) then
+                    local commit = (_202_)[2]
                     meta.state = "up-to-date"
-                  elseif ((_G.type(_192_) == "table") and (nil ~= (_192_)[1]) and (nil ~= (_192_)[2])) then
-                    local action = (_192_)[1]
-                    local commit = (_192_)[2]
+                  elseif ((_G.type(_202_) == "table") and (nil ~= (_202_)[1]) and (nil ~= (_202_)[2])) then
+                    local action = (_202_)[1]
+                    local commit = (_202_)[2]
                     meta.state = "unstaged"
                     meta.action = {action, commit}
                   else
@@ -761,7 +820,7 @@ local function exec_status(ui)
                 unsubscribe(wf, handler0)
                 return schedule_redraw(ui)
               end
-              return _185_
+              return _195_
             else
               return nil
             end
@@ -769,22 +828,22 @@ local function exec_status(ui)
             return nil
           end
         end
-        table.insert((__fn_2a_handler_dispatch).bodies, _182_)
-        _181_ = handler0
+        table.insert((__fn_2a_handler_dispatch).bodies, _192_)
+        _191_ = handler0
       end
-      local _196_
+      local _206_
       do
         table.insert((__fn_2a_handler_dispatch).help, "(where [event] (err? event))")
-        local function _197_(...)
+        local function _207_(...)
           if (1 == select("#", ...)) then
-            local _198_ = {...}
-            local function _199_(...)
-              local event_170_ = (_198_)[1]
-              return err_3f(event_170_)
+            local _208_ = {...}
+            local function _209_(...)
+              local event_180_ = (_208_)[1]
+              return err_3f(event_180_)
             end
-            if (((_G.type(_198_) == "table") and (nil ~= (_198_)[1])) and _199_(...)) then
-              local event_170_ = (_198_)[1]
-              local function _200_(event)
+            if (((_G.type(_208_) == "table") and (nil ~= (_208_)[1])) and _209_(...)) then
+              local event_180_ = (_208_)[1]
+              local function _210_(event)
                 meta.state = "error"
                 enum["append$"](meta.events, event)
                 meta.progress = nil
@@ -792,7 +851,7 @@ local function exec_status(ui)
                 unsubscribe(wf, handler0)
                 return schedule_redraw(ui)
               end
-              return _200_
+              return _210_
             else
               return nil
             end
@@ -800,28 +859,28 @@ local function exec_status(ui)
             return nil
           end
         end
-        table.insert((__fn_2a_handler_dispatch).bodies, _197_)
-        _196_ = handler0
+        table.insert((__fn_2a_handler_dispatch).bodies, _207_)
+        _206_ = handler0
       end
-      local _203_
+      local _213_
       do
         table.insert((__fn_2a_handler_dispatch).help, "(where [msg] (string? msg))")
-        local function _204_(...)
+        local function _214_(...)
           if (1 == select("#", ...)) then
-            local _205_ = {...}
-            local function _206_(...)
-              local msg_171_ = (_205_)[1]
-              return string_3f(msg_171_)
+            local _215_ = {...}
+            local function _216_(...)
+              local msg_181_ = (_215_)[1]
+              return string_3f(msg_181_)
             end
-            if (((_G.type(_205_) == "table") and (nil ~= (_205_)[1])) and _206_(...)) then
-              local msg_171_ = (_205_)[1]
-              local function _207_(msg)
+            if (((_G.type(_215_) == "table") and (nil ~= (_215_)[1])) and _216_(...)) then
+              local msg_181_ = (_215_)[1]
+              local function _217_(msg)
                 enum["append$"](meta.events, msg)
                 meta.progress = nil
                 meta.text = msg
                 return schedule_redraw(ui)
               end
-              return _207_
+              return _217_
             else
               return nil
             end
@@ -829,26 +888,26 @@ local function exec_status(ui)
             return nil
           end
         end
-        table.insert((__fn_2a_handler_dispatch).bodies, _204_)
-        _203_ = handler0
+        table.insert((__fn_2a_handler_dispatch).bodies, _214_)
+        _213_ = handler0
       end
-      local _210_
+      local _220_
       do
         table.insert((__fn_2a_handler_dispatch).help, "(where [future] (thread? future))")
-        local function _211_(...)
+        local function _221_(...)
           if (1 == select("#", ...)) then
-            local _212_ = {...}
-            local function _213_(...)
-              local future_172_ = (_212_)[1]
-              return thread_3f(future_172_)
+            local _222_ = {...}
+            local function _223_(...)
+              local future_182_ = (_222_)[1]
+              return thread_3f(future_182_)
             end
-            if (((_G.type(_212_) == "table") and (nil ~= (_212_)[1])) and _213_(...)) then
-              local future_172_ = (_212_)[1]
-              local function _214_(future)
+            if (((_G.type(_222_) == "table") and (nil ~= (_222_)[1])) and _223_(...)) then
+              local future_182_ = (_222_)[1]
+              local function _224_(future)
                 meta.progress = rate_limited_inc((meta.progress or {0, 0}))
                 return schedule_redraw(ui)
               end
-              return _214_
+              return _224_
             else
               return nil
             end
@@ -856,22 +915,22 @@ local function exec_status(ui)
             return nil
           end
         end
-        table.insert((__fn_2a_handler_dispatch).bodies, _211_)
-        _210_ = handler0
+        table.insert((__fn_2a_handler_dispatch).bodies, _221_)
+        _220_ = handler0
       end
-      local function _217_()
+      local function _227_()
         table.insert((__fn_2a_handler_dispatch).help, "(where _)")
-        local function _218_(...)
+        local function _228_(...)
           if true then
-            local _219_ = {...}
-            local function _220_(...)
+            local _229_ = {...}
+            local function _230_(...)
               return true
             end
-            if ((_G.type(_219_) == "table") and _220_(...)) then
-              local function _221_(...)
+            if ((_G.type(_229_) == "table") and _230_(...)) then
+              local function _231_(...)
                 return nil
               end
-              return _221_
+              return _231_
             else
               return nil
             end
@@ -879,41 +938,41 @@ local function exec_status(ui)
             return nil
           end
         end
-        table.insert((__fn_2a_handler_dispatch).bodies, _218_)
+        table.insert((__fn_2a_handler_dispatch).bodies, _228_)
         return handler0
       end
-      do local _ = {_181_, _196_, _203_, _210_, _217_()} end
+      do local _ = {_191_, _206_, _213_, _220_, _227_()} end
       return handler0
     end
-    handler = setmetatable({nil, nil}, {__call = _180_})()
+    handler = setmetatable({nil, nil}, {__call = _190_})()
     subscribe(wf, handler)
     return wf
   end
   schedule_redraw(ui)
-  local function _224_(_, plugin)
+  local function _234_(_, plugin)
     return scheduler["add-workflow"](ui.scheduler, make_status_wf(plugin))
   end
-  return enum.map(_224_, ui.plugins)
+  return enum.map(_234_, ui.plugins)
 end
 local function exec_keymap_cc(ui)
-  local function _225_(_241, _242)
+  local function _235_(_241, _242)
     return ("staged" == _242.state)
   end
-  if enum["any?"](_225_, ui["plugins-meta"]) then
+  if enum["any?"](_235_, ui["plugins-meta"]) then
     return exec_commit(ui)
   else
     return vim.notify("Nothing staged, refusing to commit")
   end
 end
 local function exec_keymap_s(ui)
-  local _let_227_ = api.nvim_win_get_cursor(ui.win)
-  local line = _let_227_[1]
-  local _ = _let_227_[2]
+  local _let_237_ = api.nvim_win_get_cursor(ui.win)
+  local line = _let_237_[1]
+  local _ = _let_237_[2]
   local meta
-  local function _228_(_241, _242)
+  local function _238_(_241, _242)
     return (line == _242["on-line"])
   end
-  meta = enum["find-value"](_228_, ui["plugins-meta"])
+  meta = enum["find-value"](_238_, ui["plugins-meta"])
   if (meta and ("unstaged" == meta.state)) then
     meta["state"] = "staged"
     return schedule_redraw(ui)
@@ -922,14 +981,14 @@ local function exec_keymap_s(ui)
   end
 end
 local function exec_keymap_u(ui)
-  local _let_230_ = api.nvim_win_get_cursor(ui.win)
-  local line = _let_230_[1]
-  local _ = _let_230_[2]
+  local _let_240_ = api.nvim_win_get_cursor(ui.win)
+  local line = _let_240_[1]
+  local _ = _let_240_[2]
   local meta
-  local function _231_(_241, _242)
+  local function _241_(_241, _242)
     return (line == _242["on-line"])
   end
-  meta = enum["find-value"](_231_, ui["plugins-meta"])
+  meta = enum["find-value"](_241_, ui["plugins-meta"])
   if (meta and ("staged" == meta.state)) then
     meta["state"] = "unstaged"
     return schedule_redraw(ui)
@@ -938,14 +997,14 @@ local function exec_keymap_u(ui)
   end
 end
 local function exec_keymap__3d(ui)
-  local _let_233_ = api.nvim_win_get_cursor(ui.win)
-  local line = _let_233_[1]
-  local _ = _let_233_[2]
+  local _let_243_ = api.nvim_win_get_cursor(ui.win)
+  local line = _let_243_[1]
+  local _ = _let_243_[2]
   local meta
-  local function _234_(_241, _242)
+  local function _244_(_241, _242)
     return (line == _242["on-line"])
   end
-  meta = enum["find-value"](_234_, ui["plugins-meta"])
+  meta = enum["find-value"](_244_, ui["plugins-meta"])
   if (meta and (("staged" == meta.state) or ("unstaged" == meta.state)) and ("sync" == meta.action[1])) then
     if meta.log then
       meta["log-open"] = not meta["log-open"]
@@ -957,50 +1016,51 @@ local function exec_keymap__3d(ui)
     return vim.notify("May only view diff of staged or unstaged sync-able plugins")
   end
 end
-M.attach = function(win, buf, plugins)
-  local function _238_(_241, _242)
+M.attach = function(win, buf, plugins, opts)
+  local opts0 = (opts or {})
+  local function _248_(_241, _242)
     return result["ok?"](_242), result.unwrap(_242)
   end
-  local _let_237_ = enum["group-by"](_238_, plugins)
-  local ok_plugins = _let_237_[true]
-  local err_plugins = _let_237_[false]
+  local _let_247_ = enum["group-by"](_248_, plugins)
+  local ok_plugins = _let_247_[true]
+  local err_plugins = _let_247_[false]
   if err_plugins then
-    local function _239_(lines, _, _242)
+    local function _249_(lines, _, _242)
       return enum["append$"](lines, fmt("  - %s", _242))
     end
-    api.nvim_err_writeln((table.concat(enum.reduce(_239_, {"Some Pact plugins had configuration errors and wont be processed!"}, err_plugins), "\n") .. "\n"))
+    api.nvim_err_writeln((table.concat(enum.reduce(_249_, {"Some Pact plugins had configuration errors and wont be processed!"}, err_plugins), "\n") .. "\n"))
   else
   end
   if ok_plugins then
     local plugins_meta
-    local function _241_(_241, _242)
+    local function _251_(_241, _242)
       return {_242.id, {events = {}, text = "waiting for scheduler", order = _241, state = "waiting", action = nil, plugin = _242}}
     end
-    plugins_meta = enum["pairs->table"](enum.map(_241_, ok_plugins))
+    plugins_meta = enum["pairs->table"](enum.map(_251_, ok_plugins))
     local max_name_length
-    local function _242_(_241, _242, _243)
+    local function _252_(_241, _242, _243)
       return math.max(_241, #_243.name)
     end
-    max_name_length = enum.reduce(_242_, 0, ok_plugins)
-    local ui = {plugins = ok_plugins, ["plugins-meta"] = plugins_meta, win = win, buf = buf, ["ns-id"] = api.nvim_create_namespace("pact-ui"), layout = {["max-name-length"] = max_name_length}, scheduler = scheduler.new()}
+    max_name_length = enum.reduce(_252_, 0, ok_plugins)
+    local ui = {plugins = ok_plugins, ["plugins-meta"] = plugins_meta, win = win, buf = buf, ["ns-id"] = api.nvim_create_namespace("pact-ui"), layout = {["max-name-length"] = max_name_length}, scheduler = scheduler.new({["concurrency-limit"] = opts0["concurrency-limit"]}), opts = opts0}
     do
       api.nvim_buf_set_option(buf, "ft", "pact")
-      local function _243_()
+      local function _253_()
         return exec_keymap__3d(ui)
       end
-      api.nvim_buf_set_keymap(buf, "n", "=", "", {callback = _243_})
-      local function _244_()
+      api.nvim_buf_set_keymap(buf, "n", "=", "", {callback = _253_})
+      local function _254_()
         return exec_keymap_cc(ui)
       end
-      api.nvim_buf_set_keymap(buf, "n", "cc", "", {callback = _244_})
-      local function _245_()
+      api.nvim_buf_set_keymap(buf, "n", "cc", "", {callback = _254_})
+      local function _255_()
         return exec_keymap_s(ui)
       end
-      api.nvim_buf_set_keymap(buf, "n", "s", "", {callback = _245_})
-      local function _246_()
+      api.nvim_buf_set_keymap(buf, "n", "s", "", {callback = _255_})
+      local function _256_()
         return exec_keymap_u(ui)
       end
-      api.nvim_buf_set_keymap(buf, "n", "u", "", {callback = _246_})
+      api.nvim_buf_set_keymap(buf, "n", "u", "", {callback = _256_})
     end
     exec_status(ui)
     return ui

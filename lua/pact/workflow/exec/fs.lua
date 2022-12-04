@@ -26,6 +26,9 @@ local function what_is_at(path)
     local err = _12_
     local _ = _13_
     return nil, fmt("uv.fs_stat error %s", err)
+  elseif ((_11_ == nil) and (nil ~= _12_)) then
+    local err = _12_
+    return nil, err
   else
     return nil
   end

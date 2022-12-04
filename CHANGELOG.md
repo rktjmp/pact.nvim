@@ -1,5 +1,10 @@
 # 🔪🐐🩸 `pact` Changelog
 
+## 0.0.5
+
+- Added plugin `run` option support
+- Added documentation.
+
 ## 0.0.4
 
 - Added progress indicator when running external commands
@@ -22,4 +27,7 @@
 - Added `github`, `gitlab`, `sourcehut` and `git` sources.
 - Added `tag`, `branch`, `commit` `version` constraints.
 - Added snapshotting.
+
+## -0.0.0
+
 - *Details lost to time...*

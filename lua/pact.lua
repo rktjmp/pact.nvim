@@ -35,7 +35,7 @@ local function open(opts)
   end
   local opts0 = (opts or {})
   do
-    opts0["concurrency-limit"] = (opts0["concurrency-limit"] or 5)
+    opts0["concurrency-limit"] = (opts0["concurrency-limit"] or opts0.concurrency_limit)
   end
   local e_str = "must provide both win and buf or neither"
   local win, buf = nil, nil
@@ -81,6 +81,6 @@ local function open(opts)
     end
     plugins = tbl_17_auto
   end
-  return ui.attach(win, buf, plugins)
+  return ui.attach(win, buf, plugins, opts0)
 end
 return {open = open, git = providers.git, github = providers.github, path = providers.path, srht = providers.sourcehut, sourcehut = providers.sourcehut}
