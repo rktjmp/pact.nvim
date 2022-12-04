@@ -10,7 +10,8 @@
   (match (uv.fs_stat path)
     ({: type}) (values type)
     (nil _ :ENOENT) (values :nothing)
-    (nil err _) (values nil (fmt "uv.fs_stat error %s" err))))
+    (nil err _) (values nil (fmt "uv.fs_stat error %s" err))
+    (nil err) (values nil err)))
 
 (fn ensure-directory-exists [path]
   (match (what-is-at path)
