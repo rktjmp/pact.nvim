@@ -31,10 +31,12 @@
 
 (fn* unsubscribe
   (where [topic-id callback] (function? callback))
-  (let [topic (or (. registry topic-id) {})]
-    (tset topic callback nil)
-    (tset registry topic-id topic)
-    (values true)))
+  (let [topic (. registry topic-id)]
+    (when topic
+      (tset topic callback nil)
+      (if (enum.empty? topic)
+        (tset registry topic-id nil))
+      (values true))))
 
 (fn broadcast [topic ...]
   (table.insert bcast-queue {: topic :payload (enum.pack ...)})
