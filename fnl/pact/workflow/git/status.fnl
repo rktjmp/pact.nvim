@@ -137,7 +137,13 @@
         ;; vs other types where we always show any semver that shows up, to encourage
         ;; its usage.
         (ok [:hold target-commit] (maybe-newer-commit target-commit remote-commits))
-        (ok [:sync target-commit] (maybe-newer-commit target-commit remote-commits)))
+        (ok [:sync target-commit]
+            ;; may have a newer commit than our current
+            (maybe-newer-commit target-commit remote-commits)
+            ;; we kind of just have to assume that any version in HEAD-commits, we
+            ;; are at the latest. *Probably* HEAD-commits will always only contain
+            ;; at most one version commit, but this is a bit safer?
+            (solve-constraint [:git :version "> 0.0.0"] HEAD-commits)))
       ;; or we never got a target commit
       (err (fmt "no commit satisfies %s" constraint)))))
 

@@ -282,12 +282,15 @@
           meta (. ui :plugins-meta plugin.id)
           handler (fn* handler
                     (where [event] (ok? event))
-                    (let [(command ?maybe-latest) (result.unwrap event)
+                    (let [(command ?maybe-latest ?maybe-current) (result.unwrap event)
                           text (-> (match command
                                      [:hold commit] (fmt "(at %s" commit)
                                      [action commit] (fmt "(%s %s" action commit))
                                    (#(match ?maybe-latest
-                                       commit (fmt "%s, latest: %s)" $1 commit)
+                                       commit (fmt "%s, latest: %s" $1 commit)
+                                       nil (fmt "%s" $1)))
+                                   (#(match ?maybe-current
+                                       commit (fmt "%s, current: %s)" $1 commit)
                                        nil (fmt "%s)" $1))))]
                       (enum.append$ meta.events event)
                       (set meta.text text)
