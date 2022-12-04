@@ -17,6 +17,12 @@
 (fn sync-repo-impl [path sha]
   (result-let [_ (yield (fmt "git fetch %s" sha))
                _ (git-tasks.fetch-sha path sha)
+               _ (yield (fmt "git status dirty?"))
+               ;; two steps so dirty? can throw its own nil, e out if needed
+               dirty? (git-tasks.dirty? path)
+               _ (if dirty?
+                   (values nil (fmt "%s checkout is dirty, refusing to sync" path))
+                   (values nil))
                _ (yield (fmt "git checkout %s" sha))
                _ (git-tasks.checkout-sha path sha)
                _ (yield (fmt "git submodules update"))

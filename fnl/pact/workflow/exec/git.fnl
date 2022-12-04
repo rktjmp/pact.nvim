@@ -92,6 +92,13 @@
     (code _ err) (values nil (dump-err code err))
     (nil err) (values nil err)))
 
+(fn dirty? [repo-path]
+  (match (await (run :git [:status :--porcelain] repo-path const.ENV))
+    (where (0 out _) (= 0 (length out))) false
+    (where (0 out _) (< 0 (length out))) true
+    (code _ err) (values nil (dump-err code err))
+    (nil err) (values nil err)))
+
 (fn unshallow [repo-path]
   (match (await (run :git [:fetch :--unshallow] repo-path const.ENV))
     (0 a b) (values true)
@@ -115,5 +122,6 @@
  : checkout-sha
  : update-submodules
  : shallow?
+ : dirty?
  : unshallow
  : log-diff}
