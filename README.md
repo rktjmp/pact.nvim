@@ -74,7 +74,7 @@ p.github("rktjmp/lush.nvim", {branch = "main",
 p.github("rktjmp/pact.nvim", {version = "> 0.0.0",
                               after = function(p)
                                 p.yield("running long command")
-                                p.run("sleep", ["2"])
+                                p.run("sleep", {"2"})
                                 return "all ok!"
                               end})
 p.git("https://tpope.io/vim/fugitive.git", {name = "fugitive",

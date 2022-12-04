@@ -75,7 +75,7 @@ for a description of supported options.
     p.github("rktjmp/pact.nvim", {version = "> 0.0.0",
                                   after = function(p)
                                     p.yield("running long command")
-                                    p.run("sleep", ["2"])
+                                    p.run("sleep", {"2"})
                                     return "all ok!"
                                   end})
     p.git("https://tpope.io/vim/fugitive.git", {name = "fugitive",
@@ -220,7 +220,7 @@ any other value to render in the `pact` UI.
 >lua
     function (p)
       p.yield("Running long process")
-      p.run("sleep" ["2"]) -- returns exit-code std-out std-err
+      p.run("sleep" {"2"}) -- returns exit-code std-out std-err
       p.yield("Ran long process")
       return "slept for 2 second"
     end
