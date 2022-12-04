@@ -15,6 +15,7 @@ if vim.fn.empty(vim.fn.glob(pact_path)) > 0 then
 end
 
 vim.opt.termguicolors = true
+vim.cmd("colorscheme habamax")
 
 local pact = require("pact")
 local github = pact.github
