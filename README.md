@@ -10,6 +10,16 @@
 
 `pact` is a *semver focused*, *pessimistic* plugin manager for Neovim.
 
+## TOC
+
+- [Preview `pact` in a Container](#preview-pact-in-a-container)
+- [Install](#install)
+- [Making Pacts](#making-pacts)
+- [Limitations](#limitations)
+- [TODO](#todo)
+- [Articles, clauses, privios](#articles-clauses-privisos)
+- [See Also](#see-also)
+
 <div align="center">
 <img src="https://user-images.githubusercontent.com/866010/205425753-7a68dfb1-66b5-4c5d-ae16-8ffbca648657.gif"
      style="width: 100%"
@@ -40,9 +50,12 @@ docker run -it pact-nvim
 
 </details>
 
-
-
 ## Install
+
+> `pact` is beta, things *might* change, be sure to check for breaking changes
+> with `=`!
+
+`pact` requires Neovim 0.8+.
 
 To automatically install `pact`,
 
