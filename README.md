@@ -64,7 +64,7 @@ a semver constraint (`~ 3.0.1`) or a table containing options such as
 for a description of supported options.
 
 <details>
-<summary>`lua`</summary>
+<summary>lua</summary>
 
 ```lua
 local p = require("pact")
@@ -84,7 +84,7 @@ p.git("https://tpope.io/vim/fugitive.git", {name = "fugitive",
 </details>
 
 <details>
-<summary>`fennel`</summary>
+<summary>fennel</summary>
 
 ```fennel
 (let [{: github : git} (require :pact)]
@@ -110,7 +110,7 @@ You may also open `pact` in your own (non-split) window by passing `win` and
 
 
 <details>
-<summary>`lua`</summary>
+<summary>lua</summary>
 
 ```lua
 vim.keymap.set("n", "<leader>P", function()
@@ -125,7 +125,7 @@ end)
 </details>
 
 <details>
-<summary>`fennel`</summary>
+<summary>fennel</summary>
 
 ```fennel
 (vim.keymap.set :n :<leader>P #(let [{: open} (require :pact)]
