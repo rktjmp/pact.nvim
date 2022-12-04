@@ -1,4 +1,4 @@
-# 🔪🐐🩸 `pact` Changelog
+# 🔪🩸🐐 `pact` Changelog
 
 ## 0.0.6
 

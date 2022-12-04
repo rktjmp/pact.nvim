@@ -34,7 +34,7 @@
                  "" #(string.gmatch joined "(%w)([%w]+)"))))
 
 (fn lede []
-  [[[";; 🔪🐐🩸" :PactComment]]
+  [[[";; 🔪🩸🐐" :PactComment]]
    [["" :PactComment]]])
 
 (fn usage []
