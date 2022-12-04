@@ -60,8 +60,8 @@
 (fn progress-symbol [progress]
   (match progress
     nil ""
-    [_ n] (let [symbols [:◐ :◓ :◑ :◒ ]]
-            (. symbols (+ 1 (% n (length symbols)))))))
+    [_ n] (let [symbols [:◐ :◓ :◑ :◒]]
+            (.. (. symbols (+ 1 (% n (length symbols)))) " "))))
 
 (fn render-section [ui section-name previous-lines]
   (let [relevant-plugins (->> (enum.filter #(= $2.state section-name) ui.plugins-meta)
@@ -69,10 +69,13 @@
                               (enum.sort$ #(<= $1.order $2.order)))
         new-lines (enum.reduce (fn [lines i meta]
                                  (let [name-length (length meta.plugin.name)
-                                       line [[meta.plugin.name (highlight-for section-name :name)]
-                                             [(string.rep " " (- (+ 1 ui.layout.max-name-length) name-length)) nil]
-                                             [(.. (or meta.text "did-not-set-text")
-                                                  (progress-symbol meta.progress))
+                                       line [[(progress-symbol meta.progress)
+                                              (highlight-for section-name :name)]
+                                             [meta.plugin.name
+                                              (highlight-for section-name :name)]
+                                             [(string.rep " " (- (+ 1 ui.layout.max-name-length) name-length))
+                                              nil]
+                                             [(or meta.text "did-not-set-text")
                                               (highlight-for section-name :text)]]]
                                    ;; todo ugly way to set offsets here
                                    (set meta.on-line (+ 2 (length previous-lines) (length lines)))
@@ -80,7 +83,7 @@
                                [] relevant-plugins)]
     (if (< 0 (length new-lines))
       (-> previous-lines
-          (enum.append$ [[(section-title section-name)
+          (enum.append$ [[(.. "" (section-title section-name))
                           (highlight-for section-name :title)]
                          [" " nil]
                          [(fmt "(%s)" (length new-lines)) :PactComment]])
@@ -198,7 +201,7 @@
                                             (handler (fmt "after: %s" event))
                                             (where _ (thread? event))
                                             (handler event))))
-                              (scheduler.add-workflow ui.scheduler after-wf)))
+                             (scheduler.add-workflow ui.scheduler after-wf)))
                          (unsubscribe wf handler)
                          (schedule-redraw ui))
 
