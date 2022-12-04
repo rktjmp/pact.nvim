@@ -70,26 +70,6 @@ for a description of supported options.
 local p = require("pact")
 p.github("rktjmp/hotpot.nvim", "~ 0.5.0")
 p.github("rktjmp/lush.nvim", {branch = "main",
-                              run = "some-command to run"})
-p.github("rktjmp/pact.nvim {version = "> 0.0.0",
-                            run = function(p)
-                              p.yield("running long command")
-                              p.run("some-command", ["to", "run"])
-                              return "all ok!"
-                            end})
-p.git("https://tpope.io/vim/fugitive.git"
-      {name = "fugitive", tag = "v3.7"})
-```
-
-</details>
-
-<details>
-<summary>`lua`</summary>
-
-```lua
-local p = require("pact")
-p.github("rktjmp/hotpot.nvim", "~ 0.5.0")
-p.github("rktjmp/lush.nvim", {branch = "main",
                               run = "sleep 2"})
 p.github("rktjmp/pact.nvim, {version = "> 0.0.0",
                              run = function(p)
