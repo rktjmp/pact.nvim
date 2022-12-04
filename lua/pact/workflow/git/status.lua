@@ -511,7 +511,7 @@ do
                               if enum["any?"](_155_, HEAD_commits) then
                                 return ok({"hold", target_commit}, maybe_newer_commit(target_commit, remote_commits))
                               else
-                                return ok({"sync", target_commit}, maybe_newer_commit(target_commit, remote_commits))
+                                return ok({"sync", target_commit}, maybe_newer_commit(target_commit, remote_commits), solve_constraint({"git", "version", "> 0.0.0"}, HEAD_commits))
                               end
                             end
                             all_1_auto, val_2_auto = true, _156_()

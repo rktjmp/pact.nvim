@@ -76,4 +76,39 @@ local function ensure_directory_exists(path)
     return nil
   end
 end
-return {["ensure-directory-exists"] = ensure_directory_exists, ["what-is-at"] = what_is_at}
+local function ls_path(path)
+  local iter
+  local function _25_(path0)
+    local fs = uv.fs_scandir(path0)
+    local function _26_()
+      return uv.fs_scandir_next(fs)
+    end
+    return _26_, path0, 0
+  end
+  iter = _25_
+  local function _27_(_241, _242)
+    return {kind = _242, name = _241}
+  end
+  local function _28_()
+    return iter(path)
+  end
+  return enum.map(_27_, _28_)
+end
+local function remove_path(path)
+  local contents = ls_path(path)
+  local function _29_(_241, _242)
+    local full_path = (path .. "/" .. _242.name)
+    local _30_ = _242
+    if ((_G.type(_30_) == "table") and ((_30_).kind == "directory")) then
+      return remove_path(full_path)
+    elseif true then
+      local _ = _30_
+      return uv.fs_unlink(full_path)
+    else
+      return nil
+    end
+  end
+  enum.each(_29_, contents)
+  return uv.fs_rmdir(path)
+end
+return {["ensure-directory-exists"] = ensure_directory_exists, ["what-is-at"] = what_is_at, ["ls-path"] = ls_path, ["remove-path"] = remove_path}

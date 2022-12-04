@@ -293,59 +293,98 @@ local function shallow_3f(repo_path)
     return nil
   end
 end
-local function unshallow(repo_path)
+local function dirty_3f(repo_path)
   local _75_, _76_, _77_ = nil, nil, nil
   do
     local _let_78_ = require("pact.async-await")
     local await_wrap_3_auto = _let_78_["await-wrap"]
-    _75_, _76_, _77_ = await_wrap_3_auto(run, {"git", {"fetch", "--unshallow"}, repo_path, const.ENV})
+    _75_, _76_, _77_ = await_wrap_3_auto(run, {"git", {"status", "--porcelain"}, repo_path, const.ENV})
   end
-  if ((_75_ == 0) and (nil ~= _76_) and (nil ~= _77_)) then
-    local a = _76_
-    local b = _77_
+  local function _79_()
+    local out = _76_
+    local _ = _77_
+    return (0 == #out)
+  end
+  if (((_75_ == 0) and (nil ~= _76_) and true) and _79_()) then
+    local out = _76_
+    local _ = _77_
+    return false
+  else
+    local function _80_()
+      local out = _76_
+      local _ = _77_
+      return (0 < #out)
+    end
+    if (((_75_ == 0) and (nil ~= _76_) and true) and _80_()) then
+      local out = _76_
+      local _ = _77_
+      return true
+    elseif ((nil ~= _75_) and true and (nil ~= _77_)) then
+      local code = _75_
+      local _ = _76_
+      local err = _77_
+      return nil, dump_err(code, err)
+    elseif ((_75_ == nil) and (nil ~= _76_)) then
+      local err = _76_
+      return nil, err
+    else
+      return nil
+    end
+  end
+end
+local function unshallow(repo_path)
+  local _82_, _83_, _84_ = nil, nil, nil
+  do
+    local _let_85_ = require("pact.async-await")
+    local await_wrap_3_auto = _let_85_["await-wrap"]
+    _82_, _83_, _84_ = await_wrap_3_auto(run, {"git", {"fetch", "--unshallow"}, repo_path, const.ENV})
+  end
+  if ((_82_ == 0) and (nil ~= _83_) and (nil ~= _84_)) then
+    local a = _83_
+    local b = _84_
     return true
-  elseif ((nil ~= _75_) and true and (nil ~= _77_)) then
-    local code = _75_
-    local _ = _76_
-    local err = _77_
+  elseif ((nil ~= _82_) and true and (nil ~= _84_)) then
+    local code = _82_
+    local _ = _83_
+    local err = _84_
     return nil, dump_err(code, err)
-  elseif ((_75_ == nil) and (nil ~= _76_)) then
-    local err = _76_
+  elseif ((_82_ == nil) and (nil ~= _83_)) then
+    local err = _83_
     return nil, err
   else
     return nil
   end
 end
 local function log_diff(repo_path, old_sha, new_sha)
-  local _80_, _81_, _82_ = nil, nil, nil
+  local _87_, _88_, _89_ = nil, nil, nil
   do
-    local _let_83_ = require("pact.async-await")
-    local await_wrap_3_auto = _let_83_["await-wrap"]
-    _80_, _81_, _82_ = await_wrap_3_auto(run, {"git", {"log", "--oneline", fmt("%s..%s", old_sha, new_sha)}, repo_path, const.ENV})
+    local _let_90_ = require("pact.async-await")
+    local await_wrap_3_auto = _let_90_["await-wrap"]
+    _87_, _88_, _89_ = await_wrap_3_auto(run, {"git", {"log", "--oneline", "--decorate", fmt("%s..%s", old_sha, new_sha)}, repo_path, const.ENV})
   end
-  local function _84_()
-    local log = _81_
-    local _ = _82_
+  local function _91_()
+    local log = _88_
+    local _ = _89_
     return (0 == #log)
   end
-  if (((_80_ == 0) and (nil ~= _81_) and true) and _84_()) then
-    local log = _81_
-    local _ = _82_
+  if (((_87_ == 0) and (nil ~= _88_) and true) and _91_()) then
+    local log = _88_
+    local _ = _89_
     return nil, "git log produced no output, are you moving backwards?"
-  elseif ((_80_ == 0) and (nil ~= _81_) and true) then
-    local log = _81_
-    local _ = _82_
+  elseif ((_87_ == 0) and (nil ~= _88_) and true) then
+    local log = _88_
+    local _ = _89_
     return log
-  elseif ((nil ~= _80_) and true and (nil ~= _82_)) then
-    local code = _80_
-    local _ = _81_
-    local err = _82_
+  elseif ((nil ~= _87_) and true and (nil ~= _89_)) then
+    local code = _87_
+    local _ = _88_
+    local err = _89_
     return nil, dump_err(code, err)
-  elseif ((_80_ == nil) and (nil ~= _81_)) then
-    local err = _81_
+  elseif ((_87_ == nil) and (nil ~= _88_)) then
+    local err = _88_
     return nil, err
   else
     return nil
   end
 end
-return {init = init, ["HEAD-sha"] = HEAD_sha, ["ls-remote"] = ls_remote, ["set-origin"] = set_origin, ["get-origin"] = get_origin, ["fetch-sha"] = fetch_sha, fetch = fetch, ["checkout-sha"] = checkout_sha, ["update-submodules"] = update_submodules, ["shallow?"] = shallow_3f, unshallow = unshallow, ["log-diff"] = log_diff}
+return {init = init, ["HEAD-sha"] = HEAD_sha, ["ls-remote"] = ls_remote, ["set-origin"] = set_origin, ["get-origin"] = get_origin, ["fetch-sha"] = fetch_sha, fetch = fetch, ["checkout-sha"] = checkout_sha, ["update-submodules"] = update_submodules, ["shallow?"] = shallow_3f, ["dirty?"] = dirty_3f, unshallow = unshallow, ["log-diff"] = log_diff}
