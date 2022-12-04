@@ -8,7 +8,7 @@
 
 (local {: broadcast} (require :pact.pubsub))
 
-(fn make-idle-loop [scheduler]
+(fn make-timer-cb [scheduler]
   (fn []
     ;; can we add an additional task to the active list?
     (while (and (< (length scheduler.active) scheduler.concurrency-limit)
@@ -37,9 +37,9 @@
               [(or halted []) (or continued [])])]
       ;; stop or nah?
       (when (= 0 (length scheduler.queue) (length scheduler.active))
-        (uv.idle_stop scheduler.idle-handle)
-        (uv.close scheduler.idle-handle)
-        (tset scheduler :idle-handle nil)))))
+        (uv.timer_stop scheduler.timer-handle)
+        (uv.close scheduler.timer-handle)
+        (tset scheduler :timer-handle nil)))))
 
 (fn* new
   (where [])
@@ -48,20 +48,20 @@
   {:concurrency-limit (or (?. opts :concurrency-limit) 5)
    :queue []
    :active []
-   :idle-handle nil})
+   :timer-handle nil})
 
 (fn add-workflow [scheduler workflow]
   "Enqueue a workflow with on-event and on-complete callbacks.
   Starts scheduler loop if it's not currently running"
   (table.insert scheduler.queue workflow)
-  (when (= nil scheduler.idle-handle)
-    (let [h (uv.new_idle)]
-      (tset scheduler :idle-handle h)
-      (uv.idle_start h (make-idle-loop scheduler)))))
+  (when (= nil scheduler.timer-handle)
+    (let [h (uv.new_timer)]
+      (tset scheduler :timer-handle h)
+      (uv.timer_start h 0 (/ 1000 60) (make-timer-cb scheduler)))))
 
 (fn stop [scheduler]
   "Force halt a scheduler, in-progress workflows may be lost."
-  (uv.idle_stop scheduler.idle-handle)
+  (uv.timer_stop scheduler.timer-handle)
   ;; in-flight workflows may still have open processes, but those processes
   ;; will end, resolve their future, but the scheduler will no longer care
   ;; about the containing thread, so *I think* that wont leak.
@@ -69,6 +69,6 @@
   (each [i _ (ipairs scheduler.queue)]
     (tset scheduler.queue i nil))
   (tset scheduler :active nil)
-  (uv.close scheduler.idle-handle))
+  (uv.close scheduler.timer-handle))
 
 {: new : add-workflow : stop}
