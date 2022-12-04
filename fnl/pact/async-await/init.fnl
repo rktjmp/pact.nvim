@@ -46,7 +46,10 @@
     (set first-call-args [...])
     (coroutine.create awaitable-fn)))
 
+(local {: pack : unpack} (require :pact.lib.ruin.enum))
+(local {: thread?} (require :pact.lib.ruin.type))
 (fn await-wrap [func argv]
+  ;; TODO, should be func ... so we can accurately parse nil? upstream into ruin
   ;; Must be called inside a coroutine.
   ;;
   ;; Must be passed a function that accepts an async callback.
@@ -80,26 +83,34 @@
     (let [await-co (co.running)
           resolve-future (fn [...]
                       ;; store the return value
-                      (set awaited-value [...])
+                      (set awaited-value (pack ...))
                       ;; kill our future
                       (co.resume await-co))
-          _ (table.insert argv resolve-future)]
-      ;; run awaitable-function, the return value should be un-interesing.
-      ;; (inspect :func-arg (unpack argv))
-      (func (unpack argv))
-      ;; now suspend this coroutine, as a future, when the future resumes
-      ;; itself, we will terminate and the future will be "dead" at which
-      ;; point we know we can resume the main coroutine.
-      (co.yield await-co)))
-
-  (local await-co (co.create create-thread))
-  ;; run our coroutine and return the "future"
-  (match (co.resume await-co func argv)
-    (true thread) (co.yield thread)
-    (false err) (error err))
-  ;; once we're resumed (when the "future" becomes "dead" and the scheduler has picked up again),
-  ;; we can return the sticky value.
-  ;; (inspect :returning awaited-value)
-  (values (unpack awaited-value)))
+          _ (table.insert argv resolve-future)
+          ;; this *can* throw, which we will rethrow
+          ;; nil, x is caught and returned as nil, ex
+          ;; any other value is returned as thread, x
+          first-return (pack (func (unpack argv)))]
+      (match first-return
+        ;; assume nil + x is an error internally and we should not proceed
+        [nil & rest] (unpack first-return)
+        ;; otherwise assume we're ok to "thread"
+        ;; now suspend this coroutine, as a future, when the future resumes
+        ;; itself, we will terminate and the future will be "dead" at which
+        ;; point we know we can resume the main coroutine.
+        _ (co.yield await-co (unpack first-return)))))
+  (let [await-co (co.create create-thread)
+        vals (pack (co.resume await-co func argv))]
+    (match vals
+      ;; internal error when running function, so behave the same
+      [false err] (error err)
+      ;; "error like" return, so assume thread failed. Repack values
+      ;; and continune on to return them.
+      [true nil & rest] (set awaited-value (pack (unpack vals 2)))
+      ;; got thread, so we can suspend ourselves
+      (where [true thread & rest] (thread? thread)) (co.yield (unpack vals 2)))
+    ;; once we're resumed, when the "future" becomes "dead" and the scheduler
+    ;; has picked up again, we can return the sticky value set in the thread.
+    (values (unpack awaited-value))))
 
 {: async-wrap : await-wrap}
