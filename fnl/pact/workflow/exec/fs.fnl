@@ -29,4 +29,22 @@
     any (values nil (fmt "could not ensure directory %q exists, already %q"
                          path any))))
 
-{: ensure-directory-exists : what-is-at}
+(fn ls-path [path]
+  (let [iter (fn [path]
+               (let [fs (uv.fs_scandir path)]
+                 (values #(uv.fs_scandir_next fs) path 0)))]
+  (enum.map #{:kind $2 :name $1} #(iter path))))
+
+(fn remove-path [path]
+  (let [contents (ls-path path)]
+    (enum.each #(let [full-path (.. path :/ $2.name)]
+                  (match $2
+                    {:kind :directory} (remove-path full-path)
+                    _ (uv.fs_unlink full-path)))
+               contents)
+    (uv.fs_rmdir path)))
+
+{: ensure-directory-exists
+ : what-is-at
+ : ls-path
+ : remove-path}

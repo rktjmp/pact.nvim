@@ -9,6 +9,8 @@
      result :pact.lib.ruin.result
      api vim.api
      {:format fmt} string
+     orphan-find-wf :pact.workflow.orphan.find
+     orphan-remove-fw :pact.workflow.orphan.remove
      status-wf :pact.workflow.git.status
      clone-wf :pact.workflow.git.clone
      sync-wf :pact.workflow.git.sync
@@ -140,10 +142,11 @@
     (vim.schedule #(output ui))))
 
 (fn exec-commit [ui]
-  (fn make-wf [how plugin commit]
+  (fn make-wf [how plugin action-data]
     (let [wf (match how
-               :clone (clone-wf.new plugin.id plugin.package-path (. plugin.source 2) commit.sha)
-               :sync (sync-wf.new plugin.id plugin.package-path commit.sha)
+               :clone (clone-wf.new plugin.id plugin.package-path (. plugin.source 2) action-data.sha)
+               :sync (sync-wf.new plugin.id plugin.package-path action-data.sha)
+               :clean (orphan-remove-fw.new plugin.id action-data)
                other (error (fmt "unknown staging action %s" other)))
           meta (. ui :plugins-meta plugin.id)
           handler (fn* handler
@@ -152,8 +155,12 @@
                          (enum.append$ meta.events event)
                          (set meta.state :updated)
                          (set meta.text (fmt "(%s %s)"
-                                             (match how :clone :cloned :sync :synced)
-                                             commit))
+                                             (match how
+                                               :clone :cloned
+                                               :sync :synced
+                                               :clean :cleaned
+                                               _ how)
+                                             action-data))
                          (set meta.progress nil)
                          (vim.schedule (fn []
                                          (vim.cmd "packloadall!")
@@ -272,6 +279,48 @@
   (let [wf (make-wf meta.plugin (. meta.action 2))]
     (scheduler.add-workflow ui.scheduler wf))
   (schedule-redraw ui))
+
+(fn exec-orphans [ui meta]
+  (let [start-root (.. (vim.fn.stdpath :data) :/site/pack/pact/start)
+        opt-root (.. (vim.fn.stdpath :data) :/site/pack/pact/opt)
+        known-paths (enum.map #$2.package-path ui.plugins)]
+    (fn make-wf [id root]
+      (let [wf (orphan-find-wf.new id root known-paths)
+            handler (fn* handler
+                         (where [event] (ok? event))
+                         (do
+                           (match (result.unwrap event)
+                             (where list (not (enum.empty? list)))
+                             (enum.each #(let [plugin-id (fmt "orphan-%s" $1)
+                                               name (fmt "%s/%s" id $2.name)
+                                               len (length name)]
+                                             (tset ui.plugins-meta
+                                                 plugin-id
+                                                 {:plugin {:id plugin-id
+                                                           :name name}
+                                                  :order (* -1 $1)
+                                                  :events []
+                                                  :text "(orphan) exists on disk but unknown to pact!"
+                                                  :action [:clean $2.path]
+                                                  :state :unstaged})
+                                             (if (< ui.layout.max-name-length len)
+                                               (set ui.layout.max-name-length len)))
+                                        list))
+                           (unsubscribe wf handler)
+                           (schedule-redraw ui))
+
+                         (where [event] (err? event))
+                         (do
+                           (vim.notify (fmt "error checking for orphans, please report: %s" (result.unwrap event)))
+                           (unsubscribe wf handler))
+
+                         (where _)
+                         nil)]
+        (subscribe wf handler)
+        (values wf)))
+    (enum.map #(scheduler.add-workflow ui.scheduler (make-wf $1 $2))
+              {:start start-root :opt opt-root})))
+
 
 (fn exec-status [ui]
   (fn make-status-wf [plugin]
@@ -393,7 +442,6 @@
                                                 :text "waiting for scheduler"
                                                 :order $1
                                                 :state :waiting
-                                                :action nil
                                                 :plugin $2}]
                                        ok-plugins)
                              (enum.pairs->table))
@@ -416,6 +464,7 @@
 
 
         ;; we always default to status ui
+        (exec-orphans ui)
         (exec-status ui)
         (values ui)))))
 
