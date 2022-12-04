@@ -57,28 +57,102 @@ Then run `:Pact` to open `pact` (and probably update `pact`).
 
 As well as the agnostic `git` function.
 
+These functions should be called with a source argument (generally `user/repo`
+for forges, or `https/ssh://...` for `git`) and either a string that describes
+a semver constraint (`~ 3.0.1`) or a table containing options such as
+`branch`, `tag`, `commit`, `verson`, as well as `run`, etc. See `:h pact-api-git`
+for a description of supported options.
+
+<details>
+<summary>`lua`</summary>
+
+```lua
+local p = require("pact")
+p.github("rktjmp/hotpot.nvim", "~ 0.5.0")
+p.github("rktjmp/lush.nvim", {branch = "main",
+                              run = "some-command to run"})
+p.github("rktjmp/pact.nvim {version = "> 0.0.0",
+                            run = function(p)
+                              p.yield("running long command")
+                              p.run("some-command", ["to", "run"])
+                              return "all ok!"
+                            end})
+p.git("https://tpope.io/vim/fugitive.git"
+      {name = "fugitive", tag = "v3.7"})
+```
+
+</details>
+
+<details>
+<summary>`lua`</summary>
+
+```lua
+local p = require("pact")
+p.github("rktjmp/hotpot.nvim", "~ 0.5.0")
+p.github("rktjmp/lush.nvim", {branch = "main",
+                              run = "sleep 2"})
+p.github("rktjmp/pact.nvim, {version = "> 0.0.0",
+                             run = function(p)
+                               p.yield("running long command")
+                               p.run("sleep", ["2"])
+                               return "all ok!"
+                             end})
+p.git("https://tpope.io/vim/fugitive.git", {name = "fugitive",
+                                            tag = "v3.7"})
+```
+
+</details>
+
+<details>
+<summary>`fennel`</summary>
+
 ```fennel
-(let [{: github} (require :pact)]
-  ;; versions can be given as a raw string
-  (github :rktjmp/hotpot.nvim "~ 0.5.0") ;; version constraint
-  ;; or you can specify branch, tag, version or commit in a table
-  (gitlab :ggandor/lightspeed.nvim {:branch :main})
-  ;; raw-git currently requires a unique name
+(let [{: github : git} (require :pact)]
+  (github :rktjmp/hotpot.nvim "~ 0.5.0")
+  (github :rktjmp/lush.nvim {:branch :main
+                             :run "sleep 2"})
+  (github :rktjmp/pact.nvim {:version :>0.0.0
+                             :run (fn [{: yield : run}]
+                                    (yield "running some long command")
+                                    (run :sleep [:2])
+                                    "all ok!")})
   (git :https://tpope.io/vim/fugitive.git {:name :fugitive :tag :v3.7}))
 ```
+
+</details>
+
 
 Running the command `:Pact` will open the `pact` interface, which is losely
 familar to `fugitive`. It's usage is detailed at the bottom of the buffer.
 
 You may also open `pact` in your own (non-split) window by passing `win` and
-`buf` options to `open`.
+`buf` options to `open`, see `:h pact-api`.
+
+
+<details>
+<summary>`lua`</summary>
+
+```lua
+vim.keymap.set("n", "<leader>P", function()
+  require("pact").open({
+    win = 0,
+    buf = 0,
+    concurrency_limit = 10
+  })
+end)
+```
+
+</details>
+
+<details>
+<summary>`fennel`</summary>
 
 ```fennel
-(let [{: open} (require :pact)]
-  (open {:win 0 :buf 0
-         ;; concurrency-limit defaults to 5 to avoid remote rate limiting
-         :concurrency-limit 10}))
+(vim.keymap.set :n :<leader>P #(let [{: open} (require :pact)]
+                                (open {:win 0 :buf 0 :concurrency-limit 10})))
 ```
+
+</details>
 
 ## Limitations
 
