@@ -64,16 +64,16 @@ As well as the agnostic `git` function.
 These functions should be called with a source argument (generally `user/repo`
 for forges, or `https/ssh://...` for `git`) and either a string that describes
 a semver constraint (`~ 3.0.1`) or a table containing options such as
-`branch`, `tag`, `commit`, `verson`, as well as `run`, etc. See |pact-api-git|
+`branch`, `tag`, `commit`, `verson`, as well as `after`, etc. See |pact-api-git|
 for a description of supported options.
 
 >lua
     local p = require("pact")
     p.github("rktjmp/hotpot.nvim", "~ 0.5.0")
     p.github("rktjmp/lush.nvim", {branch = "main",
-                                  run = "sleep 2"})
+                                  after = "sleep 2"})
     p.github("rktjmp/pact.nvim", {version = "> 0.0.0",
-                                  run = function(p)
+                                  after = function(p)
                                     p.yield("running long command")
                                     p.run("sleep", ["2"])
                                     return "all ok!"
@@ -194,16 +194,16 @@ or options table as the second argument.
   length sha. 'version' may be any valid semver spec, following `npm` style.
   Currently `-alpha` suffixes are not supported.
 
-- 'run', either a string or function to run after a plugin is cloned or
+- 'after', either a string or function to run after a plugin is cloned or
   synced. See below.
 
 - 'name', only required for raw `git` calls (not forge shortcuts), which
   defines the name to use in the `pact` ui.
 
-When 'run' is a string value are run as given via `uv.spawn`, so they must be
+When 'after' is a string value are run as given via `uv.spawn`, so they must be
 limited to one command/binary and its arguments.
 
-When 'run' is a function value, it's passed a table single argument containing
+When 'after' is a function value, it's passed a table single argument containing
 the following key-values:
 
 - 'path', the absolute path to the plugin.

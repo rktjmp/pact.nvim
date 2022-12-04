@@ -155,39 +155,43 @@
                                              (match how :clone :cloned :sync :synced)
                                              commit))
                          (set meta.progress nil)
-                         ;; TODO: packloadall! ?
-                         (vim.schedule #(vim.cmd "silent! helptags ALL"))
-                         (when plugin.run
-                           (let [{: new} (require :pact.workflow.run)
+                         (vim.schedule (fn []
+                                         (vim.cmd "packloadall!")
+                                         (vim.cmd "silent! helptags ALL")))
+                         (when plugin.after
+                           (let [{: new} (require :pact.workflow.after)
                                  old-text meta.text
-                                 run-wf (new wf.id plugin.run plugin.package-path)]
+                                 after-wf (new wf.id plugin.after plugin.package-path)]
                              (set meta.text "running...")
-                              (subscribe run-wf
-                                         (fn [event]
-                                           (match event
-                                             ;; handle ok and err events specially as we don't want
-                                             ;; to swap sections etc.
-                                             (where _ (ok? event))
-                                             (do
-                                               (set meta.text (.. old-text (fmt " ran: %s" (result.unwrap event))))
-                                               (set meta.progress nil)
-                                               (unsubscribe run-wf handler)
-                                               (schedule-redraw ui))
-                                             (where _ (err? event))
-                                             (do
-                                               (set meta.text (.. old-text (fmt " error: %s" (inspect (result.unwrap event)))))
-                                               (set meta.progress nil)
-                                               (unsubscribe run-wf handler)
-                                               (schedule-redraw ui))
-                                             ;; we can pass these up to
-                                             ;; the normal handler for
-                                             ;; sting logging and
-                                             ;; progress meter
-                                             (where _ (string? event))
-                                             (handler (fmt "run: %s" event))
-                                             (where _ (thread? event))
-                                             (handler event))))
-                              (scheduler.add-workflow ui.scheduler run-wf)))
+                             (subscribe after-wf
+                                        (fn [event]
+                                          (match event
+                                            ;; handle ok and err events specially as we don't want
+                                            ;; to swap sections etc.
+                                            (where _ (ok? event))
+                                            (do
+                                              (set meta.text (fmt "%s after: %s"
+                                                                  old-text
+                                                                  (or (result.unwrap event)
+                                                                      "finished with no value")))
+                                              (set meta.progress nil)
+                                              (unsubscribe after-wf handler)
+                                              (schedule-redraw ui))
+                                            (where _ (err? event))
+                                            (do
+                                              (set meta.text (.. old-text (fmt " error: %s" (inspect (result.unwrap event)))))
+                                              (set meta.progress nil)
+                                              (unsubscribe after-wf handler)
+                                              (schedule-redraw ui))
+                                            ;; we can pass these up to
+                                            ;; the normal handler for
+                                            ;; sting logging and
+                                            ;; progress meter
+                                            (where _ (string? event))
+                                            (handler (fmt "after: %s" event))
+                                            (where _ (thread? event))
+                                            (handler event))))
+                              (scheduler.add-workflow ui.scheduler after-wf)))
                          (unsubscribe wf handler)
                          (schedule-redraw ui))
 

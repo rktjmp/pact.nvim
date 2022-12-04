@@ -60,7 +60,7 @@ As well as the agnostic `git` function.
 These functions should be called with a source argument (generally `user/repo`
 for forges, or `https/ssh://...` for `git`) and either a string that describes
 a semver constraint (`~ 3.0.1`) or a table containing options such as
-`branch`, `tag`, `commit`, `verson`, as well as `run`, etc. See `:h pact-api-git`
+`branch`, `tag`, `commit`, `verson`, as well as `after`, etc. See `:h pact-api-git`
 for a description of supported options.
 
 <details>
@@ -70,9 +70,9 @@ for a description of supported options.
 local p = require("pact")
 p.github("rktjmp/hotpot.nvim", "~ 0.5.0")
 p.github("rktjmp/lush.nvim", {branch = "main",
-                              run = "sleep 2"})
+                              after = "sleep 2"})
 p.github("rktjmp/pact.nvim", {version = "> 0.0.0",
-                              run = function(p)
+                              after = function(p)
                                 p.yield("running long command")
                                 p.run("sleep", ["2"])
                                 return "all ok!"
@@ -90,9 +90,9 @@ p.git("https://tpope.io/vim/fugitive.git", {name = "fugitive",
 (let [{: github : git} (require :pact)]
   (github :rktjmp/hotpot.nvim "~ 0.5.0")
   (github :rktjmp/lush.nvim {:branch :main
-                             :run "sleep 2"})
+                             :after "sleep 2"})
   (github :rktjmp/pact.nvim {:version :>0.0.0
-                             :run (fn [{: yield : run}]
+                             :after (fn [{: yield : run}]
                                     (yield "running some long command")
                                     (run :sleep [:2])
                                     "all ok!")})
