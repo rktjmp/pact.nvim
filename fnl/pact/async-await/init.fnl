@@ -1,3 +1,6 @@
+(local {: pack : unpack} (require :pact.lib.ruin.enum))
+(local {: thread?} (require :pact.lib.ruin.type))
+
 (fn async-wrap [func]
   ;; Wraps given function in a coroutine so it can be suspended by inner awaits.
   ;;
@@ -46,8 +49,6 @@
     (set first-call-args [...])
     (coroutine.create awaitable-fn)))
 
-(local {: pack : unpack} (require :pact.lib.ruin.enum))
-(local {: thread?} (require :pact.lib.ruin.type))
 (fn await-wrap [func argv]
   ;; TODO, should be func ... so we can accurately parse nil? upstream into ruin
   ;; Must be called inside a coroutine.

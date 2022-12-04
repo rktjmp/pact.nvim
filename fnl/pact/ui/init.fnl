@@ -184,13 +184,9 @@
                                              ;; sting logging and
                                              ;; progress meter
                                              (where _ (string? event))
-                                             (do
-                                               (print "string-event" event)
-                                               (handler (fmt "run: %s" event)))
+                                             (handler (fmt "run: %s" event))
                                              (where _ (thread? event))
-                                             (do
-                                               (unsubscribe run-wf handler)
-                                               (handler event)))))
+                                             (handler event))))
                               (scheduler.add-workflow ui.scheduler run-wf)))
                          (unsubscribe wf handler)
                          (schedule-redraw ui))
