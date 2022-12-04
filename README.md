@@ -16,6 +16,32 @@
      alt="pact.nvim demo"/>
 </div>
 
+## Preview Pact in a Container
+
+<details>
+<summary>podman</summary>
+
+```sh
+curl https://raw.githubusercontent.com/rktjmp/pact.nvim/master/Containerfile | \
+  podman build -t pact-nvim -f - .
+podman run -it pact-nvim
+```
+
+</details>
+
+<details>
+<summary>docker</summary>
+
+```sh
+curl https://raw.githubusercontent.com/rktjmp/pact.nvim/master/Containerfile | \
+  docker build -t pact-nvim -f - .
+docker run -it pact-nvim
+```
+
+</details>
+
+
+
 ## Install
 
 To automatically install `pact`,
