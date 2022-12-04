@@ -1,3 +1,4 @@
+(local {:format fmt} string)
 ;; we don't want to add the same plugins again and again, so keep track of what
 ;; we've seen. We manually build a key with forge-user/repo for now.
 (local seen-plugins {})
@@ -11,16 +12,18 @@
   ;; assumes ... first arg is string
   (fn id [user-repo] (.. name "/" user-repo))
   (fn [...]
-    (if (= nil (. seen-plugins (id ...)))
+    (let [plugin-id (fmt "%s/%s" name (. [...] 1))
+          ?existing (. seen-plugins plugin-id)]
+      (when ?existing
+        (vim.notify (fmt "Replacing existing plugin %s with new configuration" plugin-id))
+        (tset seen-plugins plugin-id nil))
       (let [arg-v [...]
             arg-c (select :# ...)
             real-fn #(let [mod (require :pact.plugin)
                            f (. mod name)]
                        (f (unpack arg-v 1 arg-c)))]
-        (tset seen-plugins (id ...) true)
-        (table.insert plugin-proxies real-fn))
-      ;; ugly but .... will do TODO?
-      (vim.notify "Pact ignored attempt to re-add existing plugin to plugin list and ignored it, restart nvim to apply constraint changes"))))
+        (tset seen-plugins plugin-id true)
+        (table.insert plugin-proxies real-fn)))))
 
 (local providers {:github (proxy :github)
                   :gitlab (proxy :gitlab)
