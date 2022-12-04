@@ -9,14 +9,19 @@
                 888
                 o888o
 
+
+
+          > pact [pakt]
+          > An agreement, covenant, or compact.
+
           A pesimistic, semver-focused package manger for Neovim.
 
 ====================================================================== *pact-toc*
 
-Install ... |pact-install|
-Usage ... |pact-usage|
-Commands ... |pact-commands|
-API ... |pact-api|
+Install .......................................................... |pact-install|
+Usage .............................................................. |pact-usage|
+Commands ........................................................ |pact-commands|
+API .................................................................. |pact-api|
 
 ================================================================== *pact-install*
 
