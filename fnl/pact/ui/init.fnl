@@ -103,7 +103,7 @@
      [log (if (log-line-breaking? log) :DiagnosticError :DiagnosticHint)]]))
 
 (fn output [ui]
-  (let [sections [:waiting :error :active :unstaged :staged :updated :held :up-to-date]
+  (let [sections [:error :active :unstaged :staged :waiting :updated :held :up-to-date]
         lines (-> (enum.reduce (fn [lines _ section] (render-section ui section lines))
                            (lede) sections)
                   (enum.concat$ (usage)))
