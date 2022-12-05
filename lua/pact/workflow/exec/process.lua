@@ -39,10 +39,6 @@ local function stream__3elines(bytes)
   end
   return enum.map(_12_, _13_)
 end
-local function close_io(log, pipe)
-  fs_close(log)
-  return close(pipe)
-end
 local function run(cmd, args, cwd, env, on_exit)
   local stdout = new_pipe()
   local stderr = new_pipe()

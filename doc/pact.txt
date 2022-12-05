@@ -38,7 +38,7 @@ To automatically install `pact`,
         'git',
         'clone',
         '--depth', '1',
-        '--branch', 'v0.0.7',
+        '--branch', 'v0.0.8',
         'https://github.com/rktjmp/pact.nvim',
         pact_path
       })

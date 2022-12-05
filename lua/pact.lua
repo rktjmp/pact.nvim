@@ -1,3 +1,5 @@
+local _local_1_ = string
+local fmt = _local_1_["format"]
 local seen_plugins = {}
 local plugin_proxies = {}
 local function proxy(name)
@@ -8,24 +10,27 @@ local function proxy(name)
   local function id(user_repo)
     return (name .. "/" .. user_repo)
   end
-  local function _2_(...)
-    if (nil == seen_plugins[id(...)]) then
-      local arg_v = {...}
-      local arg_c = select("#", ...)
-      local real_fn
-      local function _3_()
-        local mod = require("pact.plugin")
-        local f = mod[name]
-        return f(unpack(arg_v, 1, arg_c))
-      end
-      real_fn = _3_
-      seen_plugins[id(...)] = true
-      return table.insert(plugin_proxies, real_fn)
+  local function _3_(...)
+    local plugin_id = fmt("%s/%s", name, ({...})[1])
+    local _3fexisting = seen_plugins[plugin_id]
+    if _3fexisting then
+      vim.notify(fmt("Replacing existing plugin %s with new configuration", plugin_id))
+      do end (seen_plugins)[plugin_id] = nil
     else
-      return vim.notify("Pact ignored attempt to re-add existing plugin to plugin list and ignored it, restart nvim to apply constraint changes")
     end
+    local arg_v = {...}
+    local arg_c = select("#", ...)
+    local real_fn
+    local function _5_()
+      local mod = require("pact.plugin")
+      local f = mod[name]
+      return f(unpack(arg_v, 1, arg_c))
+    end
+    real_fn = _5_
+    seen_plugins[plugin_id] = true
+    return table.insert(plugin_proxies, real_fn)
   end
-  return _2_
+  return _3_
 end
 local providers = {github = proxy("github"), gitlab = proxy("gitlab"), sourcehut = proxy("sourcehut"), srht = proxy("sourcehut"), git = proxy("git")}
 local function open(opts)
@@ -40,19 +45,19 @@ local function open(opts)
   local e_str = "must provide both win and buf or neither"
   local win, buf = nil, nil
   do
-    local _6_ = opts0
-    if ((_G.type(_6_) == "table") and (nil ~= (_6_).buf) and ((_6_).win == nil)) then
-      local buf0 = (_6_).buf
+    local _7_ = opts0
+    if ((_G.type(_7_) == "table") and (nil ~= (_7_).buf) and ((_7_).win == nil)) then
+      local buf0 = (_7_).buf
       win, buf = error(e_str)
-    elseif ((_G.type(_6_) == "table") and ((_6_).buf == nil) and (nil ~= (_6_).win)) then
-      local win0 = (_6_).win
+    elseif ((_G.type(_7_) == "table") and ((_7_).buf == nil) and (nil ~= (_7_).win)) then
+      local win0 = (_7_).win
       win, buf = error(e_str)
-    elseif ((_G.type(_6_) == "table") and (nil ~= (_6_).buf) and (nil ~= (_6_).win)) then
-      local buf0 = (_6_).buf
-      local win0 = (_6_).win
+    elseif ((_G.type(_7_) == "table") and (nil ~= (_7_).buf) and (nil ~= (_7_).win)) then
+      local buf0 = (_7_).buf
+      local win0 = (_7_).win
       win, buf = win0, buf0
     elseif true then
-      local _ = _6_
+      local _ = _7_
       local api = vim.api
       local _0 = vim.cmd.split()
       local win0 = api.nvim_get_current_win()

@@ -244,15 +244,15 @@ local function _65_()
         local function _76_(...)
           local sha_54_ = (_75_)[1]
           local _3ftag_56_ = ((_75_)[2]).tag
-          local _3fbranch_57_ = ((_75_)[2]).branch
-          local _3fversion_55_ = ((_75_)[2]).version
-          return (valid_sha_3f(sha_54_) and string_3f((_3ftag_56_ or "")) and string_3f((_3fbranch_57_ or "")) and string_3f((_3fversion_55_ or "")))
+          local _3fbranch_55_ = ((_75_)[2]).branch
+          local _3fversion_57_ = ((_75_)[2]).version
+          return (valid_sha_3f(sha_54_) and string_3f((_3ftag_56_ or "")) and string_3f((_3fbranch_55_ or "")) and string_3f((_3fversion_57_ or "")))
         end
         if (((_G.type(_75_) == "table") and (nil ~= (_75_)[1]) and ((_G.type((_75_)[2]) == "table") and true and true and true)) and _76_(...)) then
           local sha_54_ = (_75_)[1]
           local _3ftag_56_ = ((_75_)[2]).tag
-          local _3fbranch_57_ = ((_75_)[2]).branch
-          local _3fversion_55_ = ((_75_)[2]).version
+          local _3fbranch_55_ = ((_75_)[2]).branch
+          local _3fversion_57_ = ((_75_)[2]).version
           local function _79_(sha, _77_)
             local _arg_78_ = _77_
             local _3ftag = _arg_78_["tag"]

@@ -17,7 +17,7 @@ local uv = _local_11_["loop"]
 do local _ = {nil, nil} end
 local _local_12_ = require("pact.pubsub")
 local broadcast = _local_12_["broadcast"]
-local function make_idle_loop(scheduler)
+local function make_timer_cb(scheduler)
   local function _13_()
     while ((#scheduler.active < scheduler["concurrency-limit"]) and (0 < #scheduler.queue)) do
       local workflow = table.remove(scheduler.queue, 1)
@@ -65,9 +65,9 @@ local function make_idle_loop(scheduler)
     end
     _0 = enum.map(_24_, {(halted or {}), (continued or {})})
     if (function(_28_,_29_,_30_) return (_28_ == _29_) and (_29_ == _30_) end)(0,#scheduler.queue,#scheduler.active) then
-      uv.idle_stop(scheduler["idle-handle"])
-      uv.close(scheduler["idle-handle"])
-      do end (scheduler)["idle-handle"] = nil
+      uv.timer_stop(scheduler["timer-handle"])
+      uv.close(scheduler["timer-handle"])
+      do end (scheduler)["timer-handle"] = nil
       return nil
     else
       return nil
@@ -160,7 +160,7 @@ local function _40_()
               end
               return t_54_
             end
-            return {["concurrency-limit"] = (_53_() or 5), queue = {}, active = {}, ["idle-handle"] = nil}
+            return {["concurrency-limit"] = (_53_() or 5), queue = {}, active = {}, ["timer-handle"] = nil}
           end
           return _52_
         else
@@ -179,20 +179,20 @@ end
 setmetatable({nil, nil}, {__call = _40_})()
 local function add_workflow(scheduler, workflow)
   table.insert(scheduler.queue, workflow)
-  if (nil == scheduler["idle-handle"]) then
-    local h = uv.new_idle()
-    do end (scheduler)["idle-handle"] = h
-    return uv.idle_start(h, make_idle_loop(scheduler))
+  if (nil == scheduler["timer-handle"]) then
+    local h = uv.new_timer()
+    do end (scheduler)["timer-handle"] = h
+    return uv.timer_start(h, 0, (1000 / 60), make_timer_cb(scheduler))
   else
     return nil
   end
 end
 local function stop(scheduler)
-  uv.idle_stop(scheduler["idle-handle"])
+  uv.timer_stop(scheduler["timer-handle"])
   for i, _ in ipairs(scheduler.queue) do
     scheduler.queue[i] = nil
   end
   scheduler["active"] = nil
-  return uv.close(scheduler["idle-handle"])
+  return uv.close(scheduler["timer-handle"])
 end
 return {new = new, ["add-workflow"] = add_workflow, stop = stop}

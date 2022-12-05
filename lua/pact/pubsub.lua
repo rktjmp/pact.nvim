@@ -165,10 +165,17 @@ local function _37_()
           local topic_id_28_ = (_40_)[1]
           local callback_29_ = (_40_)[2]
           local function _42_(topic_id, callback)
-            local topic = (registry[topic_id] or {})
-            do end (topic)[callback] = nil
-            registry[topic_id] = topic
-            return true
+            local topic = registry[topic_id]
+            if topic then
+              topic[callback] = nil
+              if enum["empty?"](topic) then
+                registry[topic_id] = nil
+              else
+              end
+              return true
+            else
+              return nil
+            end
           end
           return _42_
         else

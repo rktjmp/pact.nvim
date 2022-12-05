@@ -1,5 +1,10 @@
 # 🔪🩸🐐 `pact` Changelog
 
+## 0.0.8
+
+- Allow re-defining existing plugins from `pact`.
+- Reduce CPU usage by throttling scheduler and further throttling draw calls
+
 ## 0.0.7
 
 - Added orphaned package removal.

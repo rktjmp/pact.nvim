@@ -72,12 +72,12 @@ end
 local function progress_symbol(progress)
   local _32_ = progress
   if (_32_ == nil) then
-    return ""
+    return " "
   elseif ((_G.type(_32_) == "table") and true and (nil ~= (_32_)[2])) then
     local _ = (_32_)[1]
     local n = (_32_)[2]
     local symbols = {"\226\151\144", "\226\151\147", "\226\151\145", "\226\151\146"}
-    return symbols[(1 + (n % #symbols))]
+    return (symbols[(1 + (n % #symbols))] .. " ")
   else
     return nil
   end
@@ -97,13 +97,13 @@ local function render_section(ui, section_name, previous_lines)
   local new_lines
   local function _37_(lines, i, meta)
     local name_length = #meta.plugin.name
-    local line = {{meta.plugin.name, highlight_for(section_name, "name")}, {string.rep(" ", ((1 + ui.layout["max-name-length"]) - name_length)), nil}, {((meta.text or "did-not-set-text") .. progress_symbol(meta.progress)), highlight_for(section_name, "text")}}
+    local line = {{meta.plugin.name, highlight_for(section_name, "name")}, {string.rep(" ", ((1 + ui.layout["max-name-length"]) - name_length)), nil}, {progress_symbol(meta.progress), highlight_for(section_name, "name")}, {(meta.text or "did-not-set-text"), highlight_for(section_name, "text")}}
     meta["on-line"] = (2 + #previous_lines + #lines)
     return enum["append$"](lines, line)
   end
   new_lines = enum.reduce(_37_, {}, relevant_plugins)
   if (0 < #new_lines) then
-    return enum["append$"](enum["concat$"](enum["append$"](previous_lines, {{section_title(section_name), highlight_for(section_name, "title")}, {" ", nil}, {fmt("(%s)", #new_lines), "PactComment"}}), new_lines), {{"", nil}})
+    return enum["append$"](enum["concat$"](enum["append$"](previous_lines, {{("" .. section_title(section_name)), highlight_for(section_name, "title")}, {" ", nil}, {fmt("(%s)", #new_lines), "PactComment"}}), new_lines), {{"", nil}})
   else
     return previous_lines
   end
@@ -123,86 +123,82 @@ local function log_line__3echunks(log_line)
   return {{"  ", "comment"}, {sha, "comment"}, {" ", "comment"}, {log, _39_()}}
 end
 local function output(ui)
-  do
-    local sections = {"waiting", "error", "active", "unstaged", "staged", "updated", "held", "up-to-date"}
-    local lines
-    local function _40_(lines0, _, section)
-      return render_section(ui, section, lines0)
-    end
-    lines = enum["concat$"](enum.reduce(_40_, lede(), sections), usage())
-    local lines__3etext_and_extmarks
-    local function _45_(_41_, _, _43_)
-      local _arg_42_ = _41_
-      local str = _arg_42_[1]
-      local extmarks = _arg_42_[2]
-      local _arg_44_ = _43_
-      local txt = _arg_44_[1]
-      local _3fextmarks = _arg_44_[2]
-      local function _46_()
-        if _3fextmarks then
-          return enum["append$"](extmarks, {#str, (#str + #txt), _3fextmarks})
-        else
-          return extmarks
-        end
-      end
-      return {(str .. txt), _46_()}
-    end
-    lines__3etext_and_extmarks = enum.reduce(_45_)
-    local function _50_(_48_, _, line)
-      local _arg_49_ = _48_
-      local lines0 = _arg_49_[1]
-      local extmarks = _arg_49_[2]
-      local _let_51_ = lines__3etext_and_extmarks({"", {}}, line)
-      local new_lines = _let_51_[1]
-      local new_extmarks = _let_51_[2]
-      return {enum["append$"](lines0, new_lines), enum["append$"](extmarks, new_extmarks)}
-    end
-    local _let_47_ = enum.reduce(_50_, {{}, {}}, lines)
-    local text = _let_47_[1]
-    local extmarks = _let_47_[2]
-    local function _52_(_241, _242)
-      return string.match(_242, "\n")
-    end
-    if enum["any?"](_52_, text) then
-      print("pact.ui text had unexpected new lines")
-      print(vim.inspect(text))
-    else
-    end
-    api.nvim_buf_set_lines(ui.buf, 0, -1, false, text)
-    local function _54_(i, line_marks)
-      local function _57_(_, _55_)
-        local _arg_56_ = _55_
-        local start = _arg_56_[1]
-        local stop = _arg_56_[2]
-        local hl = _arg_56_[3]
-        return api.nvim_buf_add_highlight(ui.buf, ui["ns-id"], hl, (i - 1), start, stop)
-      end
-      return enum.map(_57_, line_marks)
-    end
-    enum.map(_54_, extmarks)
-    local function _58_(_241, _242)
-      if _242["log-open"] then
-        local function _59_(_2410, _2420)
-          return log_line__3echunks(_2420)
-        end
-        return api.nvim_buf_set_extmark(ui.buf, ui["ns-id"], (_242["on-line"] - 1), 0, {virt_lines = enum.map(_59_, _242.log)})
-      else
-        return nil
-      end
-    end
-    enum.map(_58_, ui["plugins-meta"])
+  local sections = {"waiting", "error", "active", "unstaged", "staged", "updated", "held", "up-to-date"}
+  local lines
+  local function _40_(lines0, _, section)
+    return render_section(ui, section, lines0)
   end
-  vim.cmd.redraw()
-  do end (ui)["will-render"] = false
-  return nil
+  lines = enum["concat$"](enum.reduce(_40_, lede(), sections), usage())
+  local lines__3etext_and_extmarks
+  local function _45_(_41_, _, _43_)
+    local _arg_42_ = _41_
+    local str = _arg_42_[1]
+    local extmarks = _arg_42_[2]
+    local _arg_44_ = _43_
+    local txt = _arg_44_[1]
+    local _3fextmarks = _arg_44_[2]
+    local function _46_()
+      if _3fextmarks then
+        return enum["append$"](extmarks, {#str, (#str + #txt), _3fextmarks})
+      else
+        return extmarks
+      end
+    end
+    return {(str .. txt), _46_()}
+  end
+  lines__3etext_and_extmarks = enum.reduce(_45_)
+  local function _50_(_48_, _, line)
+    local _arg_49_ = _48_
+    local lines0 = _arg_49_[1]
+    local extmarks = _arg_49_[2]
+    local _let_51_ = lines__3etext_and_extmarks({"", {}}, line)
+    local new_lines = _let_51_[1]
+    local new_extmarks = _let_51_[2]
+    return {enum["append$"](lines0, new_lines), enum["append$"](extmarks, new_extmarks)}
+  end
+  local _let_47_ = enum.reduce(_50_, {{}, {}}, lines)
+  local text = _let_47_[1]
+  local extmarks = _let_47_[2]
+  local function _52_(_241, _242)
+    return string.match(_242, "\n")
+  end
+  if enum["any?"](_52_, text) then
+    print("pact.ui text had unexpected new lines")
+    print(vim.inspect(text))
+  else
+  end
+  api.nvim_buf_set_lines(ui.buf, 0, -1, false, text)
+  local function _54_(i, line_marks)
+    local function _57_(_, _55_)
+      local _arg_56_ = _55_
+      local start = _arg_56_[1]
+      local stop = _arg_56_[2]
+      local hl = _arg_56_[3]
+      return api.nvim_buf_add_highlight(ui.buf, ui["ns-id"], hl, (i - 1), start, stop)
+    end
+    return enum.map(_57_, line_marks)
+  end
+  enum.map(_54_, extmarks)
+  local function _58_(_241, _242)
+    if _242["log-open"] then
+      local function _59_(_2410, _2420)
+        return log_line__3echunks(_2420)
+      end
+      return api.nvim_buf_set_extmark(ui.buf, ui["ns-id"], (_242["on-line"] - 1), 0, {virt_lines = enum.map(_59_, _242.log)})
+    else
+      return nil
+    end
+  end
+  return enum.map(_58_, ui["plugins-meta"])
 end
 local function schedule_redraw(ui)
-  if not ui["will-render"] then
-    ui["will-render"] = true
+  local rate = (1000 / 30)
+  if ((ui["will-render"] or 0) < vim.loop.now()) then
+    ui["will-render"] = (rate + vim.loop.now())
     local function _61_()
       return output(ui)
     end
-    return vim.schedule(_61_)
+    return vim.defer_fn(_61_, rate)
   else
     return nil
   end
@@ -1133,8 +1129,8 @@ local function exec_status(ui)
     return wf
   end
   schedule_redraw(ui)
-  local function _279_(_, plugin)
-    return scheduler["add-workflow"](ui.scheduler, make_status_wf(plugin))
+  local function _279_(_241, _242)
+    return scheduler["add-workflow"](ui.scheduler, make_status_wf(_242))
   end
   return enum.map(_279_, ui.plugins)
 end
