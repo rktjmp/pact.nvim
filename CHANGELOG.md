@@ -2,25 +2,25 @@
 
 ## 0.0.7
 
-- Added orphaned package removal
-- Shows current version in addition to latest if possible in sync UI
+- Added orphaned package removal.
+- Shows current version in addition to latest if possible in sync UI.
 
 ## 0.0.6
 
-- Rename plugin `run` option to `after`
-- Added container demo
+- Rename plugin `run` option to `after`.
+- Added container demo>
 
 ## 0.0.5
 
-- Added plugin `run` option support
+- Added plugin `run` option support.
 - Added documentation.
 
 ## 0.0.4
 
-- Added progress indicator when running external commands
-- Collate UI updates for better performance
-- Fixed under-matching branch and tag names with `/` in them
-- Added submodule updating on clone/sync
+- Added progress indicator when running external commands.
+- Collate UI updates for better performance.
+- Fixed under-matching branch and tag names with `/` in them.
+- Added submodule updating on clone/sync.
 
 ## 0.0.3
 
