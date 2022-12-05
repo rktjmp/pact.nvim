@@ -93,7 +93,9 @@
     (nil err) (values nil err)))
 
 (fn dirty? [repo-path]
-  (match (await (run :git [:status :--porcelain] repo-path const.ENV))
+  ;; we wont look at untracked files as some plugins might create things like
+  ;; help tags in the checkout, or other files.
+  (match (await (run :git [:status :--porcelain :--untracked-files=no] repo-path const.ENV))
     (where (0 out _) (= 0 (length out))) false
     (where (0 out _) (< 0 (length out))) true
     (code _ err) (values nil (dump-err code err))
