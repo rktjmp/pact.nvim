@@ -13,6 +13,9 @@
 (fn dump-err [code err]
   (fmt "git-error: return-code: %s std-err: %s" code (inspect err)))
 
+(fn short-sha [sha]
+  (string.sub sha 1 8))
+
 (fn HEAD-sha [repo-root]
   (assert repo-root "must provide repo root")
   ;; TODO handle case where git repo exists but has no commits and so
@@ -60,7 +63,10 @@
     (nil err) (values nil err)))
 
 (fn fetch [repo-path]
-  (match (await (run :git [:fetch :origin] repo-path const.ENV))
+  ;; git-fetch on its own wont get new/other tags so we must
+  ;; explicitly force. it *does* seem to get new branches, though
+  ;; there is also some documentation to the contrary...
+  (match (await (run :git [:fetch :origin :--tags] repo-path const.ENV))
     (0 _ _) (values true)
     (code _ err) (values nil (dump-err code err))
     (nil err) (values nil err)))
@@ -115,6 +121,7 @@
     (nil err) (values nil err)))
 
 {: init
+ : short-sha
  : HEAD-sha
  : ls-remote
  : set-origin

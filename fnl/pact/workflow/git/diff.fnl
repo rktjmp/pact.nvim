@@ -18,13 +18,13 @@
   (result-let [_ (yield "checking clone shallowness")
                shallow? (git-tasks.shallow? path)
                _ (when shallow?
-                   (yield "unshallowing clone")
+                   (yield "git unshallow")
                    (git-tasks.unshallow path))
-               _ (yield "updating clone")
+               _ (yield "git fetch")
                _ (git-tasks.fetch path)
-               _ (yield "get HEAD sha")
+               _ (yield "git local HEAD")
                HEAD (git-tasks.HEAD-sha path)
-               _ (yield "diffing range")
+               _ (yield (fmt "git log HEAD..%s" (git-tasks.short-sha sha)))
                lines (git-tasks.log-diff path HEAD sha)]
     (ok lines)))
 
