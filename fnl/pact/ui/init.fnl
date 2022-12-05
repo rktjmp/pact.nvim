@@ -59,7 +59,7 @@
 
 (fn progress-symbol [progress]
   (match progress
-    nil ""
+    nil " "
     [_ n] (let [symbols [:◐ :◓ :◑ :◒]]
             (.. (. symbols (+ 1 (% n (length symbols)))) " "))))
 
@@ -69,12 +69,12 @@
                               (enum.sort$ #(<= $1.order $2.order)))
         new-lines (enum.reduce (fn [lines i meta]
                                  (let [name-length (length meta.plugin.name)
-                                       line [[(progress-symbol meta.progress)
-                                              (highlight-for section-name :name)]
-                                             [meta.plugin.name
+                                       line [[meta.plugin.name
                                               (highlight-for section-name :name)]
                                              [(string.rep " " (- (+ 1 ui.layout.max-name-length) name-length))
                                               nil]
+                                             [(progress-symbol meta.progress)
+                                              (highlight-for section-name :name)]
                                              [(or meta.text "did-not-set-text")
                                               (highlight-for section-name :text)]]]
                                    ;; todo ugly way to set offsets here
