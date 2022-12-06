@@ -64,6 +64,9 @@
     [_ n] (let [symbols [:◐ :◓ :◑ :◒]]
             (.. (. symbols (+ 1 (% n (length symbols)))) " "))))
 
+(fn workflow-symbol []
+  "⧖")
+
 (fn render-section [ui section-name previous-lines]
   (let [relevant-plugins (->> (enum.filter #(= $2.state section-name) ui.plugins-meta)
                               (enum.map #$2)
@@ -360,6 +363,7 @@
                       (enum.append$ meta.events event)
                       (set meta.text text)
                       (set meta.progress nil)
+                      (set meta.workflow nil)
                       (match command
                         [:hold commit] (do
                                          (set meta.state :up-to-date))
@@ -374,6 +378,7 @@
                       (set meta.state :error)
                       (enum.append$ meta.events event)
                       (set meta.progress nil)
+                      (set meta.workflow nil)
                       (set meta.text (result.unwrap event))
                       (unsubscribe wf handler)
                       (schedule-redraw ui))
@@ -434,9 +439,10 @@
              (= :sync (. meta.action 1)))
       (if meta.log
         (do
-          (tset meta :log-open (not meta.log-open))
+          (set meta.log-open (not meta.log-open))
           (schedule-redraw ui))
-        (exec-diff ui meta))
+        (do
+          (exec-diff ui meta)))
       (vim.notify "May only view diff of staged or unstaged sync-able plugins"))))
 
 (fn M.attach [win buf plugins opts]
