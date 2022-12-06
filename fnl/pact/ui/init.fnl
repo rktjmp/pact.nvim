@@ -153,6 +153,7 @@
                :clean (orphan-remove-fw.new plugin.id action-data)
                other (error (fmt "unknown staging action %s" other)))
           meta (. ui :plugins-meta plugin.id)
+          _ (set meta.workflow wf)
           handler (fn* handler
                        (where [event] (ok? event))
                        (do
@@ -165,44 +166,49 @@
                                                :clean :cleaned
                                                _ how)
                                              action-data))
+                         (set meta.workflow nil)
                          (set meta.progress nil)
-                         (vim.schedule (fn []
-                                         (vim.cmd "packloadall!")
-                                         (vim.cmd "silent! helptags ALL")))
-                         (when plugin.after
-                           (let [{: new} (require :pact.workflow.after)
-                                 old-text meta.text
-                                 after-wf (new wf.id plugin.after plugin.package-path)]
-                             (set meta.text "running...")
-                             (subscribe after-wf
-                                        (fn [event]
-                                          (match event
-                                            ;; handle ok and err events specially as we don't want
-                                            ;; to swap sections etc.
-                                            (where _ (ok? event))
-                                            (do
-                                              (set meta.text (fmt "%s after: %s"
-                                                                  old-text
-                                                                  (or (result.unwrap event)
-                                                                      "finished with no value")))
-                                              (set meta.progress nil)
-                                              (unsubscribe after-wf handler)
-                                              (schedule-redraw ui))
-                                            (where _ (err? event))
-                                            (do
-                                              (set meta.text (.. old-text (fmt " error: %s" (inspect (result.unwrap event)))))
-                                              (set meta.progress nil)
-                                              (unsubscribe after-wf handler)
-                                              (schedule-redraw ui))
-                                            ;; we can pass these up to
-                                            ;; the normal handler for
-                                            ;; sting logging and
-                                            ;; progress meter
-                                            (where _ (string? event))
-                                            (handler (fmt "after: %s" event))
-                                            (where _ (thread? event))
-                                            (handler event))))
-                             (scheduler.add-workflow ui.scheduler after-wf)))
+                         (vim.schedule
+                           (fn after-handler []
+                             (vim.cmd "packloadall!")
+                             (vim.cmd "silent! helptags ALL")
+                             (when plugin.after
+                               (let [{: new} (require :pact.workflow.after)
+                                     old-text meta.text
+                                     after-wf (new wf.id plugin.after plugin.package-path)]
+                                 (set meta.text "running...")
+                                 (set meta.workflow after-wf)
+                                 (subscribe after-wf
+                                            (fn [event]
+                                              (match event
+                                                ;; handle ok and err events specially as we don't want
+                                                ;; to swap sections etc.
+                                                (where _ (ok? event))
+                                                (do
+                                                  (set meta.text (fmt "%s after: %s"
+                                                                      old-text
+                                                                      (or (result.unwrap event)
+                                                                          "finished with no value")))
+                                                  (set meta.progress nil)
+                                                  (set meta.workflow nil)
+                                                  (unsubscribe after-wf after-handler)
+                                                  (schedule-redraw ui))
+                                                (where _ (err? event))
+                                                (do
+                                                  (set meta.text (.. old-text (fmt " error: %s" (inspect (result.unwrap event)))))
+                                                  (set meta.progress nil)
+                                                  (set meta.workflow nil)
+                                                  (unsubscribe after-wf after-handler)
+                                                  (schedule-redraw ui))
+                                                ;; we can pass these up to
+                                                ;; the normal handler for
+                                                ;; sting logging and
+                                                ;; progress meter
+                                                (where _ (string? event))
+                                                (handler (fmt "after: %s" event))
+                                                (where _ (thread? event))
+                                                (handler event))))
+                                 (scheduler.add-workflow ui.scheduler after-wf)))))
                          (unsubscribe wf handler)
                          (schedule-redraw ui))
 
@@ -237,6 +243,7 @@
   (->> (enum.filter #(and (= :staged $2.state) ) ui.plugins-meta)
        (enum.map (fn [_ meta]
                    (let [wf (make-wf (. meta.action 1) meta.plugin (. meta.action 2))]
+                     (set meta.workflow wf)
                      (scheduler.add-workflow ui.scheduler wf)
                      (tset meta :state :active)))))
   (schedule-redraw ui))
@@ -254,6 +261,7 @@
                          (set meta.progress nil)
                          (set meta.log log)
                          (set meta.log-open true)
+                         (set meta.workflow nil)
                          (unsubscribe wf handler)
                          (schedule-redraw ui))
 
@@ -262,6 +270,7 @@
                          (enum.append$ meta.events event)
                          (set meta.text e)
                          (set meta.progress nil)
+                         (set meta.workflow nil)
                          (unsubscribe wf handler)
                          (schedule-redraw ui))
 
@@ -281,6 +290,7 @@
       (subscribe wf handler)
       (values wf)))
   (let [wf (make-wf meta.plugin (. meta.action 2))]
+    (set meta.workflow wf)
     (scheduler.add-workflow ui.scheduler wf))
   (schedule-redraw ui))
 
@@ -382,9 +392,13 @@
                     nil)]
       (subscribe wf handler)
       (values wf)))
-  (schedule-redraw ui)
-  (enum.map #(scheduler.add-workflow ui.scheduler (make-status-wf $2))
-            ui.plugins))
+  ;; plugins-meta is kv, but we want to run the workflows in order
+  (->> (enum.map #$2 ui.plugins-meta)
+       (enum.sort$ #(<= $1.order $2.order))
+       (enum.map #(let [wf (make-status-wf $2.plugin)]
+                    (set $2.workflow wf)
+                    (scheduler.add-workflow ui.scheduler wf))))
+  (schedule-redraw ui))
 
 (fn exec-keymap-cc [ui]
   (if (enum.any? #(= :staged $2.state) ui.plugins-meta)
@@ -463,7 +477,6 @@
           (api.nvim_buf_set_keymap :n :cc "" {:callback #(exec-keymap-cc ui)})
           (api.nvim_buf_set_keymap :n :s "" {:callback #(exec-keymap-s ui)})
           (api.nvim_buf_set_keymap :n :u "" {:callback #(exec-keymap-u ui)}))
-
 
         ;; we always default to status ui
         (exec-orphans ui)
