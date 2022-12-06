@@ -125,7 +125,9 @@
     (when (enum.any? #(string.match $2 "\n") text)
       (print "pact.ui text had unexpected new lines")
       (print (vim.inspect text)))
+    (api.nvim_buf_set_option ui.buf :modifiable true)
     (api.nvim_buf_set_lines ui.buf 0 -1 false text)
+    (api.nvim_buf_set_option ui.buf :modifiable false)
     (enum.map (fn [i line-marks]
                 (enum.map (fn [_ [start stop hl]]
                             (api.nvim_buf_add_highlight ui.buf ui.ns-id hl (- i 1) start stop))
@@ -472,6 +474,11 @@
                 :opts opts}]
         (doto buf
           ;; TODO v mode
+          (api.nvim_buf_set_option :modifiable false)
+          (api.nvim_buf_set_option :buftype :nofile)
+          (api.nvim_buf_set_option :bufhidden :hide)
+          (api.nvim_buf_set_option :buflisted false)
+          (api.nvim_buf_set_option :swapfile false)
           (api.nvim_buf_set_option :ft :pact)
           (api.nvim_buf_set_keymap :n := "" {:callback #(exec-keymap-= ui)})
           (api.nvim_buf_set_keymap :n :cc "" {:callback #(exec-keymap-cc ui)})
