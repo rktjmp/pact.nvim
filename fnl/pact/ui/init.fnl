@@ -41,12 +41,12 @@
    [["" :PactComment]]])
 
 (fn usage []
-  [[[";; usage:" :PactComment]]
+  [[[";; Usage:" :PactComment]]
    [[";;" :PactComment]]
-   [[";;   s  - stage plugin for update" :PactComment]]
-   [[";;   u  - unstage plugin" :PactComment]]
-   [[";;   cc - commit staging and fetch updates" :PactComment]]
-   [[";;   =  - view git log (staged/unstaged only)" :PactComment]]
+   [[";;   s  - Stage plugin for update" :PactComment]]
+   [[";;   u  - Unstage plugin" :PactComment]]
+   [[";;   cc - Commit staging and fetch updates" :PactComment]]
+   [[";;   =  - View git log (staged/unstaged only)" :PactComment]]
    [["" nil]]])
 
 (fn rate-limited-inc [[t n]]
