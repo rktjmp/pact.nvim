@@ -36,7 +36,7 @@ breaking changes between versions.
 
 ```sh
 curl https://raw.githubusercontent.com/rktjmp/pact.nvim/master/Containerfile | \
-  podman build -t pact-nvim -f - .
+  podman build -t pact-nvim -f - . && \
 podman run -it pact-nvim
 ```
 
@@ -47,7 +47,7 @@ podman run -it pact-nvim
 
 ```sh
 curl https://raw.githubusercontent.com/rktjmp/pact.nvim/master/Containerfile | \
-  docker build -t pact-nvim -f - .
+  docker build -t pact-nvim -f - . && \
 docker run -it pact-nvim
 ```
 
