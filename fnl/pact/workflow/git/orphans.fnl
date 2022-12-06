@@ -30,7 +30,7 @@
 (fn clone [repo-url sha path]
   (result-> (yield "starting git-clone workflow")
             (or (absolute-path? path)
-                (values nil (fmt "plugin path must be absolute, got %s" path)))
+                (err (fmt "plugin path must be absolute, got %s" path)))
             (#(if (not (dir-exists? path))
                 (clone-repo-impl repo-url sha path)
                 (err (fmt "unable to clone, directory %s already exists" path))))))

@@ -150,7 +150,7 @@
 (fn detect-kind [repo-url path constraint]
   (result-> (yield "starting git-status workflow")
             (or (absolute-path? path)
-                (values nil (fmt "plugin path must be absolute, got %s" path)))
+                (err (fmt "plugin path must be absolute, got %s" path)))
             (#(if (git-dir? path)
                 (status-existing-repo-impl path repo-url constraint)
                 (status-new-repo-impl repo-url constraint)))))

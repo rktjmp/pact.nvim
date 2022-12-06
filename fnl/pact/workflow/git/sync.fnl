@@ -32,7 +32,7 @@
 (fn sync [path sha]
   (result-> (yield "starting git-sync workflow")
             (or (absolute-path? path)
-                (values nil (fmt "plugin path must be absolute, got %s" path)))
+                (err (fmt "plugin path must be absolute, got %s" path)))
             (#(if (git-dir? path)
                 (sync-repo-impl path sha)
                 (err (fmt "unable to sync, directory %s is not a git repo" path))))))
