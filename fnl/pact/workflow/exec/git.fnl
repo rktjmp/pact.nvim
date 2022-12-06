@@ -13,9 +13,6 @@
 (fn dump-err [code err]
   (fmt "git-error: return-code: %s std-err: %s" code (inspect err)))
 
-(fn short-sha [sha]
-  (string.sub sha 1 8))
-
 (fn HEAD-sha [repo-root]
   (assert repo-root "must provide repo root")
   ;; TODO handle case where git repo exists but has no commits and so
@@ -114,14 +111,16 @@
     (nil err) (values nil err)))
 
 (fn log-diff [repo-path old-sha new-sha]
-  (match (await (run :git [:log :--oneline :--decorate (fmt "%s..%s" old-sha new-sha)] repo-path const.ENV))
-    (where (0 log _) (= 0 (length log))) (values nil "git log produced no output, are you moving backwards?")
-    (0 log _) (values log)
-    (code _ err) (values nil (dump-err code err))
-    (nil err) (values nil err)))
+  ;; sha abbrevations are not a consistent width between repos, so send back full and
+  ;; manually trim
+  (let [args [:log :--oneline :--no-abbrev-commit :--decorate (fmt "%s..%s" old-sha new-sha)]]
+    (match (await (run :git args repo-path const.ENV))
+      (where (0 log _) (= 0 (length log))) (values nil "git log produced no output, are you moving backwards?")
+      (0 log _) (values log)
+      (code _ err) (values nil (dump-err code err))
+      (nil err) (values nil err))))
 
 {: init
- : short-sha
  : HEAD-sha
  : ls-remote
  : set-origin

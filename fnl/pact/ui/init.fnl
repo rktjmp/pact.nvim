@@ -9,6 +9,7 @@
      result :pact.lib.ruin.result
      api vim.api
      {:format fmt} string
+     {: abbrev-sha} :pact.git.commit
      orphan-find-wf :pact.workflow.orphan.find
      orphan-remove-fw :pact.workflow.orphan.remove
      status-wf :pact.workflow.git.status
@@ -98,7 +99,7 @@
 (fn log-line->chunks [log-line]
   (let [(sha log) (string.match log-line "(%x+)%s(.+)")]
     [["  " :comment]
-     [sha :comment]
+     [(abbrev-sha sha) :comment]
      [" " :comment]
      [log (if (log-line-breaking? log) :DiagnosticError :DiagnosticHint)]]))
 

@@ -3,6 +3,7 @@
 
 (use {: 'result->> : 'result-> : 'result-let
       : ok : err} :pact.lib.ruin.result
+     {: abbrev-sha} :pact.git.commit
      git-tasks :pact.workflow.exec.git
      fs-tasks :pact.workflow.exec.fs
      {:format fmt} string
@@ -24,7 +25,7 @@
                _ (git-tasks.fetch path)
                _ (yield "git local HEAD")
                HEAD (git-tasks.HEAD-sha path)
-               _ (yield (fmt "git log HEAD..%s" (git-tasks.short-sha sha)))
+               _ (yield (fmt "git log HEAD..%s" (abbrev-sha sha)))
                lines (git-tasks.log-diff path HEAD sha)]
     (ok lines)))
 

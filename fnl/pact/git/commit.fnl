@@ -89,6 +89,9 @@
                                          (enum.concat$ acc))))
                     [])))
 
-{: commit : ref-lines->commits}
+(fn abbrev-sha [sha]
+  (string.sub sha 1 8))
 
-
+{: commit
+ : ref-lines->commits
+ : abbrev-sha}
