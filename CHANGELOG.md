@@ -6,8 +6,8 @@
 
 ## 0.0.8
 
-- Allowed re-defining existing plugins from `pact`.
-- Reduced CPU usage by throttling scheduler and further throttling draw calls
+- Allow re-defining existing plugins from `pact`.
+- Reduce CPU usage by throttling scheduler and further throttling draw calls.
 
 ## 0.0.7
 
@@ -17,7 +17,7 @@
 ## 0.0.6
 
 - Rename plugin `run` option to `after`.
-- Added container demo>
+- Added container demo.
 
 ## 0.0.5
 
