@@ -7,6 +7,8 @@ endif
 
 let b:current_syntax = "pact"
 
+syn match PactComment "\v;;.+$"
+
 " Title -> leading word before list of section
 " Name -> the plugin name
 " Text -> plain text message associated with plugin
