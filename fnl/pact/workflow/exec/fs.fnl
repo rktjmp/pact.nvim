@@ -1,6 +1,6 @@
 (import-macros {: use} :pact.lib.ruin.use)
 (use {: 'fn* : 'fn+} :pact.lib.ruin.fn
-     {: string? : table?} :pact.lib.ruin.type
+     {: string? : table? : not-nil?} :pact.lib.ruin.type
      enum :pact.lib.ruin.enum
      {:format fmt} string
      {:loop uv} vim)
@@ -44,7 +44,20 @@
                contents)
     (uv.fs_rmdir path)))
 
+(fn absolute-path? [path]
+  (not-nil? (string.match path "^/")))
+
+(fn dir-exists? [path]
+  (= :directory (what-is-at path)))
+
+(fn symlink [target link-name]
+  (uv.fs_symlink target link-name))
+
 {: ensure-directory-exists
  : what-is-at
  : ls-path
- : remove-path}
+ : symlink
+ :make-path ensure-directory-exists 
+ : remove-path
+ : absolute-path?
+ : dir-exists?}
