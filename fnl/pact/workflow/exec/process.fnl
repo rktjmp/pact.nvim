@@ -5,7 +5,8 @@
 ;;
 ;; Uses uv.spawn.
 
-(import-macros {: use} :pact.lib.ruin.use)
+(import-macros {: ruin!} :pact.lib.ruin)
+(ruin!)
 
 (use enum :pact.lib.ruin.enum
      inspect :pact.inspect
@@ -25,7 +26,7 @@
 (fn stream->lines [bytes]
   (enum.map #$1 #(string.gmatch (table.concat bytes) "[^\r\n]+")))
 
-(fn run [cmd args cwd env on-exit]
+(fn exec [cmd args cwd env on-exit]
   "spawns a new process"
   (let [stdout (new_pipe)
         stderr (new_pipe)
@@ -55,5 +56,23 @@
         (read_start stdout (into-table out-bytes))
         (read_start stderr (into-table err-bytes))
         (values pid)))))
+
+(fn string->spawn-args [cmd-str opts]
+  (let [parts (->> (enum.map #$1 #(string.gmatch cmd-str "(%S+)"))
+                   (enum.map #(match (string.match $2 "^(%$+)([%w-]+)$")
+                                (prefix name) (match [prefix (. opts name)]
+                                                [:$ val] val
+                                                [:$ nil] (error (fmt "Could not construct command `%s`, `%s` not in substitution table" cmd-str name))
+                                                _ (.. (string.sub prefix 1 -2) name))
+                                _ $2)))]
+    [(enum.hd parts) (enum.tl parts) (or opts.cwd ".") (or opts.env {})]))
+
+(fn run [cmd opts on-exit]
+  (assert (string? cmd) "must provide command string")
+  (assert (table? opts) "must provide opts table")
+  (assert (function? on-exit) "must provide on-exit function")
+  (let [args (-> (string->spawn-args cmd opts)
+                 (enum.append$ on-exit))]
+    (exec (enum.unpack args))))
 
 {: run}
