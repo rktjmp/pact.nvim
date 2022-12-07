@@ -412,6 +412,16 @@
     (exec-commit ui)
     (vim.notify "Nothing staged, refusing to commit")))
 
+(fn exec-keymap-<cr> [ui]
+  (let [[line _] (api.nvim_win_get_cursor ui.win)
+        meta (enum.find-value #(= line $2.on-line) ui.plugins-meta)]
+    (match [meta (?. meta :plugin :package-path)]
+      [any path] (do
+                   (print path)
+                   (vim.cmd (fmt ":new %s" path)))
+      [any nil] (vim.notify (fmt "%s has no path to open" any.plugin.name))
+      _ nil)))
+
 (fn exec-keymap-s [ui]
   (let [[line _] (api.nvim_win_get_cursor ui.win)
         meta (enum.find-value #(= line $2.on-line) ui.plugins-meta)]
@@ -487,6 +497,7 @@
           (api.nvim_buf_set_option :swapfile false)
           (api.nvim_buf_set_option :ft :pact)
           (api.nvim_buf_set_keymap :n := "" {:callback #(exec-keymap-= ui)})
+          (api.nvim_buf_set_keymap :n :<cr> "" {:callback #(exec-keymap-<cr> ui)})
           (api.nvim_buf_set_keymap :n :cc "" {:callback #(exec-keymap-cc ui)})
           (api.nvim_buf_set_keymap :n :s "" {:callback #(exec-keymap-s ui)})
           (api.nvim_buf_set_keymap :n :u "" {:callback #(exec-keymap-u ui)}))
