@@ -47,11 +47,18 @@
 (fn absolute-path? [path]
   (not-nil? (string.match path "^/")))
 
+(fn git-dir? [path]
+  (= :directory (what-is-at (.. path "/.git"))))
+
 (fn dir-exists? [path]
   (= :directory (what-is-at path)))
 
 (fn symlink [target link-name]
   (uv.fs_symlink target link-name))
+
+(fn join-path [...]
+  (-> (enum.reduce #(.. $1 "/" $3) [...])
+      (string.gsub ://+ :/)))
 
 {: ensure-directory-exists
  : what-is-at
@@ -60,4 +67,6 @@
  :make-path ensure-directory-exists 
  : remove-path
  : absolute-path?
- : dir-exists?}
+ : git-dir?
+ : dir-exists?
+ : join-path}
