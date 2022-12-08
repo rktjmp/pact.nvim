@@ -1,4 +1,5 @@
 ;; provides nicer interface to constraint and provider types
+
 (import-macros {: ruin!} :pact.lib.ruin)
 (ruin!)
 (use {: ok : err : map-err : 'result-let} :pact.lib.ruin.result
@@ -7,10 +8,12 @@
      constraints :pact.plugin.constraint
      inspect (or vim.inspect print)
      {: valid-sha? : valid-version-spec?} :pact.valid
+     {: join-path} :pact.workflow.exec.fs
      {:format fmt} string)
 
 (var id 0)
 (fn generate-id [plugin]
+  "Generate a unique id for every plugin created in an instance of neovim."
   (set id (+ id 1))
   (fmt "plugin-%s" id))
 
@@ -22,13 +25,24 @@
 (fn set-tostring [plugin]
   (setmetatable plugin {:__tostring #(fmt "%s@%s" plugin.source plugin.constraint)}))
 
-(fn set-package-path [plugin]
-  (let [[_ source] plugin.source
-        folder (-> (. plugin.source 2)
-                   (string.match ".+/([^/]-)$"))
-        dir (-> [(vim.fn.stdpath :data) :site/pack/pact (if plugin.opt? :opt :start) folder]
-                (table.concat "/"))]
-    (enum.set$ plugin :package-path dir)))
+(fn* canonical-root-path
+  (where [{:source [_ source]}])
+  (let [folder (-> source
+                   (string.gsub "%W" "-")
+                   (string.gsub "-+" "-"))]
+    (join-path (vim.fn.stdpath :data) :site/pack/pact/data folder)))
+
+(fn canonical-head-path [plugin]
+  (let [root (canonical-root-path plugin)]
+    (join-path root :HEAD)))
+
+(fn* canonical-package-path
+  (where [{:source [_ source] :opt? ?opt?}])
+  (let [folder (string.match source ".+/([^/]-)$")]
+    (join-path (vim.fn.stdpath :data)
+               :site/pack/pact
+               (if ?opt? :opt :start)
+               folder)))
 
 (fn opts->constraint [opts]
   (match-let [keys (enum.keys opts)
@@ -52,13 +66,20 @@
                 "expected semver constraint string or table with branch, tag, commit or version"))))
 
 (fn make [basic opts]
-  (doto basic
-    (tset :opt? (= true (or (. opts :opt?) (. opts :opt))))
-    (tset :after opts.after)
-    (tset :id (generate-id))
-    (set-package-path)
-    (set-tostring)))
+  (assert basic.name "plugin.make requires basic.name")
+  (assert basic.source "plugin.make requires basic.source")
+  (assert basic.constraint "plugin.make requires basic.constraint")
+  (let [plug (doto basic
+                   (tset :opt? (= true (or (. opts :opt?) (. opts :opt))))
+                   (tset :after opts.after)
+                   (tset :id (generate-id)))]
+    (set plug.path {:root  (canonical-root-path plug)
+                    :head (canonical-head-path plug)
+                    :package (canonical-package-path plug)})
+    (set-tostring plug)))
 
+;; TODO: smell, can probably remove forge-name name as we no longer us it, and is
+;;       iffy when termed :git?
 (fn* forge
   (where [forge-name user-repo constraint] (and (string? user-repo)
                                                 (string? constraint)
