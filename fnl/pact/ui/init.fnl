@@ -8,6 +8,7 @@
      {: ok? : err?} :pact.lib.ruin.result
      result :pact.lib.ruin.result
      api vim.api
+     FS :pact.workflow.exec.fs
      {:format fmt} string
      {: abbrev-sha} :pact.git.commit
      orphan-find-wf :pact.workflow.orphan.find
@@ -68,21 +69,21 @@
   "⧖")
 
 (fn render-section [ui section-name previous-lines]
-  (let [relevant-plugins (->> (enum.filter #(= $2.state section-name) ui.plugins-meta)
+  (let [relevant-plugins (->> (enum.filter #(= $2.state section-name) ui.runtime.packages)
                               (enum.map #$2)
                               (enum.sort$ #(<= $1.order $2.order)))
-        new-lines (enum.reduce (fn [lines i meta]
-                                 (let [name-length (length meta.plugin.name)
-                                       line [[meta.plugin.name
+        new-lines (enum.reduce (fn [lines i package]
+                                 (let [name-length (length package.name)
+                                       line [[package.name
                                               (highlight-for section-name :name)]
                                              [(string.rep " " (- (+ 1 ui.layout.max-name-length) name-length))
                                               nil]
-                                             [(progress-symbol meta.progress)
+                                             [(progress-symbol package.progress)
                                               (highlight-for section-name :name)]
-                                             [(or meta.text "did-not-set-text")
+                                             [(or package.text "did-not-set-text")
                                               (highlight-for section-name :text)]]]
                                    ;; todo ugly way to set offsets here
-                                   (set meta.on-line (+ 2 (length previous-lines) (length lines)))
+                                   (set package.on-line (+ 2 (length previous-lines) (length lines)))
                                    (enum.append$ lines line)))
                                [] relevant-plugins)]
     (if (< 0 (length new-lines))
@@ -136,11 +137,12 @@
                             (api.nvim_buf_add_highlight ui.buf ui.ns-id hl (- i 1) start stop))
                           line-marks))
               extmarks)
-    (enum.map #(if $2.log-open
-                 (api.nvim_buf_set_extmark ui.buf ui.ns-id (- $2.on-line 1) 0
-                                           {:virt_lines (enum.map #(log-line->chunks $2)
-                                                                  $2.log)}))
-              ui.plugins-meta)))
+    ; (enum.map #(if $2.log-open
+    ;              (api.nvim_buf_set_extmark ui.buf ui.ns-id (- $2.on-line 1) 0
+    ;                                        {:virt_lines (enum.map #(log-line->chunks $2)
+    ;                                                               $2.log)}))
+    ;           ui.plugins-meta)
+    ))
 
 (fn schedule-redraw [ui]
   ;; asked to render, we only want to hit 60fps otherwise we can really pin
@@ -150,11 +152,91 @@
     (tset ui :will-render (+ rate (vim.loop.now)))
     (vim.defer_fn #(output ui) rate)))
 
+(local exec {})
+
+(fn exec.stage-transaction [ui]
+  ;; Every plugin is always staged into a transaction. The checkouts are shared
+  ;; between transactions so this is low cost for "not updated" plugins.
+  ;; There *is* a difference between a staged and held plugin however, and if
+  ;; a held plugin requires updating due to a dependency, then this can fail
+  ;; the transaction and the user must re-run and stage the held plugin also.
+  (fn make-wf [plugin]
+    (let [stage (require :pact.workflow.transaction.stage)
+          id (fmt "stage-%s" plugin.id)
+          meta (. ui :plugins-meta plugin.id)
+          ;; TODO this is really bad, magic getting sha non obvious
+          wf (stage.new id ui.transaction plugin (. meta.action 2))
+          handler (fn* handler
+                       (where [event] (ok? event))
+                       (do
+                         (vim.pretty_print wf.id event)
+                         (unsubscribe wf handler))
+                       (where [event] (err? event))
+                       (do
+                         (unsubscribe wf handler)
+                         (error (result.unwrap event)))
+                       (where [msg] (string? msg))
+                       (vim.pretty_print :close-trans msg)
+                       (where _) nil)]
+      (subscribe wf handler)
+      (scheduler.add-workflow ui.scheduler wf)
+      (values wf)))
+
+  (->> (enum.filter #(and (= :unstaged $2.state)) ui.plugins-meta)
+       (enum.map (fn [_ meta] (tset meta :state :held))))
+  (->> (enum.filter #(and (= :staged $2.state)) ui.plugins-meta)
+       (enum.map (fn [_ meta]
+                   (let [wf (make-wf (. meta.action 1) meta.plugin (. meta.action 2))]
+                     (set meta.workflow wf)
+                     (scheduler.add-workflow ui.scheduler wf)
+                     (tset meta :state :active)))))
+  (schedule-redraw ui))
+
+(fn exec-close-transaction [ui id how]
+  (let [{: new} (require :pact.workflow.transaction.close)
+        wf (new :close ui.transaction how)
+        handler (fn* handler
+                  (where [event] (ok? event))
+                  (do
+                    (vim.pretty_print event)
+                    (unsubscribe wf handler))
+                  (where [event] (err? event))
+                  (do
+                    (unsubscribe wf handler)
+                    (error (result.unwrap event)))
+                  (where [msg] (string? msg))
+                  (vim.pretty_print :close-trans msg)
+                  (where _) nil)]
+    (subscribe wf handler)
+    (scheduler.add-workflow ui.scheduler wf)))
+
+(fn exec-open-transaction [ui]
+  (let [{: new} (require :pact.workflow.transaction.open)
+        root-path (FS.join-path (vim.fn.stdpath :data) :site/pack/pact/data)
+        id (vim.loop.gettimeofday)
+        wf (new id root-path)
+        handler (fn* handler
+                  (where [event] (ok? event))
+                  (do
+                    (unsubscribe wf handler)
+                    (set ui.transaction (result.unwrap event))
+                    (exec-close-transaction ui true))
+                  (where [event] (err? event))
+                  (do
+                    (unsubscribe wf handler)
+                    (error (result.unwrap event)))
+                  (where [msg] (string? msg))
+                  (vim.pretty_print :open-trans msg)
+                  (where _) nil)]
+    (subscribe wf handler)
+    (scheduler.add-workflow ui.scheduler wf)))
+
+
 (fn exec-commit [ui]
   (fn make-wf [how plugin action-data]
     (let [wf (match how
-               :clone (clone-wf.new plugin.id plugin.package-path (. plugin.source 2) action-data.sha)
-               :sync (sync-wf.new plugin.id plugin.package-path action-data.sha)
+               :clone (clone-wf.new plugin.id plugin.path.package (. plugin.source 2) action-data.sha)
+               :sync (sync-wf.new plugin.id plugin.path.package action-data.sha)
                :clean (orphan-remove-fw.new plugin.id action-data)
                other (error (fmt "unknown staging action %s" other)))
           meta (. ui :plugins-meta plugin.id)
@@ -340,12 +422,43 @@
     (enum.map #(scheduler.add-workflow ui.scheduler (make-wf $1 $2))
               {:start start-root :opt opt-root})))
 
+; (fn keymap-stage [ui]
+;   (let [plugin (row->plugin-id ui (get-cursor-row))
+;         action (Plugin.action plugin)]
+;     (action.hold :some-sha)))
+
+; (fn a-status [ui]
+;   (E.reduce #(let [Plugin {}
+;                    plugin $2
+;                    wf (Workflow.Status.new plugin.id)
+;                    handler (fn [event]
+;                              (match event
+;                                (where e (R.result? e))
+;                                (do
+;                                  ;; prefer Store.update-plugin vs Plugin.event
+;                                  ;; because we can encapsulate other state
+;                                  ;; changes inside it.
+;                                  (Store.update-status ui.store $2.id e)
+;                                  (PubSub.unsubscribe handler))
+;                                (where msg (string? msg))
+;                                (do
+;                                  (plugin:log-event msg)
+;                                  (Store.update-events ui.store $2.id msg))
+
+
+                             
+;                              )]
+;                (pubsub:subscribe wf handler)
+;                (ui.scheduler:queue-workflow wf))
+;             (ui.store:plugins))
 
 (fn exec-status [ui]
   (fn make-status-wf [plugin]
     (let [wf (status-wf.new plugin.id
                             (. plugin.source 2)
-                            plugin.package-path
+                            ;; pass package path so we check against
+                            ;; currently linked checkout
+                            plugin.path.package
                             plugin.constraint)
           meta (. ui :plugins-meta plugin.id)
           handler (fn* handler
@@ -357,7 +470,7 @@
                                    (#(match ?maybe-latest
                                        commit (fmt "%s, latest: %s" $1 commit)
                                        nil (fmt "%s" $1)))
-                                   (#(match ?maybe-current
+                                   (#(match ?maybe-current 
                                        commit (fmt "%s, current: %s)" $1 commit)
                                        nil (fmt "%s)" $1))))]
                       (enum.append$ meta.events event)
@@ -409,13 +522,13 @@
 
 (fn exec-keymap-cc [ui]
   (if (enum.any? #(= :staged $2.state) ui.plugins-meta)
-    (exec-commit ui)
+    (exec-open-transaction ui)
     (vim.notify "Nothing staged, refusing to commit")))
 
 (fn exec-keymap-<cr> [ui]
   (let [[line _] (api.nvim_win_get_cursor ui.win)
         meta (enum.find-value #(= line $2.on-line) ui.plugins-meta)]
-    (match [meta (?. meta :plugin :package-path)]
+    (match [meta (?. meta :plugin :path :package)]
       [any path] (do
                    (print path)
                    (vim.cmd (fmt ":new %s" path)))
@@ -455,62 +568,79 @@
           (exec-diff ui meta)))
       (vim.notify "May only view diff of staged or unstaged sync-able plugins"))))
 
+(fn M.configure-buffer [ui]
+  (api.nvim_win_set_option ui.win :wrap false)
+  (doto ui.buf
+        (api.nvim_buf_set_option :modifiable false)
+        (api.nvim_buf_set_option :buftype :nofile)
+        (api.nvim_buf_set_option :bufhidden :hide)
+        (api.nvim_buf_set_option :buflisted false)
+        (api.nvim_buf_set_option :swapfile false)
+        (api.nvim_buf_set_option :ft :pact))
+  ui)
+
+(fn M.configure-keymaps [ui]
+  (doto ui.buf
+        (api.nvim_buf_set_keymap :n := "" {:callback #(exec-keymap-= ui)})
+        (api.nvim_buf_set_keymap :n :<cr> "" {:callback #(exec-keymap-<cr> ui)})
+        (api.nvim_buf_set_keymap :n :cc "" {:callback #(exec-keymap-cc ui)})
+        (api.nvim_buf_set_keymap :n :s "" {:callback #(exec-keymap-s ui)})
+        (api.nvim_buf_set_keymap :n :u "" {:callback #(exec-keymap-u ui)}))
+  ui)
+
+(fn dump [...]
+  (let [{: view} (require :fennel)
+        all (enum.reduce #(.. $1 (view $3))
+                         "" [...])]
+    (enum.map #$1 #(string.gmatch all "[^\n]+"))))
+
 (fn M.attach [win buf plugins opts]
   "Attach user-provided win+buf to pact view"
+  (use R :pact.lib.ruin.result
+       E :pact.lib.ruin.enum)
   (let [opts (or opts {})
-        {true ok-plugins false err-plugins} (enum.group-by #(values (result.ok? $2) (result.unwrap $2))
-                                                           plugins)]
-    ;; warn user which plugins failed
-    (if err-plugins
-      (-> (enum.reduce (fn [lines _ $2]
-                         (enum.append$ lines (fmt "  - %s" $2)))
-                       ["Some Pact plugins had configuration errors and wont be processed!"]
-                       err-plugins)
-          (table.concat "\n")
-          (.. "\n")
-          (api.nvim_err_writeln)))
+        Runtime (require :pact.runtime)
+        runtime (Runtime.new {:concurrency-limit opts.concurrency-limit})
+        ;; TODO: render failed plugins into the UI
+        packages (E.map #(Runtime.add-plugin runtime $2) plugins)
+        ui {: runtime
+            : win
+            : buf
+            :layout {:max-name-length 1}
+            :ns-id (api.nvim_create_namespace :pact-ui)
+            :errors []}]
+    (->> (E.filter #(R.err? $2) packages)
+         (E.each #(table.insert ui.errors (R.unwrap $2))))
 
-    ;; try to run...
-    (if ok-plugins
-      (let [plugins-meta (-> (enum.map #[$2.id {:events []
-                                                :text "waiting for scheduler"
-                                                :order $1
-                                                :state :waiting
-                                                :plugin $2}]
-                                       ok-plugins)
-                             (enum.pairs->table))
-            max-name-length (enum.reduce #(math.max $1 (length $3.name)) 0 ok-plugins)
-            ui {:plugins ok-plugins
-                : plugins-meta
-                : win
-                : buf
-                :ns-id (api.nvim_create_namespace :pact-ui)
-                :layout {: max-name-length}
-                :scheduler (scheduler.new {:concurrency-limit opts.concurrency-limit})
-                :opts opts}]
-        (doto buf
-          ;; TODO v mode
-          (api.nvim_buf_set_option :modifiable false)
-          (api.nvim_buf_set_option :buftype :nofile)
-          (api.nvim_buf_set_option :bufhidden :hide)
-          (api.nvim_buf_set_option :buflisted false)
-          (api.nvim_buf_set_option :swapfile false)
-          (api.nvim_buf_set_option :ft :pact)
-          (api.nvim_buf_set_keymap :n := "" {:callback #(exec-keymap-= ui)})
-          (api.nvim_buf_set_keymap :n :<cr> "" {:callback #(exec-keymap-<cr> ui)})
-          (api.nvim_buf_set_keymap :n :cc "" {:callback #(exec-keymap-cc ui)})
-          (api.nvim_buf_set_keymap :n :s "" {:callback #(exec-keymap-s ui)})
-          (api.nvim_buf_set_keymap :n :u "" {:callback #(exec-keymap-u ui)}))
+    (-> ui
+        (M.configure-buffer)
+        (M.configure-keymaps))
 
-        ;; we always default to status ui
-        (exec-orphans ui)
-        (exec-status ui)
-        (values ui))
-      (do
-        (let [lines [";; 🔪🩸🐐 Pact has no plugins defined!"
-                     ";; "
-                     ";; See `:h pact-usage`!"]]
-          (api.nvim_buf_set_option buf :ft :pact)
-          (api.nvim_buf_set_lines buf 0 -1 false lines))))))
+    (->> (E.map #(if (R.ok? $2) (R.unwrap $2)) packages)
+         (E.reduce #(if (< $1 (length $3.name))
+                      (length $3.name)
+                      $1) 1)
+         (set ui.layout.max-name-length))
+
+    (api.nvim_buf_set_option buf :modifiable true)
+    (->> (E.filter #(R.ok? $2) packages)
+         ;;TODO probably this could be specifically looking for a :ui key
+         ;; or filtering on known keys...?
+         (E.each #(subscribe (R.unwrap $2) #(schedule-redraw ui))))
+
+                                             ; (print (. (R.unwrap $2) :events))
+                                             ; (api.nvim_buf_set_lines buf 0 -1 false (dump packages))))))
+
+    (Runtime.discover-facts runtime)
+    ))
+
+    ; (let [topic (Runtime.run-status runtime)]
+    ;   (subscribe topic (fn [...] (print :x))))))
+      ; (do
+      ;   (let [lines [";; 🔪🩸🐐 Pact has no plugins defined!"
+      ;                ";; "
+      ;                ";; See `:h pact-usage`!"]]
+      ;     (api.nvim_buf_set_option buf :ft :pact)
+      ;     (api.nvim_buf_set_lines buf 0 -1 false lines))))))
 
 (values M)
