@@ -17,6 +17,26 @@
                    (fn [[_ kind spec]]
                      (.. kind "#" (string.gsub spec "%s" "")))}))
 
+(fn constraint? [c]
+  (match? [:git any-1 any-2] c))
+
+(fn commit? [c]
+  (match? [:git :commit any] c))
+
+(fn tag? [c]
+  (match? [:git :tag any] c))
+
+(fn branch? [c]
+  (match? [:git :branch any] c))
+
+(fn version? [c]
+  (match? [:git :version any] c))
+
+(fn value [c]
+  (match c
+    [:git kind val] val
+    _ (error "could not get constraint value!")))
+
 (fn* git?
   ;; we don't currently (?) check validity of contents, just shape
   (where [[:git kind spec]] (and (one-of? [:commit :branch :tag :version] kind)
@@ -87,4 +107,6 @@
     (if best-version
       (enum.find-value #(= best-version $2.version) commits))))
 
-{: git : git? : satisfies? : solve}
+{: git : git? : satisfies? : solve
+ : constraint? : commit? : branch? : tag? : version?
+ : value}
