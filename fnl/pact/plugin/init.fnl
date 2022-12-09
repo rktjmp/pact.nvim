@@ -25,25 +25,6 @@
 (fn set-tostring [plugin]
   (setmetatable plugin {:__tostring #(fmt "%s@%s" plugin.source plugin.constraint)}))
 
-(fn* canonical-root-path
-  (where [{:source [_ source]}])
-  (let [folder (-> source
-                   (string.gsub "%W" "-")
-                   (string.gsub "-+" "-"))]
-    (join-path (vim.fn.stdpath :data) :site/pack/pact/data folder)))
-
-(fn canonical-head-path [plugin]
-  (let [root (canonical-root-path plugin)]
-    (join-path root :HEAD)))
-
-(fn* canonical-package-path
-  (where [{:source [_ source] :opt? ?opt?}])
-  (let [folder (string.match source ".+/([^/]-)$")]
-    (join-path (vim.fn.stdpath :data)
-               :site/pack/pact
-               (if ?opt? :opt :start)
-               folder)))
-
 (fn opts->constraint [opts]
   (match-let [keys (enum.keys opts)
               true (-> (enum.filter #(or (= :branch $1) (= :tag $1) (= :commit $1) (= :version $1)) opts)
@@ -70,16 +51,14 @@
   (assert basic.source "plugin.make requires basic.source")
   (assert basic.constraint "plugin.make requires basic.constraint")
   (let [plug (doto basic
-                   (tset :opt? (= true (or (. opts :opt?) (. opts :opt))))
+                   (tset :dependencies (or opts.dependencies []))
+                   (tset :opt? (= true (or opts.opt? opts.opt)))
                    (tset :after opts.after)
                    (tset :id (generate-id)))]
-    (set plug.path {:root  (canonical-root-path plug)
-                    :head (canonical-head-path plug)
-                    :package (canonical-package-path plug)})
     (set-tostring plug)))
 
-;; TODO: smell, can probably remove forge-name name as we no longer us it, and is
-;;       iffy when termed :git?
+;; TODO: smell, can probably remove forge-name name as we no longer us it, and
+;; is iffy when termed :git?
 (fn* forge
   (where [forge-name user-repo constraint] (and (string? user-repo)
                                                 (string? constraint)
