@@ -11,12 +11,6 @@
      {: join-path} :pact.workflow.exec.fs
      {:format fmt} string)
 
-(var id 0)
-(fn generate-id [plugin]
-  "Generate a unique id for every plugin created in an instance of neovim."
-  (set id (+ id 1))
-  (fmt "plugin-%s" id))
-
 (fn valid-args [user-repo constraint]
   (and (string? user-repo)
        (or (string? constraint)
@@ -50,11 +44,16 @@
   (assert basic.name "plugin.make requires basic.name")
   (assert basic.source "plugin.make requires basic.source")
   (assert basic.constraint "plugin.make requires basic.constraint")
-  (let [plug (doto basic
+  (let [canonical-id (-> (. basic.source 2)
+                         (string.gsub "^.-://" "")
+                         (->> (.. :plugin-))
+                         (string.gsub "%W" "-")
+                         (string.gsub "-+" "-"))
+        plug (doto basic
                    (tset :dependencies (or opts.dependencies []))
                    (tset :opt? (= true (or opts.opt? opts.opt)))
                    (tset :after opts.after)
-                   (tset :id (generate-id)))]
+                   (tset :canonical-id canonical-id))]
     (set-tostring plug)))
 
 ;; TODO: smell, can probably remove forge-name name as we no longer us it, and

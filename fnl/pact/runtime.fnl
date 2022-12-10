@@ -12,19 +12,20 @@
 (local Runtime {})
 
 (var *last-id* 0)
-(fn gen-monotonic-id []
+(fn gen-uid []
   (set *last-id* (+ 1 *last-id*))
-  *last-id*)
+  ;; string not number so we get kv tables instead of potentially sparse seqs
+  (.. "package-" *last-id*))
 
 (fn spec->package [spec]
   ;; Warning: some of these properties are place holders and should be
   ;; filled by another process.
-  (let [root spec.id
+  (let [root spec.canonical-id
         package-name (string.match spec.name ".+/([^/]-)$")
         package-path (FS.join-path (if spec.opt? :opt :start) package-name)]
     {:pact :plugin
-     :id spec.id
-     :monotonic-id (gen-monotonic-id) ;; globally unique between all packages
+     :canonical-id spec.canonical-id
+     :uid (gen-uid) ;; globally unique between all packages
      :spec spec
      :name spec.name
      :source spec.source
@@ -46,6 +47,28 @@
     (E.depth-walk f runtime.package-graph ?acc #$1.depends-on)
     (E.depth-walk f runtime.package-graph #$1.depends-on)))
 
+(fn Runtime.packages-by-canonical-id [runtime canonical-id]
+  ;; TODO: performance optimisation target
+  (Runtime.walk-packages runtime
+                         (fn [acc node]
+                           (if (= node.canonical-id canonical-id)
+                             (E.append$ acc node)
+                             acc))
+                         []))
+
+(fn Runtime.package-by-uid [runtime id]
+  ;; TODO: performance optimisation target
+  (match (Runtime.walk-packages runtime
+                                ;; TODO: does NOT early return ...
+                                (fn [acc node]
+                                  (if (and (not acc)
+                                           (= node.uid id))
+                                    node
+                                    acc))
+                                false)
+    false nil
+    any any))
+
 (fn Runtime.update-package-list [runtime]
   "Flatten a package-graph down into:
 
@@ -64,16 +87,16 @@
   (let [f (fn [acc node history]
             (let [parent (E.last history)]
               (when (and parent (not (R.err? node)))
-                (match (. acc node.id)
+                (match (. acc node.canonical-id)
                   nil (do
-                        (tset acc node.id {:constraints [[parent.id node.constraint]]
-                                           :depends-on (E.map #$2.id node.depends-on)
-                                           :depended-by [(?. node :depended-by :id)]
+                        (tset acc node.canonical-id {:constraints [[parent.canonical-id node.constraint]]
+                                           :depends-on (E.map #$2.canonical-id node.depends-on)
+                                           :depended-by [(?. node :depended-by :canonical-id)]
                                            :packages [node]}))
                   x (do
-                      (E.append$ x.constraints [parent.id node.constraint])
-                      (E.concat$ x.depends-on (E.map #$2.id node.depends-on))
-                      (E.append$ x.depended-by (?. node :depended-by :id))
+                      (E.append$ x.constraints [parent.canonical-id node.constraint])
+                      (E.concat$ x.depends-on (E.map #$2.canonical-id node.depends-on))
+                      (E.append$ x.depended-by (?. node :depended-by :canonical-id))
                       (E.append$ x.packages node))))
               acc))]
     (set runtime.package-list (Runtime.walk-packages runtime f {}))
@@ -129,6 +152,8 @@
   ;; This graph can have duplicates or conflicting specs but we resolve that
   ;; later.
   (tset runtime :package-graph {:id :pact
+                                :name :pact/root
+                                :text "root node in package-graph"
                                 :depends-on (unproxy-spec-graph proxies)})
   ;; unproxying doesn't set absolute paths, update them with runtime data.
   (Runtime.walk-packages runtime
@@ -139,6 +164,13 @@
                                                           (. node :path $1)))
                                      {:root :repos :rtp :root :head :repos}))))
   (Runtime.update-package-list runtime)
+  (tset runtime :package-uid-list
+        (Runtime.walk-packages runtime (fn [acc package]
+                                         (if (and (not (R.err? package)) package.uid)
+                                           (tset acc package.uid package))
+                                         acc)
+                               []))
+  (vim.pretty_print runtime.package-monotonic-list)
   ;; TODO: ideally this would soft fail only the parts with a loop
   ;; TODO: warn on duplicate canonical ids
   ;; TODO: also "provides: id"
@@ -157,7 +189,7 @@
 
   (fn make-wf [package]
     (let [url (. package :spec :source 2)
-          wf (DiscoverFacts.new package.id url package.path.rtp)
+          wf (DiscoverFacts.new package.canonical-id url package.path.rtp)
           handler (fn handler [event]
                     (match event
                       (where e (R.ok? e))
@@ -173,17 +205,20 @@
                         (tset package :state :error)
                         (PubSub.unsubscribe wf handler))
                       (where msg (string? msg))
-                      (do
-                        (E.append$ package.events msg)
-                        (set package.text msg)
-                        (PubSub.broadcast package :events-changed))))]
+                      (let [siblings (Runtime.packages-by-canonical-id runtime package.canonical-id)]
+                        (E.each #(do
+                                   (E.append$ $2.events msg)
+                                   (set $2.text msg)
+                                   (PubSub.broadcast $2 :events-changed))
+                                   siblings))))]
       (PubSub.subscribe wf handler)
       wf))
-
-  (->> (E.map #(E.hd $2.packages) runtime.package-list)
-       ; (E.sort #(<= $1.order $2.order))
-       (E.map #(let [wf (make-wf $2)]
-                 (Scheduler.add-workflow runtime.scheduler wf)))))
+  (E.each (fn [_ {: packages}]
+            (let [package (E.hd packages)]
+              (if (and (not (R.err? package)) package.source)
+                (let [wf (make-wf package)]
+                  (Scheduler.add-workflow runtime.scheduler wf)))))
+    runtime.package-list))
 
 ;; TODO
 (fn Runtime.exec-discover-orphans [runtime])
