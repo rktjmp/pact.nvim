@@ -11,28 +11,73 @@
 
 (local Runtime {})
 
-(fn unproxy-tree [proxies]
-  "Given a tree of proxies from user-defined plugins, unpack into
-  a usable tree structure with concrete plugins.
-  Does not deduplcate or collision detect, jus returns it would expand."
-  (fn unroll [proxy tree]
-    ;; unwrap the proxy
-    (match (proxy)
-      (where r (R.ok? r))
-      ;; spec was good, see if it exists in the lookup table
-      (let [spec (R.unwrap r)]
-        ;; insert spec into tree
-        (E.append$ tree spec)
-        ;; now unroll any sub dependencies into fresh tree but use same lookup table
-        (tset spec :dependencies (E.reduce #(unroll $3 $1)
-                                           [] spec.dependencies)))
-      (where r (R.err? r))
-      ;; the spec had an error in it so ... remember that?
-      (E.append$ tree r))
-    tree)
-  ;; proxies may contain multiple "roots" if make-pact was called multiple
-  ;; times, but we now collate them under one tree.
-  (E.flat-map #(E.reduce #(unroll $3 $1) [] $2) proxies))
+(var *last-id* 0)
+(fn gen-monotonic-id []
+  (set *last-id* (+ 1 *last-id*))
+  *last-id*)
+
+(fn spec->package [spec]
+  ;; Warning: some of these properties are place holders and should be
+  ;; filled by another process.
+  (let [root spec.id
+        package-name (string.match spec.name ".+/([^/]-)$")
+        package-path (FS.join-path (if spec.opt? :opt :start) package-name)]
+    {:pact :plugin
+     :id spec.id
+     :monotonic-id (gen-monotonic-id) ;; globally unique between all packages
+     :spec spec
+     :name spec.name
+     :source spec.source
+     :constraint spec.constraint
+     :depended-by []
+     :depends-on spec.dependencies ;; placeholder
+     :path {:root root ;; placeholder
+            :rtp package-path ;; placeholder
+            :head (FS.join-path root :HEAD)} ;; placeholder
+     :order 0 ;(E.reduce #(+ $1 1) 1 runtime.packages)
+     :events []
+     :state :waiting
+     :text "waiting for scheduler"}))
+
+
+(fn Runtime.walk-packages [runtime f ?acc]
+  "Utility to depth-walk the package graph."
+  (if ?acc
+    (E.depth-walk f runtime.package-graph ?acc #$1.depends-on)
+    (E.depth-walk f runtime.package-graph #$1.depends-on)))
+
+(fn Runtime.update-package-list [runtime]
+  "Flatten a package-graph down into:
+
+  {package-id {:contraints [a ...]
+               :depends-on [id ...]
+               :depended-by [id ...]
+               :packages [package ...]}
+   ...}
+
+  Most interaction with packages is done via the manifest as it has
+  key based lookup and collates multiple constraints, etc. Note that packages
+  is plural as one canonical package may be used in multiple places - with
+  different constraints and configuration!
+
+  We retain the graph in full form mostly for contextual error reporting."
+  (let [f (fn [acc node history]
+            (let [parent (E.last history)]
+              (when (and parent (not (R.err? node)))
+                (match (. acc node.id)
+                  nil (do
+                        (tset acc node.id {:constraints [[parent.id node.constraint]]
+                                           :depends-on (E.map #$2.id node.depends-on)
+                                           :depended-by [(?. node :depended-by :id)]
+                                           :packages [node]}))
+                  x (do
+                      (E.append$ x.constraints [parent.id node.constraint])
+                      (E.concat$ x.depends-on (E.map #$2.id node.depends-on))
+                      (E.append$ x.depended-by (?. node :depended-by :id))
+                      (E.append$ x.packages node))))
+              acc))]
+    (set runtime.package-list (Runtime.walk-packages runtime f {}))
+    runtime))
 
 (fn Runtime.add-proxied-plugins [runtime proxies]
   "User defined plugins are wrapped in a thin proxy function so nothing else
@@ -40,98 +85,68 @@
   This means what we get given to the initial UI is actually a list of
   functions that need to be expanded into specs."
 
-  (fn walk-tree [f tree parent]
-    (print :walk-tree tree.id)
-    (f tree parent)
-    (E.each #(walk-tree f $2 tree) tree.dependencies))
+  (fn unproxy-spec-graph [proxies]
+    "Given a graph of proxies from user-defined plugins, unpack into
+    a usable graph structure with packages.
 
-  ;; first we just expand the given tree as .. given, ignore any duplicate
-  ;; plugins or conflicting properties
-  (let [tree (unproxy-tree proxies)
-        ;; TODO: ideally this would soft fail only the parts with a loop
-        ;; TODO: warn on duplicate canonical ids
-        ;; TODO: also "provides: id"
-        ;; _ (validate-DAG tree)
+    This becomes our primary representation of the graph, as other transitive
+    plugins found must be added as a dependency of something existing, so we will
+    never need an alternate 'root' or reorganised tree.
 
-        ;; The tree is good at describing our structure, but it's arduous to update
-        ;; with new dependencies (discovered/added after the fact) or to find a
-        ;; particular plugin to inspect its data.
-        ;; So we'll also maintain a flattend view of our plugins which will also
-        ;; collate all constraints and relationships into a more processable format.:
-        lookup {}
-        _ (walk-tree (fn [node parent]
-                       (match (. lookup node.id)
-                         nil
-                         (let [v {:specs [node]
-                                  :constraints [(and parent [parent.id node.constraint])]}]
-                           (tset lookup node.id v))
-                         existing
-                         (do
-                           ;; TODO expand/error/whatever on collisions
-                           (E.append$ existing.constraints (and [parent.id node.constraint]))
-                           (E.append$ existing.specs node))
-                         ))
-                     {:id :make-pact
-                      :dependencies tree})
-    ]
-    lookup)
-  )
+    Errors in the proxy are retained in-place for contextual error reporting.
 
+    Does not perform any deduplication or collision detection."
+    ;; TODO? technically this will infinitely recurse if a literal loop is
+    ;; injected, but that's actually pretty difficult to do as each spec is
+    ;; individually created. You'd have to really go outside the lines and force
+    ;; an existing expanded node into the graph. """lexical""" loops can happen,
+    ;; where nodes depend on the same package by its canonical name, but those
+    ;; don't atually "loop" in the graph.
+    (fn unroll [proxy graph]
+      ;; unwrap the proxy
+      (match (proxy)
+        (where r (R.ok? r))
+        (let [spec (R.unwrap r)
+              package (spec->package spec)
+              dependencies (->> (E.reduce #(unroll $3 $1)
+                                          ;; use fresh subgraph
+                                          [] spec.dependencies)
+                                ;; set backlink for ease of use
+                                (E.map #(do
+                                          (set $2.depended-by package)
+                                          $2)))]
+          (E.append$ graph package)
+          (tset package :depends-on dependencies))
+        (where r (R.err? r))
+        (E.append$ graph r))
+      graph)
+  ;; proxies may contain multiple "roots" if make-pact was called multiple
+  ;; times, but we now collate them under one graph.
+  (E.flat-map #(E.reduce #(unroll $3 $1) [] $2) proxies))
 
-(fn Runtime.add-plugin [runtime plugin ?dependent-of]
-  "Adds plugin from user-spec and returns (ok) or (err reason)"
-  ;; TODO this also needs to support adding dependencies after the fact
-  ;;      which might trigger re-solve, so probably if a dep gets added
-  ;;      the parent(s) should be invalidated and re-published.
-  ;; TODO it also needs to check the graph is DAG, perhaps solve can do that
-  ;; instead.
-  ;; TODO duplicate id/source/something flagging
-  (match plugin
-    (where plugin (R.ok? plugin))
-    (let [spec (R.unwrap plugin)
-          ;; TODO this *will* collide for git+ssh+http with same endpoint, just
-          ;; drop protocol?
-          canonical-id (-> (. spec.source 2)
-                           (string.gsub "%W" "-")
-                           (string.gsub "-+" "-"))
-          root (FS.join-path runtime.path.repos canonical-id)
-          package-name (string.match spec.name ".+/([^/]-)$")
-          package-path (FS.join-path runtime.path.root
-                                     (if spec.opt? :opt :start)
-                                     package-name)
-          package {:id canonical-id
-                   :canonical-id canonical-id
-                   :spec spec
-                   :dependencies spec.dependencies
-                   :name spec.name
-                   ;; we always need at least our own constraint but
-                   ;; dependencies may add extras here.
-                   :constraints {canonical-id spec.constraints}
-                   :path {:root root
-                          :rtp package-path
-                          :head (FS.join-path root :HEAD)}
-                   :order (E.reduce #(+ $1 1) 1 runtime.packages)
-                   :events []
-                   :state :waiting
-                   :text "waiting for scheduler"}]
-      (match [?dependent-of (. runtime.packages ?dependent-of)]
-        [nil _] (do
-                  (tset runtime.packages package.id package)
-                  (R.ok package))
-        [key parent] (do
-                       (tset runtime.packages package.id package)
-                       (table.insert parent.dependencies package)
-                       (R.ok package))
-        [key nil] (do
-                    (R.err (fmt "Tried to define dependent %s without parent existing %s"
-                                package.id ?dependent-of)))))
-    ;; probably an invalid spec given, fail out
-    (where plugin (R.err? plugin))
-    (values plugin)))
-
-(fn Runtime.has-plugins? [runtime]
-  ;; TODO
-  true)
+  ;; User plugins arrive as as a graph but they're wrapped in a proxy function
+  ;; for performance reasons. We'll unproxy them into real values first.
+  ;; This graph can have duplicates or conflicting specs but we resolve that
+  ;; later.
+  (tset runtime :package-graph {:id :pact
+                                :depends-on (unproxy-spec-graph proxies)})
+  ;; unproxying doesn't set absolute paths, update them with runtime data.
+  (Runtime.walk-packages runtime
+                         (fn [node]
+                           (when node.path
+                             (E.each #(tset node :path $1
+                                            (FS.join-path (. runtime :path $2)
+                                                          (. node :path $1)))
+                                     {:root :repos :rtp :root :head :repos}))))
+  (Runtime.update-package-list runtime)
+  ;; TODO: ideally this would soft fail only the parts with a loop
+  ;; TODO: warn on duplicate canonical ids
+  ;; TODO: also "provides: id"
+  ;; TODO: does a loop even matter? we install all things independently
+  ;; anyway, so if a depends on b depends on a, we end up with flat a +
+  ;; b, and we can just install them? 
+  ;; _ (validate-DAG spec-graph)
+  runtime)
 
 (fn Runtime.exec-solve-tree [runtime package]
   true)
@@ -165,8 +180,8 @@
       (PubSub.subscribe wf handler)
       wf))
 
-  (->> (E.map #$2 runtime.packages)
-       (E.sort #(<= $1.order $2.order))
+  (->> (E.map #(E.hd $2.packages) runtime.package-list)
+       ; (E.sort #(<= $1.order $2.order))
        (E.map #(let [wf (make-wf $2)]
                  (Scheduler.add-workflow runtime.scheduler wf)))))
 
