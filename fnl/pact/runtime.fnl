@@ -173,7 +173,6 @@
        Scheduler :pact.workflow.scheduler)
   true)
 
-
 (fn rel-path->abs-path [runtime in path]
   (FS.join-path (. runtime :path in) path))
 
@@ -189,8 +188,7 @@
       (print :next)))
 
   (fn make-canonical-facts-wf [package]
-    (let [
-          ;; we need to propagate canonical facts between all related packages
+    (let [;; we need to propagate canonical facts between all related packages
           siblings (Package.find-packages #(= $1.canonical-id package.canonical-id)
                                           runtime.package-graph)
           update-siblings #(E.each (fn [_ p] ($1 p)) siblings)
@@ -226,11 +224,9 @@
       wf))
 
   (fn make-unique-facts-wf [package]
-    (let [;; TODO should be "current transaction path" so we get current
-          ;; checkout instead of currently linked
-          wf (DiscoverHeadCommit.new
+    (let [wf (DiscoverHeadCommit.new
                package.canonical-id
-               (rel-path->abs-path runtime :root package.path.rtp))
+               (rel-path->abs-path runtime :transaction package.path.rtp))
           handler (fn handler [event]
                     (match event
                       (where e (R.ok? e))
@@ -263,11 +259,17 @@
                            (E.map #(make-canonical-facts-wf $2)))
         unique-wfs (->> (Package.packages->seq runtime.package-graph)
                         (E.map #(make-unique-facts-wf $2)))]
-    (->> [canonical-wfs unique-wfs]
-         (E.flatten)
-         (E.each #(do
-                    (set wf-count (+ wf-count 1))
-                    (Scheduler.add-workflow runtime.scheduler $2)))))
+    (set wf-count (+ (length canonical-wfs) (length unique-wfs)))
+    (E.each #(Scheduler.add-workflow runtime.scheduler $2)
+            canonical-wfs)
+    (E.each #(Scheduler.add-workflow runtime.local-shecduler $2)
+            unique-wfs))
+
+    ; (->> [canonical-wfs unique-wfs]
+    ;      (E.flatten)
+    ;      (E.each #(do
+    ;                 (set wf-count (+ wf-count 1))
+    ;                 (Scheduler.add-workflow runtime.scheduler $2)))))
 
   ; (->> (runtime:walk-packages (fn [t package]
   ;                               (if (and (not (R.err? package))
@@ -287,19 +289,45 @@
   ;   runtime.package-list)
   runtime)
 
+(fn transation-path [runtime transaction]
+  (FS.join-path runtime.path.data transaction.id))
+
 ;; TODO
 (fn Runtime.exec-discover-orphans [runtime])
+
+(fn parse-disk-layout [runtime]
+  ;; must have some directories created
+  (E.each #(FS.make-path $2)
+          [runtime.path.root runtime.path.data runtime.path.repos])
+
+  ;; look for current HEAD transaction symlink
+  ;; otherwise create one to a default checkout
+  (let [current-head (match (vim.loop.fs_lstat runtime.path.head)
+                       {:type :link} (vim.loop.fs_readlink runtime.path.head)
+                       (nil _ :ENOENT) (let [t-path (transation-path runtime {:id 1})]
+                                         (FS.make-path t-path)
+                                         (FS.symlink t-path runtime.path.head)
+                                         {:type :link} (vim.loop.fs_readlink runtime.path.head)))
+        transaction-id (string.match current-head ".+/([^/]-)$")]
+    (set runtime.transaction.head.id transaction-id)
+    ;; TODO: put somewhere else? better name?
+    (set runtime.path.transaction current-head))
+
+  runtime)
 
 (fn Runtime.new [opts]
   (let [Scheduler (require :pact.workflow.scheduler)
         FS (require :pact.workflow.exec.fs)
         scheduler (Scheduler.new {:concurrency-limit opts.concurrency-limit})]
-    {:path {:root (FS.join-path (vim.fn.stdpath :data) :site/pack/pact)
-            :head (FS.join-path (vim.fn.stdpath :data) :site/pack/pact/data/HEAD)
-            :data (FS.join-path (vim.fn.stdpath :data) :site/pack/pact/data)
-            :repos (FS.join-path (vim.fn.stdpath :data) :site/pack/pact/data/repos)}
-     :packages {}
-     :scheduler scheduler
-     :walk-packages Runtime.walk-packages}))
+    (-> {:path {:root (FS.join-path (vim.fn.stdpath :data) :site/pack/pact)
+                :head (FS.join-path (vim.fn.stdpath :data) :site/pack/pact/data/HEAD)
+                :data (FS.join-path (vim.fn.stdpath :data) :site/pack/pact/data)
+                :repos (FS.join-path (vim.fn.stdpath :data) :site/pack/pact/data/repos)}
+         :transaction {:head {}}
+         :packages {}
+         :scheduler scheduler
+         :local-shecduler (Scheduler.new {:concurrency-limit opts.concurrency-limit})
+         :walk-packages Runtime.walk-packages}
+        (parse-disk-layout))))
 
 (values Runtime)
