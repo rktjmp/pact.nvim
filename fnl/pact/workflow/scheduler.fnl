@@ -41,14 +41,6 @@
         (uv.close scheduler.timer-handle)
         (tset scheduler :timer-handle nil)))))
 
-(fn* new
-  (where [])
-  (new {})
-  (where [opts])
-  {:concurrency-limit (or (?. opts :concurrency-limit) 5)
-   :queue []
-   :active []
-   :timer-handle nil})
 
 (fn add-workflow [scheduler workflow]
   "Enqueue a workflow with on-event and on-complete callbacks.
@@ -70,5 +62,16 @@
     (tset scheduler.queue i nil))
   (tset scheduler :active nil)
   (uv.close scheduler.timer-handle))
+
+(fn* new
+  (where [])
+  (new {})
+  (where [opts])
+  {:concurrency-limit (or (?. opts :concurrency-limit) 5)
+   :queue []
+   :active []
+   :timer-handle nil
+   :stop stop
+   :add-workflow add-workflow})
 
 {: new : add-workflow : stop}
