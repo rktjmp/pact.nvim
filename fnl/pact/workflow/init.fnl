@@ -106,6 +106,12 @@
    :timer nil
    :future nil})
 
+(fn log [x ...]
+  (if (string? x)
+    (coroutine.yield (string.format x ...))
+    (error "workflow#log requires format string")))
+
 {: new
  : run
- :yield coroutine.yield}
+ :yield coroutine.yield
+ :log log}
