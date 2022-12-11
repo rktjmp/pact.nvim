@@ -152,6 +152,15 @@
   (use R :pact.lib.ruin.result
        E :pact.lib.ruin.enum
        Runtime :pact.runtime)
+  (local load (let [round #(math.floor (+ (* 60 $1) 0.5))
+                    active (length ui.runtime.scheduler.active)
+                    queued (length ui.runtime.scheduler.queue)
+                    total (+ active queued)
+                    active%  (/ active total)
+                    queued% (/ queued total)]
+                {:active (round active%)
+                 :queued (round queued%)}))
+
   (let [data (Runtime.walk-packages ui.runtime
                                     (fn [acc node history]
                                       (if (R.err? node)
@@ -177,7 +186,14 @@
                             (-> (E.map (fn [_ [text _]] text) parts)
                                 (table.concat "")))
                           lines-with-extmarks)]
-    (api.nvim_buf_set_lines ui.buf 0 -1 false text-lines)
+
+    (api.nvim_buf_set_lines ui.buf 0 1 false
+                            [(fmt "wf wait vs active: [%s%s]"
+                                  (string.rep :♨️ (/ load.active 2))
+                                  (string.rep :💤 (/ load.queued 2))
+                                  ; (string.rep " 🔜💤🔛" load.active)
+                                  )])
+    (api.nvim_buf_set_lines ui.buf 1 -1 false text-lines)
     (->> (E.map (fn [i parts]
                   (-> (E.reduce (fn [[cursor exts] _ [text hl]]
                                   [(+ cursor (length text))
@@ -190,7 +206,8 @@
                 lines-with-extmarks)
          (E.flatten)
          (E.each (fn [_ {: line : start : stop : hl}]
-                   (api.nvim_buf_add_highlight ui.buf ui.ns-id hl (- line 1) start stop)
+                   ;; line -0 for wf status, should be -1 normally
+                   (api.nvim_buf_add_highlight ui.buf ui.ns-id hl (- line 0) start stop)
                    ))
          )
         ))
@@ -724,7 +741,7 @@
     ;                                      (E.append$ acc f))))
     ;                        [])
     (api.nvim_buf_set_option buf :modifiable true)
-    (api.nvim_buf_set_lines buf 0 -1 false (dump runtime.package-list))
+    (api.nvim_buf_set_lines buf 0 -1 false (dump runtime.package-graph))
 
     ; (->> (E.map #(if (R.ok? $2) (R.unwrap $2)) runtime.package-list)
     ;      (E.reduce #(if (< $1 (length $3.name))
@@ -732,17 +749,15 @@
     ;                   $1) 1)
     ;      (set ui.layout.max-name-length))
 
-    (Runtime.walk-packages runtime
-                           (fn [package]
-                             (if (not (R.err? package))
-                               (subscribe package #(schedule-redraw ui)))))
-    (set ui.layout.max-name-length (Runtime.walk-packages runtime
-                                                          (fn [max package]
-                                                            (if (not (R.err? package))
-                                                              (if (< max (length package.name))
-                                                                (length package.name)
-                                                                max)
-                                                              max)) 0))
+    ;; TODO unsub on win close
+    (runtime:walk-packages #(subscribe $1 #(schedule-redraw ui)))
+    (set ui.layout.max-name-length
+         (runtime:walk-packages (fn [max package]
+                                  (if (not (R.err? package))
+                                    (if (< max (length package.name))
+                                      (length package.name)
+                                      max)
+                                    max)) 0))
     ;(->> (E.filter #(R.ok? $2) ui.runtime.)
     ;     ;;TODO probably this could be specifically looking for a :ui key
     ;     ;; or filtering on known keys...?
