@@ -152,15 +152,6 @@
   (use R :pact.lib.ruin.result
        E :pact.lib.ruin.enum
        Runtime :pact.runtime)
-  (local load (let [round #(math.floor (+ (* 60 $1) 0.5))
-                    active (length ui.runtime.scheduler.active)
-                    queued (length ui.runtime.scheduler.queue)
-                    total (+ active queued)
-                    active%  (/ active total)
-                    queued% (/ queued total)]
-                {:active (round active%)
-                 :queued (round queued%)}))
-
   (let [data (Runtime.walk-packages ui.runtime
                                     (fn [acc node history]
                                       (if (R.err? node)
@@ -188,11 +179,8 @@
                           lines-with-extmarks)]
 
     (api.nvim_buf_set_lines ui.buf 0 1 false
-                            [(fmt "wf wait vs active: [%s%s]"
-                                  (string.rep :♨️ (/ load.active 2))
-                                  (string.rep :💤 (/ load.queued 2))
-                                  ; (string.rep " 🔜💤🔛" load.active)
-                                  )])
+                            [(fmt "workflows: %s active %s waiting" (-> (Runtime.workflow-stats ui.runtime)
+                                                                        (#(values $1.active $1.queued))))])
     (api.nvim_buf_set_lines ui.buf 1 -1 false text-lines)
     (->> (E.map (fn [i parts]
                   (-> (E.reduce (fn [[cursor exts] _ [text hl]]
@@ -208,47 +196,7 @@
          (E.each (fn [_ {: line : start : stop : hl}]
                    ;; line -0 for wf status, should be -1 normally
                    (api.nvim_buf_add_highlight ui.buf ui.ns-id hl (- line 0) start stop)
-                   ))
-         )
-        ))
-
-                          
-  ; (let [sections [:error :active :unstaged :staged :waiting :updated :held :up-to-date]
-  ;       lines (-> (enum.reduce (fn [lines _ section] (render-section ui section lines))
-  ;                          (lede) sections)
-  ;                 (enum.concat$ (usage)))
-  ;       ;; pretty gnarly, we want to split the line data out into just flat text
-  ;       ;; to be inserted into the buffer, and a list of [start stop highlight]
-  ;       ;; groups for extmark highlighting.
-  ;       lines->text-and-extmarks (enum.reduce
-  ;                                 (fn [[str extmarks] _ [txt ?extmarks]]
-  ;                                   [(.. str txt)
-  ;                                    (if ?extmarks
-  ;                                      (enum.append$ extmarks [(length str)
-  ;                                                              (+ (length str) (length txt))
-  ;                                                              ?extmarks])
-  ;                                      extmarks)]))
-  ;       [text extmarks] (enum.reduce (fn [[lines extmarks] _ line]
-  ;                                     (let [[new-lines new-extmarks] (lines->text-and-extmarks ["" []] line)]
-  ;                                       [(enum.append$ lines new-lines)
-  ;                                        (enum.append$ extmarks new-extmarks)]))
-  ;                                   [[] []] lines)]
-  ;   (when (enum.any? #(string.match $2 "\n") text)
-  ;     (print "pact.ui text had unexpected new lines")
-  ;     (print (vim.inspect text)))
-  ;   (api.nvim_buf_set_option ui.buf :modifiable true)
-  ;   (api.nvim_buf_set_lines ui.buf 0 -1 false text)
-  ;   (api.nvim_buf_set_option ui.buf :modifiable false)
-  ;   (enum.map (fn [i line-marks]
-  ;               (enum.map (fn [_ [start stop hl]]
-  ;                           (api.nvim_buf_add_highlight ui.buf ui.ns-id hl (- i 1) start stop))
-  ;                         line-marks))
-  ;             extmarks)
-    ; (enum.map #(if $2.log-open
-    ;              (api.nvim_buf_set_extmark ui.buf ui.ns-id (- $2.on-line 1) 0
-    ;                                        {:virt_lines (enum.map #(log-line->chunks $2)
-    ;                                                               $2.log)}))
-    ;           ui.plugins-meta)
+                   )))))
 
 (fn schedule-redraw [ui]
   ;; asked to render, we only want to hit 60fps otherwise we can really pin

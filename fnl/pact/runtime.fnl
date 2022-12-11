@@ -262,14 +262,8 @@
     (set wf-count (+ (length canonical-wfs) (length unique-wfs)))
     (E.each #(Scheduler.add-workflow runtime.scheduler $2)
             canonical-wfs)
-    (E.each #(Scheduler.add-workflow runtime.local-shecduler $2)
+    (E.each #(Scheduler.add-workflow runtime.scheduler $2)
             unique-wfs))
-
-    ; (->> [canonical-wfs unique-wfs]
-    ;      (E.flatten)
-    ;      (E.each #(do
-    ;                 (set wf-count (+ wf-count 1))
-    ;                 (Scheduler.add-workflow runtime.scheduler $2)))))
 
   ; (->> (runtime:walk-packages (fn [t package]
   ;                               (if (and (not (R.err? package))
@@ -315,6 +309,12 @@
 
   runtime)
 
+(fn Runtime.workflow-stats [runtime]
+  (let [active (length runtime.scheduler.active)
+        queued (length runtime.scheduler.queue)]
+    {:active active
+     :queued queued}))
+
 (fn Runtime.new [opts]
   (let [Scheduler (require :pact.workflow.scheduler)
         FS (require :pact.workflow.exec.fs)
@@ -325,8 +325,8 @@
                 :repos (FS.join-path (vim.fn.stdpath :data) :site/pack/pact/data/repos)}
          :transaction {:head {}}
          :packages {}
-         :scheduler scheduler
-         :local-shecduler (Scheduler.new {:concurrency-limit opts.concurrency-limit})
+         :scheduler scheduler ;; TODO: we can have more than one scheduler,
+                              ;; really we want to rate limit remote work not local checks
          :walk-packages Runtime.walk-packages}
         (parse-disk-layout))))
 
