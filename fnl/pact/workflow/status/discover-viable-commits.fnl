@@ -19,34 +19,32 @@
 
 (fn status-remote [repo-url]
   "Fetch commits from remote and convert into commit datum."
-  (result-let [_ (log "fetching remote refs from %s" repo-url)
-               refs (Git.ls-remote repo-url)
-               _ (log "processing refs")
+  (result-let [_ (log "querying remote refs from %s" repo-url)
                commits (result->> (Git.ls-remote repo-url)
                                   (Commit.remote-refs->commits)
                                   (group-commits))]
+    (log "retrieved facts")
     (ok commits)))
 
 (fn status-local [repo-path]
-  "Fetch commits from local repo, will update repo refs before hand"
-  (result-let [_ (log "getting local HEAD")
-               HEAD-sha (Git.HEAD-sha repo-path)
-               _ (log "updating refs")
+  "Fetch commits from local repo, will update repo refs before hand."
+  (result-let [_ (log "updating repository refs")
                _ (Git.update-refs repo-path)
                commits (result->> (Git.ls-local repo-path)
                                   (Commit.local-refs->commits)
-                                  (group-commits))
-               _ (tset commits :HEAD (Commit.commit HEAD-sha))]
+                                  (group-commits))]
+    (log "retrieved facts")
     (ok commits)))
 
 
-(fn detect-kind [repo-url repo-path ]
-  (result-> (log "starting git-status workflow")
+(fn detect-kind [repo-url repo-path]
+  (print repo-path)
+  (result-> (log "discovering viable commits")
             (or (FS.absolute-path? repo-path)
                 (err (fmt "plugin path must be absolute, got %s" repo-path)))
             (#(if (FS.git-dir? repo-path)
-                (status-local repo-path )
-                (status-remote repo-url )))))
+                (status-local repo-path)
+                (status-remote repo-url)))))
 
 (fn* new
   "Discover git facts about a package. This includes all branches and tags as
