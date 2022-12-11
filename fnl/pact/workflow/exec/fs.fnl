@@ -13,7 +13,7 @@
     (nil err _) (values nil (fmt "uv.fs_stat error %s" err))
     (nil err) (values nil err)))
 
-(fn ensure-directory-exists [path]
+(fn make-path [path]
   (match (what-is-at path)
     :nothing (match (enum.reduce #(let [target (.. $1 :/ $2)]
                                     (match (what-is-at target)
@@ -57,14 +57,13 @@
   (uv.fs_symlink target link-name))
 
 (fn join-path [...]
-  (-> (enum.reduce #(.. $1 "/" $3) [...])
-      (string.gsub ://+ :/)))
+  (pick-values 1 (-> (enum.reduce #(.. $1 "/" $3) [...])
+                     (string.gsub ://+ :/))))
 
-{: ensure-directory-exists
- : what-is-at
+{: what-is-at
  : ls-path
  : symlink
- :make-path ensure-directory-exists 
+ : make-path
  : remove-path
  : absolute-path?
  : git-dir?
