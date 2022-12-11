@@ -38,7 +38,6 @@
 
 
 (fn detect-kind [repo-url repo-path]
-  (print repo-path)
   (result-> (log "discovering viable commits")
             (or (FS.absolute-path? repo-path)
                 (err (fmt "plugin path must be absolute, got %s" repo-path)))
