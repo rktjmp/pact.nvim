@@ -74,7 +74,11 @@
 
     ;; Shouldn't get here ... perhaps the workflow forgot to wrap the return
     ;; value.
-    any (error any)))
+    any (let [data (vim.inspect [workflow any] {:newline "" :indent ""})
+              msg "OOPS! A workflow returned an unexpected value! Please report this error!"
+              err (string.format "%s %s" msg data)]
+          (vim.schedule #(vim.api.nvim_err_writeln err))
+          (values :halt err))))
 
 (fn run [workflow]
   (match workflow
