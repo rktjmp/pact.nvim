@@ -285,7 +285,6 @@
     (subscribe wf handler)
     (scheduler.add-workflow ui.scheduler wf)))
 
-
 (fn exec-commit [ui]
   (fn make-wf [how plugin action-data]
     (let [wf (match how
@@ -506,74 +505,6 @@
 ;                (ui.scheduler:queue-workflow wf))
 ;             (ui.store:plugins))
 
-(fn exec-status [ui]
-  (fn make-status-wf [plugin]
-    (let [wf (status-wf.new plugin.id
-                            (. plugin.source 2)
-                            ;; pass package path so we check against
-                            ;; currently linked checkout
-                            plugin.path.package
-                            plugin.constraint)
-          meta (. ui :plugins-meta plugin.id)
-          handler (fn* handler
-                    (where [event] (ok? event))
-                    (let [(command ?maybe-latest ?maybe-current) (result.unwrap event)
-                          text (-> (match command
-                                     [:hold commit] (fmt "(at %s" commit)
-                                     [action commit] (fmt "(%s %s" action commit))
-                                   (#(match ?maybe-latest
-                                       commit (fmt "%s, latest: %s" $1 commit)
-                                       nil (fmt "%s" $1)))
-                                   (#(match ?maybe-current 
-                                       commit (fmt "%s, current: %s)" $1 commit)
-                                       nil (fmt "%s)" $1))))]
-                      (enum.append$ meta.events event)
-                      (set meta.text text)
-                      (set meta.progress nil)
-                      (set meta.workflow nil)
-                      (match command
-                        [:hold commit] (do
-                                         (set meta.state :up-to-date))
-                        [action commit] (do
-                                          (set meta.state :unstaged)
-                                          (set meta.action [action commit])))
-                      (unsubscribe wf handler)
-                      (schedule-redraw ui))
-
-                    (where [event] (err? event))
-                    (do
-                      (set meta.state :error)
-                      (enum.append$ meta.events event)
-                      (set meta.progress nil)
-                      (set meta.workflow nil)
-                      (set meta.text (result.unwrap event))
-                      (unsubscribe wf handler)
-                      (schedule-redraw ui))
-
-                    (where [msg] (string? msg))
-                    (do
-                      (enum.append$ meta.events msg)
-                      (set meta.progress nil)
-                      (set meta.text msg)
-                      (schedule-redraw ui))
-
-                    (where [future] (thread? future))
-                    (do
-                      (set meta.progress (rate-limited-inc (or meta.progress [0 0])))
-                      (schedule-redraw ui))
-
-                    (where _)
-                    nil)]
-      (subscribe wf handler)
-      (values wf)))
-  ;; plugins-meta is kv, but we want to run the workflows in order
-  (->> (enum.map #$2 ui.plugins-meta)
-       (enum.sort$ #(<= $1.order $2.order))
-       (enum.map #(let [wf (make-status-wf $2.plugin)]
-                    (set $2.workflow wf)
-                    (scheduler.add-workflow ui.scheduler wf))))
-  (schedule-redraw ui))
-
 (fn exec-keymap-cc [ui]
   (if (enum.any? #(= :staged $2.state) ui.plugins-meta)
     (exec-open-transaction ui)
@@ -622,8 +553,9 @@
           (exec-diff ui meta)))
       (vim.notify "May only view diff of staged or unstaged sync-able plugins"))))
 
-(fn M.configure-buffer [ui]
-  (api.nvim_win_set_option ui.win :wrap false)
+(fn prepare-interface [ui]
+  (doto ui.win
+        (api.nvim_win_set_option :wrap false))
   (doto ui.buf
         (api.nvim_buf_set_option :modifiable false)
         (api.nvim_buf_set_option :buftype :nofile)
@@ -631,9 +563,6 @@
         (api.nvim_buf_set_option :buflisted false)
         (api.nvim_buf_set_option :swapfile false)
         (api.nvim_buf_set_option :ft :pact))
-  ui)
-
-(fn M.configure-keymaps [ui]
   (doto ui.buf
         (api.nvim_buf_set_keymap :n := "" {:callback #(exec-keymap-= ui)})
         (api.nvim_buf_set_keymap :n :<cr> "" {:callback #(exec-keymap-<cr> ui)})
@@ -658,46 +587,24 @@
   (let [opts (or opts {})
         Runtime (require :pact.runtime)
         runtime (-> (Runtime.new {:concurrency-limit opts.concurrency-limit})
-                    (Runtime.add-proxied-plugins proxies)
-                    ; (Runtime.walk-packages (fn [package acc]
-                    ;                          (if (R.ok? package)
-                    ;                            (let [f (fn [])]
-                    ;                              (subscribe package f)
-                    ;                              (E.append$ acc f)))))
-                    )
-        ;; TODO: render failed plugins into the UI
-        ; packages (E.map #(Runtime.add-plugin runtime $2) plugins)
-        ui {: runtime
-            : win
-            : buf
-            :layout {:max-name-length 1}
-            :ns-id (api.nvim_create_namespace :pact-ui)
-            :package->line {}
-            :errors []}
-        ]
+                    (Runtime.add-proxied-plugins proxies))
+        ui (-> {: runtime
+                : win
+                : buf
+                :layout {:max-name-length 1}
+                :ns-id (api.nvim_create_namespace :pact-ui)
+                :package->line {}
+                :errors []}
+               (prepare-interface))]
+    ;; TODO: render failed plugins into the UI
     ;(->> (E.filter #(R.err? $2) packages)
     ;     (E.each #(table.insert ui.errors (R.unwrap $2))))
 
-    (-> ui
-        (M.configure-buffer)
-        (M.configure-keymaps))
-    ; (E.walk (fn []) [] runtime.package-graph #$1.depends-on)
-    ; (Runtime.walk-packages runtime (fn [package acc]
-    ;                                  (if (R.ok? package)
-    ;                                    (let [f (fn [])]
-    ;                                      (subscribe package f)
-    ;                                      (E.append$ acc f))))
-    ;                        [])
     (api.nvim_buf_set_option buf :modifiable true)
-    (api.nvim_buf_set_lines buf 0 -1 false (dump runtime.package-graph))
+    (api.nvim_buf_set_lines buf 0 -1 false (dump runtime.packages))
 
-    ; (->> (E.map #(if (R.ok? $2) (R.unwrap $2)) runtime.package-list)
-    ;      (E.reduce #(if (< $1 (length $3.name))
-    ;                   (length $3.name)
-    ;                   $1) 1)
-    ;      (set ui.layout.max-name-length))
-
-    ;; TODO unsub on win close
+    ;; TODO unsub all on win close
+    ;; TODO: technically we're subbing to err's to here but little effect
     (runtime:walk-packages #(subscribe $1 #(schedule-redraw ui)))
     (set ui.layout.max-name-length
          (runtime:walk-packages (fn [max package]
@@ -706,20 +613,8 @@
                                       (length package.name)
                                       max)
                                     max)) 0))
-    ;(->> (E.filter #(R.ok? $2) ui.runtime.)
-    ;     ;;TODO probably this could be specifically looking for a :ui key
-    ;     ;; or filtering on known keys...?
-    ;     (E.each #(subscribe (R.unwrap $2) (fn []
-    ;                                          (vim.pretty_print $2)
 
-    ;                                          (api.nvim_buf_set_lines buf 0 -1 false (dump x))
-    ;                                          ; (schedule-redraw ui)
-                                              
-    ;                                          ))))
-
-                                             ; (print (. (R.unwrap $2) :events))
-
-    (Runtime.discover-facts runtime)
+    (Runtime.exec-current-status runtime)
     (schedule-redraw ui)
     ))
 

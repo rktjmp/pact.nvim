@@ -19,9 +19,9 @@
   (fn nid [n] n.depends-on)
   (if ?acc
     (E.reduce #(E.depth-walk f $3 $1 nid)
-              ?acc runtime.package-graph)
+              ?acc runtime.packages)
     (E.each #(E.depth-walk f $2 nid)
-            runtime.package-graph)))
+            runtime.packages)))
 
 ;; TODO: this may be less useful than it seems. The UI will probably always
 ;; walk all packages because it needs to show more contextual information
@@ -31,7 +31,7 @@
 ;; packages appear, without any hanging references.
 ;; Simpler just to walk the tree all the time no?
 ; (fn Runtime.update-package-list [runtime]
-;   "Flatten a package-graph down into:
+;   "Flatten a packages down into:
 
 ;   {package-id {:contraints [a ...]
 ;                :depends-on [id ...]
@@ -131,10 +131,10 @@
   ;; for performance reasons. We'll unproxy them into real values first.
   ;; This graph can have duplicates or conflicting specs but we resolve that
   ;; later.
-  (tset runtime :package-graph (unproxy-spec-graph proxies))
+  (tset runtime :packages (unproxy-spec-graph proxies))
         ; {:id :pact
         ;                         :name :pact/root
-        ;                         :text "root node in package-graph"
+        ;                         :text "root node in packages"
         ;                         :depends-on })
   ;; unproxying doesn't set absolute paths, update them with runtime data.
   ; (Runtime.walk-packages runtime
@@ -176,7 +176,7 @@
 (fn rel-path->abs-path [runtime in path]
   (FS.join-path (. runtime :path in) path))
 
-(fn Runtime.discover-facts [runtime]
+(fn Runtime.exec-current-status [runtime]
   (use DiscoverViableCommits :pact.workflow.status.discover-viable-commits
        DiscoverHeadCommit :pact.workflow.status.discover-head-commit
        Scheduler :pact.workflow.scheduler)
@@ -190,7 +190,7 @@
   (fn make-canonical-facts-wf [package]
     (let [;; we need to propagate canonical facts between all related packages
           siblings (Package.find-packages #(= $1.canonical-id package.canonical-id)
-                                          runtime.package-graph)
+                                          runtime.packages)
           update-siblings #(E.each (fn [_ p] ($1 p)) siblings)
           wf (DiscoverViableCommits.new
                package.canonical-id
@@ -255,9 +255,9 @@
   ;; We can fetch canonically-relevant facts in one go for multiple packages
   ;; but must fetch the individual current sha separately. These are
   ;; sort of racey in status-messages but for now we'll let that slide.
-  (let [canonical-wfs (->> (Package.packages->canonical-set runtime.package-graph)
+  (let [canonical-wfs (->> (Package.packages->canonical-set runtime.packages)
                            (E.map #(make-canonical-facts-wf $2)))
-        unique-wfs (->> (Package.packages->seq runtime.package-graph)
+        unique-wfs (->> (Package.packages->seq runtime.packages)
                         (E.map #(make-unique-facts-wf $2)))]
     (set wf-count (+ (length canonical-wfs) (length unique-wfs)))
     (E.each #(Scheduler.add-workflow runtime.scheduler $2)
