@@ -1,9 +1,16 @@
 (import-macros {: ruin!} :pact.lib.ruin)
 (ruin!)
 
-(use enum :pact.lib.ruin.enum
+(use E :pact.lib.ruin.enum
      {: valid-sha?} :pact.valid
      {:format fmt} string)
+
+(local Commit {})
+
+(fn Commit.abbrev-sha [sha]
+  "Git abbreviate a sha differently between repos, shortest possible, so we
+  manually enforce our own style"
+  (string.sub sha 1 7))
 
 (fn* expand-version
   "Convert partial versions into major.minor.patch"
@@ -16,82 +23,131 @@
   (where _)
   (values nil))
 
-;; note: we intentionally don't normalise duplicate sha-attr pairs
-;; in the rest of the system incase two tags point to one sha, etc.
-(fn* commit
-  (where [sha] (valid-sha? sha))
-  (commit sha {})
-  (where [sha {:tag ?tag :branch ?branch :version ?version}]
-         (and (valid-sha? sha)
-              (string? (or ?tag ""))
-              (string? (or ?branch ""))
-              (string? (or ?version ""))))
-  (-> {:sha sha :branch ?branch :tag ?tag :version (expand-version ?version)}
-      ;; TODO ideally this will be more constraint aware as this
-      ;; can match tag and branch and version if they all point to the same
-      ;; sha, but we want to show the users goal - branch if branch etc.
-      (setmetatable {:__tostring #(fmt "%s@%s"
-                                       (or $.version $.branch $.tag "commit")
-                                       (string.sub $.sha 1 8))}))
-  (where _)
-  (values nil "commit requires a valid sha and optional table of tag, branch or version"))
+(fn ref->types [ref]
+  ;; (.-) to minimally match inside / / but we want
+  ;; (.+) to catch branches and tags with slashes in them.
+  ;; note this does not distinguish "version tags"
+  ;; as we need to process all tags for deref's first
+  (match (string.match ref "refs/(.-)/(.+)")
+    (:heads name) [:branch name]
+    (:tags name) [:tag name]
+    _ (error (string.format "unexpected ref format: %s" ref))))
 
-(fn ref-line->commit [ref]
-  "Convert a line from `git ls-remote --tags --heads url` into a `commit"
-  ;; We want to match "<sha> refs/[head|tag]/name".
+(fn match-relaxed-version? [str]
+  ;; match vM.m.p M.m.p vM.m M.m vM and expand to full version
+  (let [patterns ["^v?(%d+%.%d+%.%d+)$" "^v?(%d+%.%d+)$" "^v(%d+)$"]]
+    (E.reduce #(match (string.match str $3)
+                 any (E.reduced any))
+              nil patterns)))
+
+(fn to-string [c]
+  (let [join (fn [prefix list]
+               (if (not (E.empty? list))
+                 (fmt "%s[%s]" prefix
+                      (-> (E.map (fn [_  name] name) list)
+                          (table.concat ",")))
+                 ""))]
+    (E.reduce #(.. $1 (join (string.sub $3 1 1) (. c $3)))
+              (fmt "%s@" c.short-sha)
+              [:branches :versions :tags])))
+
+(fn* Commit.new
+  (where [sha] (valid-sha? sha))
+  (Commit.new sha [])
+  (where [sha data] (and (valid-sha? sha)))
+  (->> data
+       (E.map #(match $2
+                 [:tag t] [:tags t]
+                 [:branch b] [:branches b]
+                 [:version v] [:versions (expand-version v)]
+                 ;; todo: reimplement validation of version numbers?
+                 ; (where [:version v] (not (match-relaxed-version? v)))
+                 ; (error (fmt "invalid version specification %s" v))
+                 _ (error (fmt "unknown commit data: %s" (vim.inspect $2)))))
+       (E.reduce #(match $3
+                    [where what] (do (E.append$ (. $1 where) what) $1)
+                    _ (error (fmt "unsuported data %s" $3)))
+                 {:sha sha :short-sha (Commit.abbrev-sha sha)
+                  :tags []
+                  :branches []
+                  :versions []})
+       ;; need function as ->> -> misbehaves or at least does no function as expected
+       (#(setmetatable $1 {:__tostring to-string})))
+  (where _)
+  (values nil "commit requires a valid sha and optional list of tags, branches or versions"))
+
+(fn Commit.remote-refs->commits [refs]
+  "Convert list of ref lines into list of commits. When tag and peeled tag
+  (one with ^{} suffix) are present, the peeled tag is retained and the plain
+  tag is discarded."
+  ;; We want to match "<sha> refs/[head|tags]/name".
   ;; Name can have special characters in it such as othes slashes or dashes, etc
   ;;
   ;; Some tags will have ^{} appended, AFAIK these always come in pairs, with a
   ;; "tag" and "peeled tag" (with ^{}). Not all repos/tags have these pairs.
   ;;
-  ;; So this function will match either, a tag or peeled tag, but when calcutating
-  ;; to solve version constraints, you must either look for duplicate tags names
-  ;; with different shas and treat both as valid, or drop the dulpicate that is
-  ;; missing the deref indicator (^{}). When checking out the NON deref tag, you
-  ;; will end up at the deref'd commit, so future status checks will show that
-  ;; the checkout needs updating, even though it is technically equal.
+  ;; Peeled tags's SHAs match the actual commit object for that tag, where as
+  ;; the plain tag may point to an annotation object that routes to the commit.
+  ;;
+  ;; When checking out a tag, we always checkout the peeled one (AFAICT), so we
+  ;; generally only want to operate with peeled tags/direct commits
+  ;; (when finding tags/versions etc)
   ;;
   ;; see https://git-scm.com/docs/git-check-ref-format
   ;; Parse *expects* the input to be from `ls-remote --tags --heads url`
-  ;; for best results.
-  (fn strip-peel [tag-name]
-    (or (string.match tag-name "(.+)%^{}$") tag-name))
+  ;; for best results, does not currently look at HEAD.
+  (->> refs
+       ;; group by sha -> [refs] (sha may point to n-refs)
+       (E.group-by #(string.match $2 "(%x+)%s+(.+)"))
+       ;; flip to [:branch|tag|ver ..] -> sha
+       (E.reduce (fn [acc sha refs]
+                   ;; change type name to type@name for simpler searching since
+                   ;; we will need to lookup on (.. name "^{}").
+                   (->> (E.map #(fmt "%s@%s" (unpack (ref->types $2))) refs)
+                        (E.reduce #(E.set$ $1 $3 sha) acc)))
+                 {})
+       ;; Now drop any tags that have a deref'd name as we dont need them.
+       ;; When checking out a tag git will automatically dereference it, so
+       ;; later when we ask about the checkout state we will get the deref'd
+       ;; version back anyway.
+       ((fn [data]
+          (E.reduce (fn [acc ref sha]
+                      (match ref
+                        ;; only need to touch tags
+                        (where name (string.match name "^tag@"))
+                        (if (not (. data (.. name "^{}")))
+                          (E.set$ acc ref sha)
+                          acc)
+                        ;; otherwise just keep
+                        _ (E.set$ acc ref sha)))
+                    {} data)))
+       ;; strip off ^{} deref marker as we're done looking at it
+       (E.reduce #(E.set$ $1 (string.gsub $2 "%^{}$" "") $3) {})
+       ;; now un-munge the types ...
+       (E.reduce #(E.set$ $1 [(string.match $2 "(.+)@(.+)")] $3) {})
+       ;; and duplicate any tags that look like versions
+       (E.reduce #(do
+                    (match $2
+                      [:tag t] (match (match-relaxed-version? t)
+                                 ver (E.set$ $1 [:version (expand-version ver)] $3)))
+                    (E.set$ $1 $2 $3))
+                 {})
+       ;; now collate refs under shas
+       (E.group-by #(values $2 $1))
+       ;; and construct actual commits
+       (E.map (fn [sha data] (Commit.new sha data)))))
 
-  ;; (.-) to minimally match inside / / but we want
-  ;; (.+) to catch branches and tags with slashes in them.
-  (match (string.match ref "(%x+)%s+refs/(.-)/(.+)")
-    (sha :heads name) (commit sha {:branch name})
-    (sha :tags name) (match (string.match name "v?(%d+%.%d+%.%d+)")
-                       nil (commit sha {:tag (strip-peel name)})
-                       ;; versions are tags, so pair them
-                       version (commit sha {:tag (strip-peel name)
-                                            :version version}))
-    other (error (string.format "unexpected remote-ref format: %s" other))))
+(fn Commit.local-refs->commits [refs]
+  ;; git show-ref wont collate local and remote branches, but generally we only
+  ;; want to look at the remote ones, which we'll call "remote commits".
+  ;; tags are shown the same regardless of origin.
+  ;; strip out any local heads
+  (->> refs
+       ;; drop any local heads, they should not matter
+       (E.filter #(not (string.match $2 "%srefs/heads.+$")))
+       ;; rename remote heads to loal
+       (E.map #(string.gsub $2 "%srefs/remotes/origin" " refs/heads"))
+       ;; now just act as remotes
+       (Commit.remote-refs->commits)))
 
-(fn ref-lines->commits [refs]
-  "Convert list of ref lines into list of commits. When tag and peeled tag are
-  present, the peeled tag is retained and the plain tag is discarded."
-  (->> (enum.map #(let [commit (ref-line->commit $2)
-                        peeled? (not-nil? (string.match $2 "%^{}$"))]
-                    {: peeled? : commit}) refs)
-       (enum.group-by #(or $2.commit.tag false))
-       (enum.reduce (fn [acc group-name commits]
-                      (match [group-name (length commits)]
-                        ;; dont touch un-tagged, they dont need un-peeling
-                        [false _] (->> (enum.map #$2.commit commits)
-                                       (enum.concat$ acc))
-                        ;; one commit for tag, so keep as given
-                        [version 1] (enum.append$ acc (. commits 1 :commit))
-                        ;; many commits for one tag, only keep peeled
-                        ;; as thats what a checkout ends up as (at the commit).
-                        [version n] (->> (enum.filter #$2.peeled? commits)
-                                         (enum.map #$2.commit)
-                                         (enum.concat$ acc))))
-                    [])))
-
-(fn abbrev-sha [sha]
-  (string.sub sha 1 8))
-
-{: commit
- : ref-lines->commits
- : abbrev-sha}
+Commit
