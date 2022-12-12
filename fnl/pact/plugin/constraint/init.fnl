@@ -1,43 +1,47 @@
 (import-macros {: ruin!} :pact.lib.ruin)
 (ruin!)
 
-(import-macros {: use} :pact.lib.ruin.use)
 (use {: 'fn* : 'fn+} :pact.lib.ruin.fn
      {: string? : table?} :pact.lib.ruin.type
-     enum :pact.lib.ruin.enum
-     _ :pact.plugin.constraint.version
+     E :pact.lib.ruin.enum
      {:format fmt} string
      {: valid-sha? : valid-version-spec?} :pact.valid)
 
+(local Constraint {})
+
 (fn one-of? [coll test]
-  (enum.any? #(= $2 test) coll))
+  (E.any? #(= $2 test) coll))
 
 (fn set-tostring [t]
   (setmetatable t {:__tostring
                    (fn [[_ kind spec]]
                      (.. kind "#" (string.gsub spec "%s" "")))}))
 
-(fn constraint? [c]
+(fn Constraint.constraint? [c]
   (match? [:git any-1 any-2] c))
 
-(fn commit? [c]
+(fn Constraint.commit? [c]
   (match? [:git :commit any] c))
 
-(fn tag? [c]
+(fn Constraint.tag? [c]
   (match? [:git :tag any] c))
 
-(fn branch? [c]
+(fn Constraint.branch? [c]
   (match? [:git :branch any] c))
 
-(fn version? [c]
+(fn Constraint.version? [c]
   (match? [:git :version any] c))
 
-(fn value [c]
+(fn Constraint.type [c]
+  (match c
+    [:git x _] x))
+
+(fn Constraint.value [c]
   (match c
     [:git kind val] val
     _ (error "could not get constraint value!")))
 
-(fn* git?
+(fn* Constraint.git?
   ;; we don't currently (?) check validity of contents, just shape
   (where [[:git kind spec]] (and (one-of? [:commit :branch :tag :version] kind)
                                  (string? spec)))
@@ -45,68 +49,67 @@
   (where _)
   false)
 
-(fn* git
+(fn* Constraint.git
   "Create a git constraint, which may match against a commit, tag, branch or
   version. A sha may optionally be given, if one is known which realises the
   constraint to an actual git commit for comparing a remote vs local constraint.")
 
-(fn+ git [:version ver]
+(fn+ Constraint.git [:version ver]
   (match (valid-version-spec? ver)
     true (set-tostring [:git :version ver])
     false (values nil "invalid version spec for version constraint")))
 
-(fn+ git [:commit sha]
+(fn+ Constraint.git [:commit sha]
   (match (valid-sha? sha)
     true (set-tostring [:git :commit sha])
     false (values nil "invalid sha for commit constraint")))
 
-(fn+ git [kind spec] (one-of? [:branch :tag] kind)
+(fn+ Constraint.git [kind spec] (one-of? [:branch :tag] kind)
   (match (string? spec)
     true (set-tostring [:git kind spec])
     false (values nil (fmt "invalid spec for %s constraint, must be string" kind))))
 
-(fn+ git [...]
+(fn+ Constraint.git [...]
   (values nil "must provide `commit|branch|tag|version` and appropriate value" ...))
 
-(fn* satisfies?
+(fn* Constraint.satisfies?
   (where [[:git :commit sha] {: sha}])
   true
-  (where [[:git :tag tag] {: tag}])
-  true
-  (where [[:git :branch branch] {: branch}])
-  true
-  (where [[:git :version version-spec] {: version}])
+  (where [[:git :tag tag] commit])
+  (E.any? #(= tag $2) commit.tags)
+  (where [[:git :branch branch] commit])
+  (E.any? #(= branch $2) commit.branches)
+  (where [[:git :version version-spec] commit])
   (let [{: satisfies?} (require :pact.plugin.constraint.version)]
-    (satisfies? version-spec version))
+    (E.any? #(satisfies? version-spec $2) commit.versions))
   (where [[:git _ _] {: sha}])
   false
   (where _)
   (error "satisfies? requires constraint and commit"))
 
-(fn* solve
+(fn* Constraint.solve
   "Given a constraint and list of commits, return best fitting commit")
 
-(fn+ solve
-  (where [[:git :commit sha] commits] (seq? commits))
-  (enum.find-value #(= sha $2.sha) commits))
-
-(fn+ solve
-  (where [[:git :tag tag] commits] (seq? commits))
-  (enum.find-value #(= tag $2.tag) commits))
-
-(fn+ solve
-  (where [[:git :branch branch] commits] (seq? commits))
-  (enum.find-value #(= branch $2.branch) commits))
-
-(fn+ solve
-  (where [[:git :version version] commits] (seq? commits))
+(fn+ Constraint.solve
+  (where [constraint commits] (and (Constraint.version? constraint) (seq? commits)))
   (let [{: solve} (require :pact.plugin.constraint.version)
-        possible-versions (enum.map #$2.version commits)
-        best-version (-> (solve version possible-versions)
-                         (enum.first))]
+        spec (Constraint.value constraint)
+        ;; version solve can already take n-versions
+        possible-versions (-> (E.map #$2.versions commits)
+                              (E.flatten))
+        best-version (-> (solve spec possible-versions)
+                         (E.first))]
     (if best-version
-      (enum.find-value #(= best-version $2.version) commits))))
+      ;; this **should** only give us one commit, as you cant give the same
+      ;; tag (so version) to multiple commits - not without trying very hard.
+      ;; so the "best version" should only exist on one commit
+      (E.reduce (fn [?commit _ commit]
+                  (if (E.any? #(= best-version $2) commit.versions)
+                    (E.reduced commit)))
+                nil commits))))
 
-{: git : git? : satisfies? : solve
- : constraint? : commit? : branch? : tag? : version?
- : value}
+(fn+ Constraint.solve
+  (where [constraint commits] (and (Constraint.constraint? constraint) (seq? commits)))
+  (E.find-value #(Constraint.satisfies? constraint $2) commits))
+
+(values Constraint)
