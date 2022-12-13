@@ -106,11 +106,17 @@
 
 (fn* Package.find-packages
   (where [f package-trees] (and (function? f) (table? package-trees)))
-  ;; TODO: performance optimisation target
+  ;; TODO: performance optimisation target, can call reduced
   (Package.reduce-packages (fn [list node history]
                              (if (f node history)
                                 (E.append$ list node)
                                 list))
                            [] package-trees))
+
+(fn* Package.find-canonical-set
+  (where [package package-trees] (. package :canonical-id))
+  (Package.find-canonical-set package.canonical-id package-trees)
+  (where [canonical-id package-trees] (string? canonical-id))
+  (Package.find-packages #(match? {:canonical-id canonical-id} $1) package-trees))
 
 (values Package)

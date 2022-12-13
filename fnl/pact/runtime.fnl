@@ -93,13 +93,10 @@
 (fn rel-path->abs-path [runtime in path]
   (FS.join-path (. runtime :path in) path))
 
-(fn find-siblings-packages [runtime package]
-  (Package.find-packages #(= $1.canonical-id package.canonical-id)
-                         runtime.packages))
 
 (fn Runtime.exec-solve-package-constraints [runtime package]
   (let [{:new solve-constraints/new} (require :pact.workflow.status.solve-constraints)
-        siblings (find-siblings-packages runtime package)
+        siblings (Package.find-canonical-set package runtime.packages)
         update-sibling #(E.each (fn [_ p] ($1 p)) siblings)]
     ;; Pair each constraint with its package so any targetable errors can be
     ;; propagated back to the correct package.
@@ -149,14 +146,15 @@
 
   (fn trigger-next [package]
     (match package.__facts-workflow
-      [:ok true true true]
+      [:ok true true]
       ;; TODO this is really ugly atm, looking every time to see if the whole
       ;; canonical set has finished or not.
-      (let [siblings (find-siblings-packages runtime package)]
+      (let [siblings (Package.find-canonical-set package runtime.packages)]
         ;; need all sibling constraints before we can try to solve
-        (when (E.all? #(match? [:ok true true true] $2.__facts-workflow) siblings)
-          ;; once all siblings are done we can solve for all at once.
+        (when (E.all? #(match? [:ok true true] $2.__facts-workflow) siblings)
           (E.each #(set $2.__facts-workflow nil) siblings)
+          ;; Siblings all share the same constraint set so once we have all
+          ;; commit data we can solve for run against one pacakge in the set.
           (Runtime.exec-solve-package-constraints runtime package)))
       [:err _] (error :some-error-cant-solve)))
 
@@ -238,8 +236,7 @@
   ;; We can fetch canonically-relevant facts in one go for multiple packages
   ;; but must fetch the individual current sha separately. These are
   ;; sort of racey in status-messages but for now we'll let that slide.
-  (let [;; TODO remove true value when ruin updated
-        _ (Package.walk-packages #(set $1.__facts-workflow (R.ok true))
+  (let [_ (Package.walk-packages #(set $1.__facts-workflow (R.ok))
                                  runtime.packages)
         canonical-wfs (->> (Package.packages->canonical-set runtime.packages)
                            (E.map #(make-canonical-facts-wf $2)))
