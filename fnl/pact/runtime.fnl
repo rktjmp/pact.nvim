@@ -46,48 +46,40 @@
     ;; an existing expanded node into the graph. """lexical""" loops can happen,
     ;; where nodes depend on the same package by its canonical name, but those
     ;; don't atually "loop" in the graph.
-    (fn unroll [proxy graph]
-      ;; unwrap the proxy
+    (fn unroll [proxy]
       (match (proxy)
         (where r (R.ok? r))
         (let [spec (R.unwrap r)
               package (Package.userspec->package spec)
-              dependencies (->> (E.reduce #(unroll $3 $1)
-                                          ;; use fresh subgraph
-                                          [] spec.dependencies)
+              dependencies (->> (E.map #(unroll $2 $1) spec.dependencies)
                                 ;; set backlink in dependencies to parent for
                                 ;; ease of use
-                                (E.map #(doto $2 (tset :depended-by package))))]
-          ;; userspec->package cant set this to real packages
-          (tset package :depends-on dependencies)
-          ;; and add to the graph!
-          (E.append$ graph package))
+                                (E.map #(E.set$ $2 :depended-by package)))]
+          ;; userspec->package cant set this to real packages, so we must do it
+          ;; after construction.
+          (E.set$ package :depends-on dependencies))
         (where r (R.err? r))
-        (E.append$ graph r))
-      graph)
+        ;; retain errors in tree for reporting reasons
+        (values r)))
     ;; The proxies list contains one list per call to make-pact, so we'll
     ;; collate them all.
-    (E.flat-map #(E.reduce #(unroll $3 $1)
-                           [] $2)
-                proxies))
-
+    (->> proxies
+         (E.flatten)
+         (E.map #(unroll $2))))
   ;; User plugins arrive as as a graph but they're wrapped in a proxy function
   ;; for performance reasons. We'll unproxy them into real values first.
   ;; This graph can have duplicates or conflicting specs but we resolve that
   ;; later.
-  (tset runtime :packages (unproxy-spec-graph proxies))
   ;; TODO: ideally this would soft fail only the parts with a loop
   ;; TODO: warn on duplicate canonical ids
   ;; TODO: also "provides: id" option
   ;; TODO: does a loop even matter? we install all things independently anyway,
   ;; so if a depends on b depends on a, we end up with flat a + b, and we can
   ;; just install them? 
-  ;; _ (validate-DAG spec-graph)
-  runtime)
+  (E.set$ runtime :packages (unproxy-spec-graph proxies)))
 
 (fn Runtime.exec-solve-tree [runtime package]
   true)
-
 
 (fn exec-discover-package-facts [package]
   true)
