@@ -2,6 +2,7 @@
 (ruin!)
 
 (use R :pact.lib.ruin.result
+     {: '*dout*} :pact.log
      {: 'result-let} :pact.lib.ruin.result
      E :pact.lib.ruin.enum
      FS :pact.workflow.exec.fs
@@ -10,9 +11,6 @@
      {:format fmt} string)
 
 (local Runtime {})
-
-
-
 
 (fn Runtime.walk-packages [runtime f ?acc]
   "Depth walk the package graphs, optionally with an accumulator. See `ruin.depth-walk'."
@@ -132,31 +130,12 @@
   ;; This graph can have duplicates or conflicting specs but we resolve that
   ;; later.
   (tset runtime :packages (unproxy-spec-graph proxies))
-        ; {:id :pact
-        ;                         :name :pact/root
-        ;                         :text "root node in packages"
-        ;                         :depends-on })
-  ;; unproxying doesn't set absolute paths, update them with runtime data.
-  ; (Runtime.walk-packages runtime
-  ;                        (fn [node]
-  ;                          (when node.path
-  ;                            (E.each #(tset node :path $1
-  ;                                           (FS.join-path (. runtime :path $2)
-  ;                                                         (. node :path $1)))
-  ;                                    {:root :repos :rtp :root :head :repos}))))
-  ; (tset runtime :package-uid-list
-  ;       (Runtime.walk-packages runtime (fn [acc package]
-  ;                                        (if (and (not (R.err? package)) package.uid)
-  ;                                          (tset acc package.uid package))
-  ;                                        acc)
-  ;                              []))
-  ; (vim.pretty_print runtime.package-monotonic-list)
   ;; TODO: ideally this would soft fail only the parts with a loop
   ;; TODO: warn on duplicate canonical ids
-  ;; TODO: also "provides: id"
-  ;; TODO: does a loop even matter? we install all things independently
-  ;; anyway, so if a depends on b depends on a, we end up with flat a +
-  ;; b, and we can just install them? 
+  ;; TODO: also "provides: id" option
+  ;; TODO: does a loop even matter? we install all things independently anyway,
+  ;; so if a depends on b depends on a, we end up with flat a + b, and we can
+  ;; just install them? 
   ;; _ (validate-DAG spec-graph)
   runtime)
 
@@ -176,16 +155,72 @@
 (fn rel-path->abs-path [runtime in path]
   (FS.join-path (. runtime :path in) path))
 
-(fn Runtime.exec-current-status [runtime]
+(fn find-siblings-packages [runtime package]
+  (Package.find-packages #(= $1.canonical-id package.canonical-id)
+                         runtime.packages))
+
+(fn Runtime.exec-solve-package-constraints [runtime package]
+  (let [{:new solve-constraints/new} (require :pact.workflow.status.solve-constraints)
+        siblings (find-siblings-packages runtime package)
+        update-sibling #(E.each (fn [_ p] ($1 p)) siblings)]
+    ;; Pair each constraint with its package so any targetable errors can be
+    ;; propagated back to the correct package.
+    (let [constraints (E.map #[$2.uid $2.constraint] siblings)
+          commits package.commits
+          repo (rel-path->abs-path runtime :repos package.path.head)
+          wf (solve-constraints/new package.canonical-id repo constraints commits)
+          handler (fn handler [event]
+                    (match event
+                      (where e (R.ok? e))
+                      (do
+                        (update-sibling (fn [p]
+                                          (E.append$ p.events e)
+                                          (set p.text (vim.inspect (R.unwrap e) {:newline ""}))
+                                          (PubSub.broadcast p :solved)))
+                        (PubSub.unsubscribe wf handler))
+                      (where e (R.err? e))
+                      (do
+                        (update-sibling (fn [p]
+                                          ;; store the error and set generic fail message
+                                          (E.append$ p.events e)
+                                          (set p.text (fmt "could not solve %s-way constraint due to error in canonical sibling" (length constraints)))
+                                          (set p.state :warning)
+                                          (PubSub.broadcast p :error)))
+                        ;; now attach specific errors to each sibling if possible
+                        (E.each (fn [_ [[_ uid] msg]]
+                                  (-> (E.find-value #(match? {:uid uid} $2) siblings)
+                                      (E.set$ :text msg)
+                                      (E.set$ :state :error)))
+                               [(R.unwrap e)])
+                      (PubSub.unsubscribe wf handler))
+                      (where msg (string? msg))
+                      (do
+                        (update-sibling (fn [p]
+                                          (E.append$ package.events msg)
+                                          (set package.text msg)
+                                          (PubSub.broadcast package :events-changed))))))]
+      (PubSub.subscribe wf handler)
+      (runtime.scheduler:add-workflow wf))))
+
+(fn Runtime.discover-current-status [runtime]
+  "Find existing local and remote commits about the current set of packages then
+  start the solver workflow for every package."
   (use DiscoverViableCommits :pact.workflow.status.discover-viable-commits
        DiscoverHeadCommit :pact.workflow.status.discover-head-commit
        Scheduler :pact.workflow.scheduler)
 
-  (var wf-count 0)
-  (fn trigger-next []
-    (set wf-count (- wf-count 1))
-    (if (= 0 wf-count)
-      (print :next)))
+  (fn trigger-next [package]
+    (match package.__facts-workflow
+      [:ok true true true]
+      ;; TODO this is really ugly atm, looking every time to see if the whole
+      ;; canonical set has finished or not.
+      (let [siblings (find-siblings-packages runtime package)]
+        ;; need all sibling constraints before we can try to solve
+        (when (E.all? #(match? [:ok true true true] $2.__facts-workflow) siblings)
+          ;; once all siblings are done we can solve for all at once.
+          (E.each #(set $2.__facts-workflow nil) siblings)
+          (Runtime.exec-solve-package-constraints runtime package)))
+      [:err _] (error :some-error-cant-solve)))
 
   (fn make-canonical-facts-wf [package]
     (let [;; we need to propagate canonical facts between all related packages
@@ -199,22 +234,28 @@
           handler (fn handler [event]
                     (match event
                       (where e (R.ok? e))
-                      (let [facts (R.unwrap e)]
+                      (let [commits (R.unwrap e)]
                         (update-siblings (fn [package]
-                                           (tset package :facts (E.reduce #(E.set$ $1 $2 $3)
-                                                                          (or package.facts {})
-                                                                          facts))
-                                           (tset package :state :unstaged)))
+                                           (set package.commits (E.reduce #(E.set$ $1 $2 $3)
+                                                                          (or package.commits {})
+                                                                          commits))
+                                           (set package.__facts-workflow
+                                                (R.join package.__facts-workflow (R.ok true)))
+                                           (set package.state :unstaged)))
                         (Runtime.exec-solve-tree runtime package)
                         (PubSub.broadcast package :facts-changed)
                         (PubSub.unsubscribe wf handler)
-                        (trigger-next))
+                        (update-siblings (fn [package] (trigger-next package))))
                       (where e (R.err? e))
                       (do
-                        (set package.text (R.unwrap e))
-                        (tset package :state :error)
+                        (update-siblings (fn [package]
+                                           (set package.text (R.unwrap e))
+                                           (set package.state :error)
+                                           (set package.__facts-workflow
+                                                (R.join package.__facts-workflow (R.err false)))))
+                        (PubSub.broadcast package :facts-changed)
                         (PubSub.unsubscribe wf handler)
-                        (trigger-next))
+                        (update-siblings (fn [package] (trigger-next package))))
                       (where msg (string? msg))
                       (update-siblings (fn [package]
                                           (E.append$ package.events msg)
@@ -230,20 +271,25 @@
           handler (fn handler [event]
                     (match event
                       (where e (R.ok? e))
-                      (let [facts (R.unwrap e)]
-                        (tset package :facts (E.reduce #(E.set$ $1 $2 $3)
-                                                       (or package.facts {})
-                                                       facts))
-                        (tset package :state :unstaged)
+                      (let [commits (R.unwrap e)]
+                        (set package.commits (E.reduce #(E.set$ $1 $2 $3)
+                                                       (or package.commits {})
+                                                       commits))
+                        (set package.state :unstaged)
+                        (set package.__facts-workflow (R.join package.__facts-workflow
+                                                              (R.ok true)))
                         (PubSub.broadcast package :facts-changed)
                         (PubSub.unsubscribe wf handler)
-                        (trigger-next))
+                        (trigger-next package))
                       (where e (R.err? e))
                       (do
                         (set package.text (R.unwrap e))
-                        (tset package :state :error)
+                        (set package.state :error)
+                        (set package.__facts-workflow (R.join package.__facts-workflow
+                                                              (R.err false)))
+                        (PubSub.broadcast package :error)
                         (PubSub.unsubscribe wf handler)
-                        (trigger-next))
+                        (trigger-next package))
                       (where msg (string? msg))
                       (do
                         (E.append$ package.events msg)
@@ -255,32 +301,17 @@
   ;; We can fetch canonically-relevant facts in one go for multiple packages
   ;; but must fetch the individual current sha separately. These are
   ;; sort of racey in status-messages but for now we'll let that slide.
-  (let [canonical-wfs (->> (Package.packages->canonical-set runtime.packages)
+  (let [;; TODO remove true value when ruin updated
+        _ (Package.walk-packages #(set $1.__facts-workflow (R.ok true))
+                                 runtime.packages)
+        canonical-wfs (->> (Package.packages->canonical-set runtime.packages)
                            (E.map #(make-canonical-facts-wf $2)))
         unique-wfs (->> (Package.packages->seq runtime.packages)
                         (E.map #(make-unique-facts-wf $2)))]
-    (set wf-count (+ (length canonical-wfs) (length unique-wfs)))
     (E.each #(Scheduler.add-workflow runtime.scheduler $2)
             canonical-wfs)
     (E.each #(Scheduler.add-workflow runtime.scheduler $2)
             unique-wfs))
-
-  ; (->> (runtime:walk-packages (fn [t package]
-  ;                               (if (and (not (R.err? package))
-  ;                                        (not (. t package.canonical-id)))
-  ;                                 (tset t package.canonical-id package))
-  ;                               t) [])
-  ;      (E.each #(let [wf (make-wf $2)]
-  ;                 (set wf-count (+ wf-count 1))
-  ;                 (Scheduler.add-workflow runtime.scheduler wf))))
-
-  ; (E.each (fn [_ {: packages}]
-  ;           (let [package (E.hd packages)]
-  ;             (if (and (not (R.err? package)) package.source)
-  ;               (let [wf (make-wf package)]
-  ;                 (set wf-count (+ wf-count 1))
-  ;                 (Scheduler.add-workflow runtime.scheduler wf)))))
-  ;   runtime.package-list)
   runtime)
 
 (fn transation-path [runtime transaction]

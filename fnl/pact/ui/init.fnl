@@ -2,6 +2,7 @@
 (ruin!)
 
 (use enum :pact.lib.ruin.enum
+     {: '*dout*} :pact.log
      inspect :pact.inspect
      scheduler :pact.workflow.scheduler
      {: subscribe : unsubscribe} :pact.pubsub
@@ -160,18 +161,30 @@
                                                         :indent (length history)
                                                         :state :error})
                                         (E.append$ acc {:name node.name
+                                                        :constraint node.constraint
                                                         :text node.text
                                                         :indent (length history)
-                                                        :state node.state})))
+                                                        :state node.state
+                                                        :events node.events
+                                                        :error (and (R.err? (E.last node.events))
+                                                                    (E.last node.events))})))
                                     [])
-        lines-with-extmarks  (E.reduce (fn [lines _ {: name : text : indent}]
+        lines-with-extmarks  (E.reduce (fn [lines _ {: name : text : state : constraint : indent}]
                                          (E.append$ lines [[(string.rep " " indent) "@comment"]
-                                                           [name (highlight-for :staged :name)]
+                                                           [name (match state
+                                                                   :warning :DiagnosticWarn
+                                                                   :error :DiagnosticError
+                                                                   _ (highlight-for :staged :name))]
                                                            [(string.rep " " (- (+ 1 ui.layout.max-name-length)
                                                                                (length name)
                                                                                indent))
                                                             :text]
-                                                           [text (highlight-for :staged :text)]]))
+                                                           [(tostring constraint) (highlight-for :staged :comment)]
+                                                           [" " "@comment"]
+                                                           [text (match state
+                                                                   :warning :DiagnosticWarn
+                                                                   :error :DiagnosticError
+                                                                   _ (highlight-for :staged :text))]]))
                                        [] data)
         text-lines (E.map (fn [_ parts]
                             (-> (E.map (fn [_ [text _]] text) parts)
@@ -179,8 +192,9 @@
                           lines-with-extmarks)]
 
     (api.nvim_buf_set_lines ui.buf 0 1 false
-                            [(fmt "workflows: %s active %s waiting" (-> (Runtime.workflow-stats ui.runtime)
-                                                                        (#(values $1.active $1.queued))))])
+                            [(fmt "workflows: %s active %s waiting"
+                                  (-> (Runtime.workflow-stats ui.runtime)
+                                      (#(values $1.active $1.queued))))])
     (api.nvim_buf_set_lines ui.buf 1 -1 false text-lines)
     (->> (E.map (fn [i parts]
                   (-> (E.reduce (fn [[cursor exts] _ [text hl]]
@@ -195,8 +209,21 @@
          (E.flatten)
          (E.each (fn [_ {: line : start : stop : hl}]
                    ;; line -0 for wf status, should be -1 normally
-                   (api.nvim_buf_add_highlight ui.buf ui.ns-id hl (- line 0) start stop)
-                   )))))
+                   (api.nvim_buf_add_highlight ui.buf ui.ns-id hl (- line 0) start stop))))
+    ;; TODO this should be more ... good. We want to throw back "rich" errors
+    ;; that are more than just text messages.
+    (E.each #(if $2.error
+               (let [msg (R.unwrap $2.error)
+                     lines (E.map #[[$1 :PactError]] #(string.gmatch (inspect msg) "([^\n]+)"))]
+                 (api.nvim_buf_set_extmark ui.buf ui.ns-id (- $1 0) 0
+                                           {:virt_lines lines})))
+            data)
+    (if _G.__pact_debug
+      (let [lines (E.map #$1
+                         #(string.gmatch (inspect _G.__pact_debug) "([^\n]+)"))]
+        (vim.pretty_print lines)
+        (api.nvim_buf_set_lines ui.buf -1 -1 false lines)))
+    ))
 
 (fn schedule-redraw [ui]
   ;; asked to render, we only want to hit 60fps otherwise we can really pin
@@ -614,9 +641,8 @@
                                       max)
                                     max)) 0))
 
-    (Runtime.exec-current-status runtime)
-    (schedule-redraw ui)
-    ))
+    (Runtime.discover-current-status runtime)
+    (schedule-redraw ui)))
 
     ; (let [topic (Runtime.run-status runtime)]
     ;   (subscribe topic (fn [...] (print :x))))))
