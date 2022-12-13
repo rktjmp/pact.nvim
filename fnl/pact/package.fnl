@@ -58,7 +58,7 @@
      :name spec.name
      :source spec.source
      :constraint spec.constraint
-     :depended-by []
+     :depended-by nil
      :depends-on spec.dependencies ;; placeholder
      :path {:root root ;; github-user-repo-nvim/
             :rtp package-path ;; start|opt/package.nvim

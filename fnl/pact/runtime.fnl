@@ -314,13 +314,15 @@
             unique-wfs))
   runtime)
 
-(fn transation-path [runtime transaction]
+(fn transaction-path [runtime transaction]
   (FS.join-path runtime.path.data transaction.id))
 
 ;; TODO
 (fn Runtime.exec-discover-orphans [runtime])
 
 (fn parse-disk-layout [runtime]
+  "Look at current disk state, possibly prepare it to a known good state, then
+  set some information on runtime"
   ;; must have some directories created
   (E.each #(FS.make-path $2)
           [runtime.path.root runtime.path.data runtime.path.repos])
@@ -329,7 +331,7 @@
   ;; otherwise create one to a default checkout
   (let [current-head (match (vim.loop.fs_lstat runtime.path.head)
                        {:type :link} (vim.loop.fs_readlink runtime.path.head)
-                       (nil _ :ENOENT) (let [t-path (transation-path runtime {:id 1})]
+                       (nil _ :ENOENT) (let [t-path (transaction-path runtime {:id 1})]
                                          (FS.make-path t-path)
                                          (FS.symlink t-path runtime.path.head)
                                          {:type :link} (vim.loop.fs_readlink runtime.path.head)))

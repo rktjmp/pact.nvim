@@ -40,7 +40,7 @@
 
 (fn broadcast [topic ...]
   (table.insert bcast-queue {: topic :payload (enum.pack ...)})
-  ;; first inserst schedules a drain in next event loop
+  ;; first insert schedules a drain in next event loop
   (if (= 1 (length bcast-queue))
     (vim.schedule drain-queue)))
 

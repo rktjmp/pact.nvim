@@ -13,19 +13,6 @@
      {:format fmt} string
      {:new new-workflow : yield : log} :pact.workflow)
 
-(macro *dout* [x ?name]
-  (local g-sym (sym :_G.__pact_debug))
-  (local name (or ?name (if (sym x) (.. "sym: " (tostring x)))))
-  `(do
-    (if (not  ,g-sym)
-      (set ,g-sym []))
-    (let [log# []]
-      (table.insert log# ,(.. (or x.filename "unknown-file") "#" (or x.line "unknown-line")))
-      (table.insert log# ,name)
-      (table.insert log# ,x)
-      (table.insert ,g-sym log#))
-    ,x))
-
 (fn* solve-constraint-type
   ;; We bundle the returns as [[cons-from cons] msg|[commits]] as we join
   ;; all the results into one ok|err and we want to be able to split them
@@ -53,12 +40,12 @@
                  val (Git.verify-commit repo-path sha)]
       (if val
         (ok [[constraint-from constraint]
-             [(Commit.commit sha)]])
+             [(Commit.new sha)]])
         (err [[constraint-from constraint]
               (fmt "commit does not exist: %s" sha)])))
     ;; No local repo, just hope the user typed it in correctly..
     (ok [[constraint-from constraint]
-         [(Commit.commit (Constraint.value constraint))]]))
+         [(Commit.new (Constraint.value constraint))]]))
 
   ;; branch and tags just fall through to Constraint.solve
   (where [[constraint-from constraint] commits _] (or (Constraint.branch? constraint)
@@ -155,6 +142,3 @@
   (new-workflow id #(solve-constraints repo-path constraints commits)))
 
 {: new}
-
-
-

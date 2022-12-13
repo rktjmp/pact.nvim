@@ -7,6 +7,7 @@
      Git :pact.workflow.exec.git
      FS :pact.workflow.exec.fs
      E :pact.lib.ruin.enum
+     {: inspect!} :pact.lib.ruin.debug
      {:format fmt} string
      {:new new-workflow : yield : log} :pact.workflow)
 
@@ -21,8 +22,7 @@
   "Fetch commits from remote and convert into commit datum."
   (result-let [_ (log "querying remote refs from %s" repo-url)
                commits (result->> (Git.ls-remote repo-url)
-                                  (Commit.remote-refs->commits)
-                                  (group-commits))]
+                                  (Commit.remote-refs->commits))]
     (log "retrieved facts")
     (ok commits)))
 
@@ -31,8 +31,7 @@
   (result-let [_ (log "updating repository refs")
                _ (Git.update-refs repo-path)
                commits (result->> (Git.ls-local repo-path)
-                                  (Commit.local-refs->commits)
-                                  (group-commits))]
+                                  (Commit.local-refs->commits))]
     (log "retrieved facts")
     (ok commits)))
 

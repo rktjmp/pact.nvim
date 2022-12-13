@@ -2,7 +2,7 @@
 ;; we don't want to add the same plugins again and again, so keep track of what
 ;; we've seen. We manually build a key with forge-user/repo for now.
 (local seen-plugins {})
-(local plugin-proxies [])
+(var plugin-proxies [])
 
 ;; we proxy our plugin providers so we have no runtime cost until the UI is
 ;; actually invoked.
@@ -14,16 +14,18 @@
   (fn [...]
     (let [plugin-id (fmt "%s/%s" name (. [...] 1))
           ?existing (. seen-plugins plugin-id)]
-      (when ?existing
-        (vim.notify (fmt "Replacing existing plugin %s with new configuration" plugin-id))
-        (tset seen-plugins plugin-id nil))
+      ;; (print "proxinging" plugin-id)
+      ; (when ?existing
+      ;   (vim.notify (fmt "Replacing existing plugin %s with new configuration" plugin-id))
+      ;   (tset seen-plugins plugin-id nil))
       (let [arg-v [...]
             arg-c (select :# ...)
             real-fn #(let [mod (require :pact.plugin)
                            f (. mod name)]
                        (f (unpack arg-v 1 arg-c)))]
         (tset seen-plugins plugin-id true)
-        (table.insert plugin-proxies real-fn)))))
+        ; (table.insert plugin-proxies real-fn)
+        real-fn))))
 
 (local providers {:github (proxy :github)
                   :gitlab (proxy :gitlab)
@@ -58,14 +60,17 @@
                           (api.nvim_win_set_buf buf)
                           (api.nvim_win_set_option :wrap false))
                         (values win buf)))
-        ui (require :pact.ui)
-        ;; Convert proxy plugin calls to real plugins (technically ok-err values)
-        ;; We pass those to the UI so it can effectively show broken plugin
-        ;; configurations while still working for non-broken plugins.
-        plugins (icollect [_ c (ipairs plugin-proxies)] (c))]
-    (ui.attach win buf plugins opts)))
+        ui (require :pact.ui)]
+    (ui.attach win buf plugin-proxies opts)))
+
+(fn make-pact [...]
+  (table.insert plugin-proxies [...])
+  ; (vim.pretty_print plugin-proxies)
+  
+  )
 
 {: open
+ : make-pact
  :git providers.git
  :github providers.github
  :path providers.path

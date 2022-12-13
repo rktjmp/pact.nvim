@@ -75,13 +75,14 @@
     (where-err? [code out err]) (values nil (dump-err code [out err]))))
 
 (fn verify-ref [repo-path commit-ref]
-  (match-run ["git show --format='%H' -s $commit" {: commit :cwd repo-path :env const.ENV}]
+  (match-run ["git show --format='%H' -s $commit-ref"
+              {: commit-ref :cwd repo-path :env const.ENV}]
     (where-ok? [_ [line] _]) (values line)
     (where-err? [code out err]) (values false)))
 
 (fn M.verify-commit [repo-path commit]
   "Verify a given commit sha exists"
-  (verify-ref repo-path commit)
+  (verify-ref repo-path commit))
 
 (fn M.verify-branch [repo-path branch]
   "Verify a given branch exists remotely. Local branches are ignored."
@@ -96,6 +97,7 @@
   (verify-ref repo-path (.. "refs/tags/" tag)))
 
 (fn M.ls-local [repo-path]
+  ;; TODO may need to show deref'd
   (match-run ["git show-ref" {:cwd repo-path :env const.ENV}]
     (where-ok? [_ lines _]) (values lines)
     (where-err? [code out err]) (values nil (dump-err code [out err]))))
@@ -126,12 +128,14 @@
     (where-err? [code out err]) (values nil (dump-err code [out err]))))
 
 
+;; TODO deprecated
 (fn M.set-origin [repo-path url]
   (match (await (run "git remote add origin $url" {: url :cwd repo-path :env const.ENV}))
     (0 _ _) (values url)
     (code _ err) (values nil (dump-err code err))
     (nil err) (values nil err)))
 
+;; TODO deprecated
 (fn M.get-origin [repo-path]
   ;; TODO check origins before committing in workflows
   (match (await (run "git remote get-url origin" {:cwd repo-path :env const.ENV}))

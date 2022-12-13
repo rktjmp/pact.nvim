@@ -8,9 +8,10 @@
      enum :pact.lib.ruin.enum
      {:format fmt} string
      {:new new-workflow : yield : log} :pact.workflow
-     {: ref-lines->commits} :pact.git.commit
+     {: ls-remote->remote-commits
+      : show-ref->remote-commits} :pact.git.commit
      git-commit :pact.git.commit
-     Constraint :pact.plugin.constaint
+     Constraint :pact.plugin.constraint
      {:solve solve-constraint
       :satisfies? satisfies-constraint?} :pact.plugin.constraint)
 
@@ -51,7 +52,7 @@
                                                            (version-constraint? constraint)))
   (result-let [_ (yield "fetching remote refs")
                remote-commits (result->> (git.ls-remote repo-url)
-                                         (ref-lines->commits))]
+                                         (ls-remote->remote-commits))]
     (yield "solving for constraint")
     (if-some-let [target-commit (solve-constraint constraint remote-commits)]
       (ok [:clone target-commit] (maybe-latest-version remote-commits))
@@ -72,15 +73,15 @@
                _ (yield "verifying constraint commit")
                _ (or (git.verify-commit repo-path Constraint.value constraint) 
                      (err "constraint commit does not exist"))
-               local-commits (result->> (git.ls-local repo-path)
-                                        (git-commit.local-refs->commits))
+               remote-commits (result->> (git.ls-local repo-path)
+                                         (show-ref->remote-commits))
                ;; we construct a commit from the sha for ... old times sake
                ;; and to have a consisent path into the constraint checker.
                ;; likely we can revisit this at some point TODO
                HEAD-commit (git-commit.commit HEAD-sha)]
     (if (satisfies-constraint? constraint HEAD-commit)
-      (ok [:hold HEAD-commit] (maybe-latest-version local-commits))
-      (ok [:sync (git-commit.commit (. constraint 3))] (maybe-latest-version local-commits)))))
+      (ok [:hold HEAD-commit] (maybe-latest-version remote-commits))
+      (ok [:sync (git-commit.commit (. constraint 3))] (maybe-latest-version remote-commits)))))
 
 (fn+ status-local (where [repo-path constraint]
                          (or (tag-constraint? constraint)
@@ -92,8 +93,8 @@
   (result-let [_ (yield "checking local sha")
                HEAD-sha (git.HEAD-sha repo-path)
                _ (yield "fetching remote refs")
-               local-commits (result->> (git.ls-local repo-path)
-                                        (git-commit.local-refs->commits))
+               remote-commits (result->> (git.ls-local repo-path)
+                                         (show-ref->remote-commits))
                _ (yield "reticulating splines")
                ;; Get tags and branches from remote commits, see if our current
                ;; head matches any of them and construct a commit if so, then
@@ -101,7 +102,7 @@
                ;; check all remotes for one that might.
                ;; Note, we get a plural of commits, as multiple branches and
                ;; tags may point to the same sha.
-               HEAD-commits (->> local-commits
+               HEAD-commits (->> remote-commits
                                  (enum.filter #(and (or (not-nil? $2.branch)
                                                         (not-nil? $2.tag))
                                                 (= HEAD-sha $2.sha)))
@@ -109,11 +110,11 @@
     (if (enum.hd HEAD-commits)
       ;; One of the head commits satisfies the constraint. This *should* only be one-long
       ;; as branches and tags should be unique in name, if not in sha...
-      (ok [:hold (enum.hd HEAD-commits)] (maybe-latest-version local-commits))
+      (ok [:hold (enum.hd HEAD-commits)] (maybe-latest-version remote-commits))
       ;; Current head did not satisfy, so we need to see if any remotes *do* satisfy
-      (if-some-let [target-commit (solve-constraint constraint local-commits)]
+      (if-some-let [target-commit (solve-constraint constraint remote-commits)]
         ;; TODO: return current head, as per constraint if possible (ver for ver, etc) for UI
-        (ok [:sync target-commit] (maybe-latest-version local-commits))
+        (ok [:sync target-commit] (maybe-latest-version remote-commits))
         (err (fmt "no commit satisfies %s" constraint))))))
 
 (fn+ status-local (where [repo-path constraint] (version-constraint? constraint))
@@ -124,13 +125,13 @@
   (result-let [_ (yield "checking local sha")
                HEAD-sha (git.HEAD-sha repo-path)
                _ (yield "fetching remote refs")
-               local-commits (result->> (git.ls-local repo-path)
-                                        (git-commit.local-refs->commits))
+               remote-commits (result->> (git.ls-local repo-path)
+                                         (show-ref->remote-commits))
                _ (yield "reticulating splines")]
     ;; this will give us the *best* satisaction result (newest version)
-    (if-some-let [target-commit (solve-constraint constraint local-commits)
+    (if-some-let [target-commit (solve-constraint constraint remote-commits)
                   ;; Now we'll find any remote version commits that match our local HEAD
-                  HEAD-commits (->> local-commits
+                  HEAD-commits (->> remote-commits
                                     (enum.filter #(and (not-nil? $2.version) (= HEAD-sha $2.sha)))
                                     (enum.filter #(satisfies-constraint? constraint $2)))]
       ;; if HEAD-commits contains the target-commit, then we already have the
@@ -140,10 +141,10 @@
         ;; we explictly look for a newer version and only show it *if* its newer
         ;; vs other types where we always show any semver that shows up, to encourage
         ;; its usage.
-        (ok [:hold target-commit] (maybe-newer-commit target-commit local-commits))
+        (ok [:hold target-commit] (maybe-newer-commit target-commit remote-commits))
         (ok [:sync target-commit]
             ;; may have a newer commit than our current
-            (maybe-newer-commit target-commit local-commits)
+            (maybe-newer-commit target-commit remote-commits)
             ;; we kind of just have to assume that any version in HEAD-commits, we
             ;; are at the latest. *Probably* HEAD-commits will always only contain
             ;; at most one version commit, but this is a bit safer?
