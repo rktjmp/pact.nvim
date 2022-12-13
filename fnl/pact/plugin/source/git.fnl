@@ -1,11 +1,9 @@
-(import-macros {: use} :pact.lib.ruin.use)
+(import-macros {: ruin!} :pact.lib.ruin)
+(ruin!)
+
 (use {: 'fn* : 'fn+} :pact.lib.ruin.fn
-     {: string? : table?} :pact.lib.ruin.type
      {: 'match-let} :pact.lib.ruin.let
-     enum :pact.lib.ruin.enum
-     {:format fmt} string
-     {: valid-sha? : valid-version-spec?} :pact.valid
-     {:git git-constraint} :pact.plugin.constraint)
+     {:format fmt} string)
 
 (fn make-provider [url]
   [:git url])

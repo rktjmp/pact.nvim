@@ -2,7 +2,6 @@
 (ruin!)
 
 (use {: 'fn* : 'fn+} :pact.lib.ruin.fn
-     {: string? : table?} :pact.lib.ruin.type
      E :pact.lib.ruin.enum
      {:format fmt} string
      {: valid-sha? : valid-version-spec?} :pact.valid)
