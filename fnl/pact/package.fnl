@@ -60,6 +60,7 @@
      :constraint spec.constraint
      :depended-by nil
      :depends-on spec.dependencies ;; placeholder
+     ;; these are kept relative as they will be different for every transaction
      :path {:root root ;; github-user-repo-nvim/
             :rtp package-path ;; start|opt/package.nvim
             :head (FS.join-path root :HEAD)} ;; github-user-repo-nvim/HEAD
@@ -73,7 +74,9 @@
 
 (fn Package.source [package]
   ;; TODO should handle git, local, lua rocks, etc
-  (. package :source 2))
+  (match package.source
+    [:git url] url
+    _ (error "can't get package source for unknown source type")))
 
 (fn Package.packages->seq [package-trees]
   "create seq of all packages in thes graph"

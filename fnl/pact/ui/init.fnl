@@ -191,6 +191,7 @@
                                 (table.concat "")))
                           lines-with-extmarks)]
 
+    (api.nvim_buf_set_option ui.buf :modifiable true)
     (api.nvim_buf_set_lines ui.buf 0 1 false
                             [(fmt "workflows: %s active %s waiting"
                                   (-> (Runtime.workflow-stats ui.runtime)
@@ -223,7 +224,7 @@
                          #(string.gmatch (inspect _G.__pact_debug) "([^\n]+)"))]
         (vim.pretty_print lines)
         (api.nvim_buf_set_lines ui.buf -1 -1 false lines)))
-    ))
+    (api.nvim_buf_set_option ui.buf :modifiable false)))
 
 (fn schedule-redraw [ui]
   ;; asked to render, we only want to hit 60fps otherwise we can really pin
@@ -233,308 +234,9 @@
     (tset ui :will-render (+ rate (vim.loop.now)))
     (vim.defer_fn #(output ui) rate)))
 
-(local exec {})
-
-(fn exec.stage-transaction [ui]
-  ;; Every plugin is always staged into a transaction. The checkouts are shared
-  ;; between transactions so this is low cost for "not updated" plugins.
-  ;; There *is* a difference between a staged and held plugin however, and if
-  ;; a held plugin requires updating due to a dependency, then this can fail
-  ;; the transaction and the user must re-run and stage the held plugin also.
-  (fn make-wf [plugin]
-    (let [stage (require :pact.workflow.transaction.stage)
-          id (fmt "stage-%s" plugin.id)
-          meta (. ui :plugins-meta plugin.id)
-          ;; TODO this is really bad, magic getting sha non obvious
-          wf (stage.new id ui.transaction plugin (. meta.action 2))
-          handler (fn* handler
-                       (where [event] (ok? event))
-                       (do
-                         (vim.pretty_print wf.id event)
-                         (unsubscribe wf handler))
-                       (where [event] (err? event))
-                       (do
-                         (unsubscribe wf handler)
-                         (error (result.unwrap event)))
-                       (where [msg] (string? msg))
-                       (vim.pretty_print :close-trans msg)
-                       (where _) nil)]
-      (subscribe wf handler)
-      (scheduler.add-workflow ui.scheduler wf)
-      (values wf)))
-
-  (->> (enum.filter #(and (= :unstaged $2.state)) ui.plugins-meta)
-       (enum.map (fn [_ meta] (tset meta :state :held))))
-  (->> (enum.filter #(and (= :staged $2.state)) ui.plugins-meta)
-       (enum.map (fn [_ meta]
-                   (let [wf (make-wf (. meta.action 1) meta.plugin (. meta.action 2))]
-                     (set meta.workflow wf)
-                     (scheduler.add-workflow ui.scheduler wf)
-                     (tset meta :state :active)))))
-  (schedule-redraw ui))
-
-(fn exec-close-transaction [ui id how]
-  (let [{: new} (require :pact.workflow.transaction.close)
-        wf (new :close ui.transaction how)
-        handler (fn* handler
-                  (where [event] (ok? event))
-                  (do
-                    (vim.pretty_print event)
-                    (unsubscribe wf handler))
-                  (where [event] (err? event))
-                  (do
-                    (unsubscribe wf handler)
-                    (error (result.unwrap event)))
-                  (where [msg] (string? msg))
-                  (vim.pretty_print :close-trans msg)
-                  (where _) nil)]
-    (subscribe wf handler)
-    (scheduler.add-workflow ui.scheduler wf)))
-
-(fn exec-open-transaction [ui]
-  (let [{: new} (require :pact.workflow.transaction.open)
-        root-path (FS.join-path (vim.fn.stdpath :data) :site/pack/pact/data)
-        id (vim.loop.gettimeofday)
-        wf (new id root-path)
-        handler (fn* handler
-                  (where [event] (ok? event))
-                  (do
-                    (unsubscribe wf handler)
-                    (set ui.transaction (result.unwrap event))
-                    (exec-close-transaction ui true))
-                  (where [event] (err? event))
-                  (do
-                    (unsubscribe wf handler)
-                    (error (result.unwrap event)))
-                  (where [msg] (string? msg))
-                  (vim.pretty_print :open-trans msg)
-                  (where _) nil)]
-    (subscribe wf handler)
-    (scheduler.add-workflow ui.scheduler wf)))
-
-(fn exec-commit [ui]
-  (fn make-wf [how plugin action-data]
-    (let [wf (match how
-               :clone (clone-wf.new plugin.id plugin.path.package (. plugin.source 2) action-data.sha)
-               :sync (sync-wf.new plugin.id plugin.path.package action-data.sha)
-               :clean (orphan-remove-fw.new plugin.id action-data)
-               other (error (fmt "unknown staging action %s" other)))
-          meta (. ui :plugins-meta plugin.id)
-          _ (set meta.workflow wf)
-          handler (fn* handler
-                       (where [event] (ok? event))
-                       (do
-                         (enum.append$ meta.events event)
-                         (set meta.state :updated)
-                         (set meta.text (fmt "(%s %s)"
-                                             (match how
-                                               :clone :cloned
-                                               :sync :synced
-                                               :clean :cleaned
-                                               _ how)
-                                             action-data))
-                         (set meta.workflow nil)
-                         (set meta.progress nil)
-                         (vim.schedule
-                           (fn after-handler []
-                             (vim.cmd "packloadall!")
-                             (vim.cmd "silent! helptags ALL")
-                             (when plugin.after
-                               (let [{: new} (require :pact.workflow.after)
-                                     old-text meta.text
-                                     after-wf (new wf.id plugin.after plugin.package-path)]
-                                 (set meta.text "running...")
-                                 (set meta.workflow after-wf)
-                                 (subscribe after-wf
-                                            (fn [event]
-                                              (match event
-                                                ;; handle ok and err events specially as we don't want
-                                                ;; to swap sections etc.
-                                                (where _ (ok? event))
-                                                (do
-                                                  (set meta.text (fmt "%s after: %s"
-                                                                      old-text
-                                                                      (or (result.unwrap event)
-                                                                          "finished with no value")))
-                                                  (set meta.progress nil)
-                                                  (set meta.workflow nil)
-                                                  (unsubscribe after-wf after-handler)
-                                                  (schedule-redraw ui))
-                                                (where _ (err? event))
-                                                (do
-                                                  (set meta.text (.. old-text (fmt " error: %s" (inspect (result.unwrap event)))))
-                                                  (set meta.progress nil)
-                                                  (set meta.workflow nil)
-                                                  (unsubscribe after-wf after-handler)
-                                                  (schedule-redraw ui))
-                                                ;; we can pass these up to
-                                                ;; the normal handler for
-                                                ;; sting logging and
-                                                ;; progress meter
-                                                (where _ (string? event))
-                                                (handler (fmt "after: %s" event))
-                                                (where _ (thread? event))
-                                                (handler event))))
-                                 (scheduler.add-workflow ui.scheduler after-wf)))))
-                         (unsubscribe wf handler)
-                         (schedule-redraw ui))
-
-                       (where [event] (err? event))
-                       (let [[_ e] event]
-                         (enum.append$ meta.events event)
-                         (set meta.state :error)
-                         (set meta.text e)
-                         (set meta.progress nil)
-                         (unsubscribe wf handler)
-                         (schedule-redraw ui))
-
-                       (where [msg] (string? msg))
-                       (do
-                         (enum.append$ meta.events msg)
-                         (set meta.text msg)
-                         (set meta.progress nil)
-                         (schedule-redraw ui))
-
-                       (where [future] (thread? future))
-                       (do
-                         (set meta.progress (rate-limited-inc (or meta.progress [0 0])))
-                         (schedule-redraw ui))
-
-                       (where _)
-                       nil)]
-      (subscribe wf handler)
-      (values wf)))
-
-  (->> (enum.filter #(and (= :unstaged $2.state)) ui.plugins-meta)
-       (enum.map (fn [_ meta] (tset meta :state :held))))
-  (->> (enum.filter #(and (= :staged $2.state) ) ui.plugins-meta)
-       (enum.map (fn [_ meta]
-                   (let [wf (make-wf (. meta.action 1) meta.plugin (. meta.action 2))]
-                     (set meta.workflow wf)
-                     (scheduler.add-workflow ui.scheduler wf)
-                     (tset meta :state :active)))))
-  (schedule-redraw ui))
-
-(fn exec-diff [ui meta]
-  (fn make-wf [plugin commit]
-    (let [wf (diff-wf.new plugin.id plugin.package-path commit.sha)
-          previous-text meta.text
-          meta (. ui :plugins-meta plugin.id)
-          handler (fn* handler
-                       (where [event] (ok? event))
-                       (let [[_ log] event]
-                         (enum.append$ meta.events event)
-                         (set meta.text previous-text)
-                         (set meta.progress nil)
-                         (set meta.log log)
-                         (set meta.log-open true)
-                         (set meta.workflow nil)
-                         (unsubscribe wf handler)
-                         (schedule-redraw ui))
-
-                       (where [event] (err? event))
-                       (let [[_ e] event]
-                         (enum.append$ meta.events event)
-                         (set meta.text e)
-                         (set meta.progress nil)
-                         (set meta.workflow nil)
-                         (unsubscribe wf handler)
-                         (schedule-redraw ui))
-
-                       (where [msg] (string? msg))
-                       (let [meta (. ui :plugins-meta wf.id)]
-                         (enum.append$ meta.events msg)
-                         (tset meta :text msg)
-                         (schedule-redraw ui))
-
-                       (where [future] (thread? future))
-                       (do
-                         (set meta.progress (rate-limited-inc (or meta.progress [0 0])))
-                         (schedule-redraw ui))
-
-                       (where _)
-                       nil)]
-      (subscribe wf handler)
-      (values wf)))
-  (let [wf (make-wf meta.plugin (. meta.action 2))]
-    (set meta.workflow wf)
-    (scheduler.add-workflow ui.scheduler wf))
-  (schedule-redraw ui))
-
-(fn exec-orphans [ui meta]
-  (let [start-root (.. (vim.fn.stdpath :data) :/site/pack/pact/start)
-        opt-root (.. (vim.fn.stdpath :data) :/site/pack/pact/opt)
-        known-paths (enum.map #$2.package-path ui.plugins)]
-    (fn make-wf [id root]
-      (let [wf (orphan-find-wf.new id root known-paths)
-            handler (fn* handler
-                         (where [event] (ok? event))
-                         (do
-                           (match (result.unwrap event)
-                             (where list (not (enum.empty? list)))
-                             (enum.each #(let [plugin-id (fmt "orphan-%s" $1)
-                                               name (fmt "%s/%s" id $2.name)
-                                               len (length name)]
-                                             (tset ui.plugins-meta
-                                                 plugin-id
-                                                 {:plugin {:id plugin-id
-                                                           :name name}
-                                                  :order (* -1 $1)
-                                                  :events []
-                                                  :text "(orphan) exists on disk but unknown to pact!"
-                                                  :action [:clean $2.path]
-                                                  :state :unstaged})
-                                             (if (< ui.layout.max-name-length len)
-                                               (set ui.layout.max-name-length len)))
-                                        list))
-                           (unsubscribe wf handler)
-                           (schedule-redraw ui))
-
-                         (where [event] (err? event))
-                         (do
-                           (vim.notify (fmt "error checking for orphans, please report: %s" (result.unwrap event)))
-                           (unsubscribe wf handler))
-
-                         (where _)
-                         nil)]
-        (subscribe wf handler)
-        (values wf)))
-    (enum.map #(scheduler.add-workflow ui.scheduler (make-wf $1 $2))
-              {:start start-root :opt opt-root})))
-
-; (fn keymap-stage [ui]
-;   (let [plugin (row->plugin-id ui (get-cursor-row))
-;         action (Plugin.action plugin)]
-;     (action.hold :some-sha)))
-
-; (fn a-status [ui]
-;   (E.reduce #(let [Plugin {}
-;                    plugin $2
-;                    wf (Workflow.Status.new plugin.id)
-;                    handler (fn [event]
-;                              (match event
-;                                (where e (R.result? e))
-;                                (do
-;                                  ;; prefer Store.update-plugin vs Plugin.event
-;                                  ;; because we can encapsulate other state
-;                                  ;; changes inside it.
-;                                  (Store.update-status ui.store $2.id e)
-;                                  (PubSub.unsubscribe handler))
-;                                (where msg (string? msg))
-;                                (do
-;                                  (plugin:log-event msg)
-;                                  (Store.update-events ui.store $2.id msg))
-
-
-                             
-;                              )]
-;                (pubsub:subscribe wf handler)
-;                (ui.scheduler:queue-workflow wf))
-;             (ui.store:plugins))
-
 (fn exec-keymap-cc [ui]
   (if (enum.any? #(= :staged $2.state) ui.plugins-meta)
-    (exec-open-transaction ui)
+    #nil ;(exec-open-transaction ui)
     (vim.notify "Nothing staged, refusing to commit")))
 
 (fn exec-keymap-<cr> [ui]
@@ -577,7 +279,7 @@
           (set meta.log-open (not meta.log-open))
           (schedule-redraw ui))
         (do
-          (exec-diff ui meta)))
+          #nil));(exec-diff ui meta)))
       (vim.notify "May only view diff of staged or unstaged sync-able plugins"))))
 
 (fn prepare-interface [ui]
@@ -598,15 +300,6 @@
         (api.nvim_buf_set_keymap :n :u "" {:callback #(exec-keymap-u ui)}))
   ui)
 
-(fn dump [...]
-  (let [{: view} (require :fennel)
-        all (enum.reduce #(.. $1 (view $3 {:prefer-colon? true
-                                           :detect-cylcles false
-
-                                           }))
-                         "" [...])]
-    (enum.map #$1 #(string.gmatch all "[^\n]+"))))
-
 (fn M.attach [win buf proxies opts]
   "Attach user-provided win+buf to pact view"
   (use R :pact.lib.ruin.result
@@ -623,16 +316,10 @@
                 :package->line {}
                 :errors []}
                (prepare-interface))]
-    ;; TODO: render failed plugins into the UI
-    ;(->> (E.filter #(R.err? $2) packages)
-    ;     (E.each #(table.insert ui.errors (R.unwrap $2))))
-
-    (api.nvim_buf_set_option buf :modifiable true)
-    (api.nvim_buf_set_lines buf 0 -1 false (dump runtime.packages))
 
     ;; TODO unsub all on win close
-    ;; TODO: technically we're subbing to err's to here but little effect
-    (runtime:walk-packages #(subscribe $1 #(schedule-redraw ui)))
+    (runtime:walk-packages #(if (not (R.err? $1))
+                              (subscribe $1 #(schedule-redraw ui))))
     (set ui.layout.max-name-length
          (runtime:walk-packages (fn [max package]
                                   (if (not (R.err? package))
