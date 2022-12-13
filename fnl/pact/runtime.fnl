@@ -21,60 +21,6 @@
     (E.each #(E.depth-walk f $2 nid)
             runtime.packages)))
 
-;; TODO: this may be less useful than it seems. The UI will probably always
-;; walk all packages because it needs to show more contextual information
-;; (this package is staged because of shared dependency, this package for this
-;; dependency is pinned to x@y). When things can be shared such as "state"/text
-;; they need to be copied out anyway. It also needs to be kept in sync as new
-;; packages appear, without any hanging references.
-;; Simpler just to walk the tree all the time no?
-; (fn Runtime.update-package-list [runtime]
-;   "Flatten a packages down into:
-
-;   {package-id {:contraints [a ...]
-;                :depends-on [id ...]
-;                :depended-by [id ...]
-;                :packages [package ...]}
-;    ...}
-
-;   Most interaction with packages is done via the manifest as it has
-;   key based lookup and collates multiple constraints, etc. Note that packages
-;   is plural as one canonical package may be used in multiple places - with
-;   different constraints and configuration!
-
-;   We retain the graph in full form mostly for contextual error reporting."
-;   (fn new-meta-package [package]
-;     {:canonical-id package.canonical-id
-;      :constraints [[package.canonical-id package.constraint]]
-;      :depends-on (E.map #$2.canonical-id package.depends-on)
-;      :depended-by [(?. package :depended-by :canonical-id)]
-;      :after :TODO
-;      :name package.name
-;      :source package.source
-;      :path package.path
-;      :state :waiting
-;      :defined-by [package]})
-;   (fn patch-meta-package [existing new]
-;     (let [?parent new.depended-by
-;           constraint (if ?parent
-;                        [?parent.canonical-id new.constraint]
-;                        [new.canonical-id new.constraint])]
-;       (E.append$ existing.constraints constraint)
-;       (E.concat$ existing.depends-on (E.map #$2.canonical-id new.depends-on))
-;       (E.append$ existing.depended-by (?. new :depended-by :canonical-id))
-;       (E.append$ existing.defined-by new.uid)
-;       existing))
-
-;   (let [f (fn [acc node history]
-;             (let [parent (E.last history)]
-;               (when (and parent (not (R.err? node)))
-;                 (match (. acc node.canonical-id)
-;                   nil (tset acc node.canonical-id (new-meta-package node))
-;                   x (patch-meta-package x node)))
-;               acc))]
-;     (set runtime.package-list (Runtime.walk-packages runtime f {}))
-;     runtime))
-
 (fn Runtime.add-proxied-plugins [runtime proxies]
   ;; TODO rewrite doc
   "User defined plugins are wrapped in a thin proxy function so nothing else
@@ -265,9 +211,8 @@
       wf))
 
   (fn make-unique-facts-wf [package]
-    (let [wf (DiscoverHeadCommit.new
-               package.canonical-id
-               (rel-path->abs-path runtime :transaction package.path.rtp))
+    (let [wf (DiscoverHeadCommit.new package.canonical-id
+                                     (rel-path->abs-path runtime :transaction package.path.rtp))
           handler (fn handler [event]
                     (match event
                       (where e (R.ok? e))
