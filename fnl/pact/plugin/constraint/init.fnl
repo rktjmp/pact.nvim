@@ -15,7 +15,18 @@
 (fn set-tostring [t]
   (setmetatable t {:__tostring
                    (fn [[_ kind spec]]
-                     (.. kind "#" (string.gsub spec "%s" "")))}))
+                     (let [datum (match kind
+                                   :commit (let [{: abbrev-sha} (require :pact.git.commit)]
+                                             (abbrev-sha spec))
+                                   any spec)
+                           name (match kind
+                                  :commit ""
+                                  :tag :#
+                                  :version ""
+                                  :branch ""
+                                  _ "??")]
+                       ;; strip possible spaces from version spec
+                       (.. name (string.gsub datum "%s" ""))))}))
 
 (fn Constraint.constraint? [c]
   (match? [:git any-1 any-2] c))
@@ -88,7 +99,8 @@
   (error "satisfies? requires constraint and commit"))
 
 (fn* Constraint.solve
-  "Given a constraint and list of commits, return best fitting commit")
+  "Given a constraint and list of commits, return *best fitting* commit, where
+  this is the latest version for version constraints.")
 
 (fn+ Constraint.solve
   (where [constraint commits] (and (Constraint.version? constraint) (seq? commits)))
