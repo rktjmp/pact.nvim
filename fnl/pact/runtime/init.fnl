@@ -124,7 +124,7 @@
                         ;; now attach specific errors to each sibling if possible
                         (E.each (fn [_ [[_ uid] msg]]
                                   (-> (E.find-value #(match? {:uid uid} $2) siblings)
-                                      (E.set$ :text msg)
+                                      (E.set$ :text msg) ;;TODO we'll not set text directly when we have more errors defined, it should just be the UI interpreting them
                                       (E.set$ :state :error)))
                                [(R.unwrap e)])
                       (PubSub.unsubscribe wf handler))
@@ -135,7 +135,7 @@
                                           (set package.text msg)
                                           (PubSub.broadcast package :events-changed))))))]
       (PubSub.subscribe wf handler)
-      (runtime.scheduler:add-workflow wf))))
+      (runtime.scheduler.remote:add-workflow wf))))
 
 (fn Runtime.discover-current-status [runtime]
   "Find existing local and remote commits about the current set of packages then
@@ -172,6 +172,7 @@
                       (where e (R.ok? e))
                       (let [commits (R.unwrap e)]
                         (update-siblings (fn [package]
+                                           ;; merge new values in with 
                                            (set package.commits (E.reduce #(E.set$ $1 $2 $3)
                                                                           (or package.commits {})
                                                                           commits))
@@ -242,9 +243,9 @@
                            (E.map #(make-canonical-facts-wf $2)))
         unique-wfs (->> (Package.packages->seq runtime.packages)
                         (E.map #(make-unique-facts-wf $2)))]
-    (E.each #(Scheduler.add-workflow runtime.scheduler $2)
+    (E.each #(Scheduler.add-workflow runtime.scheduler.remote $2)
             canonical-wfs)
-    (E.each #(Scheduler.add-workflow runtime.scheduler $2)
+    (E.each #(Scheduler.add-workflow runtime.scheduler.remote $2)
             unique-wfs))
   runtime)
 
@@ -276,12 +277,13 @@
 
   runtime)
 
+(
 (fn Runtime.workflow-stats [runtime]
-  (let [active (length runtime.scheduler.active)
-        queued (length runtime.scheduler.queue)]
-    {:active active
-     :queued queued}))
-
+  (E.reduce #(let [active (length (. runtime :scheduler $3 :active))
+                    queued (length (. runtime :scheduler $3 :queue))]
+               (E.merge$ $1 {:active active
+                             :queued queued}
+                         #(+ $1 $2)))))
 (fn Runtime.new [opts]
   (let [Scheduler (require :pact.workflow.scheduler)
         FS (require :pact.workflow.exec.fs)
@@ -290,10 +292,12 @@
                 :head (FS.join-path (vim.fn.stdpath :data) :site/pack/pact/data/HEAD)
                 :data (FS.join-path (vim.fn.stdpath :data) :site/pack/pact/data)
                 :repos (FS.join-path (vim.fn.stdpath :data) :site/pack/pact/data/repos)}
-         :transaction {:head {}}
+         :transaction {:head {}
+                       :pending {}
+                       :historic []}
          :packages {}
-         :scheduler scheduler ;; TODO: we can have more than one scheduler,
-                              ;; really we want to rate limit remote work not local checks
+         :scheduler {:remote (Scheduler.new {:concurrency-limit opts.concurrency-limit})
+                     :local (Scheduler.new {:concurrency-limit opts.concurrency-limit})}
          :walk-packages Runtime.walk-packages}
         (parse-disk-layout))))
 
