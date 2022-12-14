@@ -5,19 +5,21 @@
 ;; behaviour to act syncronously. Workflows expect to be ran by a scheduler, which
 ;; should call (run workflow).
 
-(import-macros {: use} :pact.lib.ruin.use)
+(import-macros {: ruin!} :pact.lib.ruin)
+(ruin!)
 
 (use result :pact.lib.ruin.result
      {: string? : thread?} :pact.lib.ruin.type
-     enum :pact.lib.ruin.enum
+     E :pact.lib.ruin.enum
+     R :pact.lib.ruin.result
      {:format fmt} string
      {:loop uv} vim)
 
 (fn start-timer [workflow]
-  (enum.set$ workflow :timer (uv.now)))
+  (E.set$ workflow :timer (uv.now)))
 
 (fn stop-timer [workflow]
-  (enum.set$ workflow :timer (- (uv.now) workflow.timer)))
+  (E.set$ workflow :timer (- (uv.now) workflow.timer)))
 
 (fn resume [workflow]
   "Called by the scheduler, workflow should yield or return a value"
@@ -99,12 +101,48 @@
     (where workflow)
     (resume workflow)))
 
+(var id 0)
+(fn gen-id []
+  (set id (+ id 1))
+  id)
+
 (fn new [id f]
-  {:id id
+  (var handlers [])
+  (var detach-current false)
+
+  (fn* attach-handler
+    "Attach handler to workflow which must provide an on-ok and on-err
+    function, and an optional on-msg function. Handlers are run in order of
+    attachment and may detatch by calling `detatch-handler` while running."
+    (where [wf on-ok on-err] (and (function? on-ok) (function? on-err)))
+    (attach-handler wf on-ok on-err #nil)
+    (where [wf on-ok on-err on-msg] (and (function? on-ok) (function? on-err) (function? on-msg)))
+    (let [a-handler {: on-ok : on-err : on-msg}]
+      (table.insert handlers a-handler)
+      wf))
+
+  {:id (.. "workflow-" (gen-id) "-" id)
    :thread (coroutine.create f)
    :events []
    :timer nil
-   :future nil})
+   :future nil
+   :attach-handler attach-handler
+   :detach-handler #(set detach-current true)
+   :handle (fn [wf event]
+             (set handlers
+                  (E.map (fn [_ handler]
+                           (let [{: on-ok : on-err : on-msg} handler]
+                             (match event
+                               (where ok (R.ok? ok))
+                               (on-ok (R.unwrap ok))
+                               (where err (R.err? err))
+                               (on-err (R.unwrap err))
+                               (where msg (string? msg))
+                               (on-msg msg))
+                             (if (not detach-current)
+                               handler)))
+                         handlers))
+             wf)})
 
 (fn log [x ...]
   (if (string? x)

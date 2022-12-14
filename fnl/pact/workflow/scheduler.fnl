@@ -41,7 +41,9 @@
       (tset scheduler :active (E.map (fn [_ [wf _result]] wf) continued))
       ;; dispatch any messages
       (->> (E.flatten [halted continued])
-           (E.map (fn [_ [wf result]] (broadcast wf result))))
+           (E.map (fn [_ [wf result]]
+                    (wf:handle result)
+                    (broadcast wf result))))
       ;; if any halted workflows belonged to a set and that set is no longer present
       ;; in the active or queued, broadcast a generic ok event.
       (->> (E.flatten [halted continued])
