@@ -46,11 +46,8 @@
     (let [wf (DiscoverHeadCommit.new package.canonical-id
                                      (FS.join-path path-prefix package.path.rtp))]
       (wf:attach-handler
-        (fn [commits]
-          ;;TODO re set this some where more appropriate
-          ; (set package.commits (E.reduce #(E.set$ $1 $2 $3)
-          ;                                (or package.commits {})
-          ;                                commits))
+        (fn [commit]
+          (set package.head commit)
           (set package.state :unstaged)
           (PubSub.broadcast package (R.ok :head-updated)))
         (fn [err]
