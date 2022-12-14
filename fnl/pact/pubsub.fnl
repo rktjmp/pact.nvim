@@ -1,6 +1,6 @@
 (import-macros {: ruin!} :pact.lib.ruin)
 (ruin!)
-(use enum :pact.lib.ruin.enum)
+(use E :pact.lib.ruin.enum)
 
 ;; holds list of topics -> callbacks
 (local registry {})
@@ -13,11 +13,11 @@
   ;; copy queue so any bcasts cant effect the current queue
   (let [current-queue bcast-queue
         _ (set bcast-queue [])]
-    (enum.each #(let [{: topic : payload} $2
-                      targets (or (. registry topic) [])]
-                  (enum.each #($1 (enum.unpack payload))
-                             targets))
-               current-queue)))
+    (E.each #(let [{: topic : payload} $2
+                   targets (or (. registry topic) [])]
+               (E.each #($1 (E.unpack payload))
+                       targets))
+            current-queue)))
 
 ;; public api
 
@@ -34,12 +34,12 @@
   (let [topic (. registry topic-id)]
     (when topic
       (tset topic callback nil)
-      (if (enum.empty? topic)
+      (if (E.empty? topic)
         (tset registry topic-id nil))
       (values true))))
 
 (fn broadcast [topic ...]
-  (table.insert bcast-queue {: topic :payload (enum.pack ...)})
+  (table.insert bcast-queue {: topic :payload (E.pack ...)})
   ;; first insert schedules a drain in next event loop
   (if (= 1 (length bcast-queue))
     (vim.schedule drain-queue)))
