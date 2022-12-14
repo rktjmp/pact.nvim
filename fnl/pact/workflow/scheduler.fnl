@@ -64,11 +64,17 @@
   (tset scheduler :active nil)
   (uv.close scheduler.timer-handle))
 
+(var id 0)
+(fn gen-id []
+  (set id (+ 1 id))
+  id)
+
 (fn* new
   (where [])
   (new {})
   (where [opts])
-  {:concurrency-limit (or (?. opts :concurrency-limit) 5)
+  {:id (gen-id)
+   :concurrency-limit (or (?. opts :concurrency-limit) 5)
    :queue []
    :active []
    :timer-handle nil

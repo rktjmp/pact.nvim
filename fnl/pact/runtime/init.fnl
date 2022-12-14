@@ -124,7 +124,7 @@
                        :pending {}
                        :historic []}
          :packages {}
-         :scheduler {:remote (Scheduler.new {:concurrency-limit 1}) ;opts.concurrency-limit})
+         :scheduler {:remote (Scheduler.new {:concurrency-limit opts.concurrency-limit})
                      :local (Scheduler.new {:concurrency-limit opts.concurrency-limit})}
          :walk-packages Runtime.walk-packages}
         (parse-disk-layout))))

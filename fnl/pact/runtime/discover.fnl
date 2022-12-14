@@ -123,7 +123,7 @@
                         (E.map #(make-unique-facts-wf $2)))]
     (E.each #(scheduler/add-workflow runtime.scheduler.remote $2)
             canonical-wfs)
-    (E.each #(scheduler/add-workflow runtime.scheduler.remote $2)
+    (E.each #(scheduler/add-workflow runtime.scheduler.local $2)
             unique-wfs))
   runtime)
 
