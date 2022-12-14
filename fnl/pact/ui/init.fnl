@@ -195,6 +195,7 @@
     (api.nvim_buf_set_lines ui.buf 0 1 false
                             [(fmt "workflows: %s active %s waiting"
                                   (-> (Runtime.workflow-stats ui.runtime)
+                                      (vim.pretty_print)
                                       (#(values $1.active $1.queued))))])
     (api.nvim_buf_set_lines ui.buf 1 -1 false text-lines)
     (->> (E.map (fn [i parts]
@@ -304,6 +305,7 @@
   "Attach user-provided win+buf to pact view"
   (use R :pact.lib.ruin.result
        E :pact.lib.ruin.enum)
+
   (let [opts (or opts {})
         Runtime (require :pact.runtime)
         runtime (-> (Runtime.new {:concurrency-limit opts.concurrency-limit})
@@ -327,7 +329,7 @@
                                       (length package.name)
                                       max)
                                     max)) 0))
-
+    (vim.pretty_print runtime.scheduler)
     (Runtime.discover-current-status runtime)
     (schedule-redraw ui)))
 

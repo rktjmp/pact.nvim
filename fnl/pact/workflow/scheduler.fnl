@@ -48,6 +48,7 @@
   (table.insert scheduler.queue workflow)
   (when (= nil scheduler.timer-handle)
     (let [h (uv.new_timer)]
+      (print :created-timer h)
       (tset scheduler :timer-handle h)
       (uv.timer_start h 0 (/ 1000 60) (make-timer-cb scheduler)))))
 
