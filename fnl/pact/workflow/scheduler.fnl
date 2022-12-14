@@ -41,14 +41,12 @@
         (uv.close scheduler.timer-handle)
         (tset scheduler :timer-handle nil)))))
 
-
 (fn add-workflow [scheduler workflow]
   "Enqueue a workflow with on-event and on-complete callbacks.
   Starts scheduler loop if it's not currently running"
   (table.insert scheduler.queue workflow)
   (when (= nil scheduler.timer-handle)
     (let [h (uv.new_timer)]
-      (print :created-timer h)
       (tset scheduler :timer-handle h)
       (uv.timer_start h 0 (/ 1000 60) (make-timer-cb scheduler)))))
 

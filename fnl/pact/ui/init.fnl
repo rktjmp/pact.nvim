@@ -329,8 +329,10 @@
                                       (length package.name)
                                       max)
                                     max)) 0))
-    (vim.pretty_print runtime.scheduler)
-    (Runtime.discover-current-status runtime)
+    (->> (Runtime.Command.discover-status)
+        (Runtime.dispatch runtime))
+
+    ; (Runtime.discover-current-status runtime)
     (schedule-redraw ui)))
 
     ; (let [topic (Runtime.run-status runtime)]

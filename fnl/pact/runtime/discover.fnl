@@ -34,7 +34,7 @@
           (E.each #(set $2.__facts-workflow nil) siblings)
           ;; Siblings all share the same constraint set so once we have all
           ;; commit data we can solve for run against one pacakge in the set.
-          (Runtime.exec-solve-package-constraints runtime package)))
+          (Runtime.dispatch runtime (Runtime.Command.solve-package package))))
       [:err _] (error :some-error-cant-solve)))
 
   (fn make-canonical-facts-wf [package]

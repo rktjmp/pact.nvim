@@ -129,16 +129,21 @@
          :walk-packages Runtime.walk-packages}
         (parse-disk-layout))))
 
-(fn Runtime.discover-current-status [runtime]
-  (use Discover :pact.runtime.discover)
-  (Discover.current-status runtime))
+(set Runtime.Command {})
 
-(fn Runtime.exec-solve-package-constraints [runtime package]
-  (use Solve :pact.runtime.solve)
-  (Solve.solve runtime package))
+(fn Runtime.Command.discover-status []
+  (fn [runtime]
+    (use Discover :pact.runtime.discover)
+    (Discover.current-status runtime)))
 
-; (fn Runtime.dispatch [command]
-;   (match command
-;     [:exec :inital-load] 
+(fn Runtime.Command.solve-package [package]
+  (fn [runtime]
+    (use Solve :pact.runtime.solve)
+    (Solve.solve runtime package)))
+
+(fn Runtime.dispatch [runtime command]
+  (match (command runtime)
+    v (print v))
+  runtime)
 
 (values Runtime)
