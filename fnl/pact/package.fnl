@@ -105,9 +105,9 @@
           package-trees))
 
 (fn* Package.reduce-packages
-  (where [f acc package-trees] (and (function? f) (table? package-trees)))
+  (where [f ?acc package-trees] (and (function? f) (table? package-trees)))
   (E.reduce #(E.depth-walk f $3 $1 next-id)
-            acc package-trees))
+            ?acc package-trees))
 
 (fn* Package.find-packages
   (where [f package-trees] (and (function? f) (table? package-trees)))
@@ -138,5 +138,20 @@
   (Package.find-canonical-set package.canonical-id package-trees)
   (where [canonical-id package-trees] (string? canonical-id))
   (Package.find-packages #(match? {:canonical-id canonical-id} $1) package-trees))
+
+;; experimental...
+(set Package.Tree {:walk Package.walk-packages
+                   :reduce Package.reduce-packages
+                   :map #(Package.Tree.reduce (fn [acc n h]
+                                                (E.append$ acc ($1 n h)))
+                                              [] $2)
+                   :each #(Package.Tree.reduce (fn [_ n h] (do
+                                                             ($1 n h)
+                                                             nil))
+                                               nil $2)
+                   :find Package.find-packages
+                   :find-canonical-set Package.find-canonical-set
+                   :->seq Package.packages->seq
+                   :->canonical-sets Package.packages->canonical-set})
 
 (values Package)
