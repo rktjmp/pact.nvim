@@ -6,6 +6,8 @@
      {:format fmt} string
      {:loop uv} vim)
 
+(local hertz (/ 1000 60))
+
 (var id 0)
 (fn gen-id []
   (set id (+ 1 id))
@@ -26,32 +28,29 @@
           {: ok? : err?} (require :pact.lib.ruin.result)
           ;; pair the workflows with the run results so we can drop halted and
           ;; retain continued wfs in the active list.
-          {:halt halted :cont continued} (->> (E.group-by
-                                                #(match (run $2)
-                                                   (action value) (values action [$2 value])
-                                                   _ (error "workflow.run did not return 2 values"))
-                                                scheduler.active)
-                                              ; TODO when ruin is updated
-                                              ; (E.merge$ {:halt [] :cont []})
-                                              )
-          [halted continued] [(or halted [])  (or continued [])]
-          ;; collect anything that wants to be scheduled again, and update the
-          ;; currently active list. Do this before dispatching any messaages so
-          ;; any error in that occurs in dispatching doesn't leave zombie workflows.
-          _ (tset scheduler :active (E.map (fn [_ [wf _result]] wf) continued))
-          ;; dispatch any messages
-          _ (->> (E.flatten [halted continued])
-                 (E.map (fn [_ [wf result]] (broadcast wf result))))
-
-          ;; if any halted workflows belonged to a set and that set is no longer present
-          ;; in the active or queued
-          _ (->> (E.flatten [halted continued])
-                 (E.map #(. $2 1))
-                 (E.reject #(nil? $2.workflow-set))
-                 (E.reject (fn [_ {: workflow-set}]
-                             (and (E.any? #(= workflow-set $2.workflow-set) continued)
-                                  (E.any? #(= workflow-set $2.workflow-set) scheduler.queued))))
-                 (E.map #(broadcast $2.workflow-set (R.ok))))]
+          {:halt halted :cont continued}
+          (->> (E.group-by
+                 #(match (run $2)
+                    (action value) (values action [$2 value])
+                    _ (error "workflow.run did not return 2 values"))
+                 scheduler.active)
+               (E.merge$ {:halt [] :cont []}))]
+      ;; collect anything that wants to be scheduled again, and update the
+      ;; currently active list. Do this before dispatching any messaages so
+      ;; any error in that occurs in dispatching doesn't leave zombie workflows.
+      (tset scheduler :active (E.map (fn [_ [wf _result]] wf) continued))
+      ;; dispatch any messages
+      (->> (E.flatten [halted continued])
+           (E.map (fn [_ [wf result]] (broadcast wf result))))
+      ;; if any halted workflows belonged to a set and that set is no longer present
+      ;; in the active or queued, broadcast a generic ok event.
+      (->> (E.flatten [halted continued])
+           (E.map #(. $2 1))
+           (E.reject #(nil? $2.workflow-set))
+           (E.reject (fn [_ {: workflow-set}]
+                       (and (E.any? #(= workflow-set $2.workflow-set) continued)
+                            (E.any? #(= workflow-set $2.workflow-set) scheduler.queued))))
+           (E.map #(broadcast $2.workflow-set (R.ok))))
       ;; stop or nah?
       (when (= 0 (length scheduler.queue) (length scheduler.active))
         (uv.timer_stop scheduler.timer-handle)
@@ -65,7 +64,7 @@
   (when (= nil scheduler.timer-handle)
     (let [h (uv.new_timer)]
       (tset scheduler :timer-handle h)
-      (uv.timer_start h 0 (/ 1000 60) (make-timer-cb scheduler)))))
+      (uv.timer_start h 0 hertz (make-timer-cb scheduler)))))
 
 (fn add-workflow-set [scheduler workflows]
   (local id {:id (gen-id)})

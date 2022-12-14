@@ -133,8 +133,36 @@
 
 (fn Runtime.Command.discover-status []
   (fn [runtime]
-    (use Discover :pact.runtime.discover)
-    (Discover.current-status runtime)))
+    (use Discover :pact.runtime.discover
+         Scheduler :pact.workflow.scheduler)
+    (let [packages (Package.packages->seq runtime.packages)
+          commit-wfs (->> (E.group-by #(. $2 :canonical-id) packages)
+                          (E.map (fn [_ canonical-set]
+                                   [(Discover.make-discover-canonical-set-commits-workflow canonical-set
+                                                                                           runtime.path.repos)
+                                    ;; remember a package for triggering solve workflow
+                                    (. canonical-set 1)])))
+          head-wfs (E.map #(Discover.make-head-commit-workflow $2 runtime.path.transaction)
+                          packages)]
+      (E.each (fn [_ [wf canonical-package]]
+                (PubSub.subscribe canonical-package
+                                  (fn handler [e]
+                                    ;; TODO: either constantise this key value
+                                    ;; or find a better way to subscribe to the
+                                    ;; workflow finishing, but only executing
+                                    ;; *after* the interal handler has set the
+                                    ;; commits. We need the exact key match because
+                                    ;; ok? will match other workflows executing.
+                                    ;; Possibly we always broadcast the source
+                                    ;; wf along with the event?
+                                    (when (match? [:ok :facts-updated] e)
+                                      (->> (Runtime.Command.solve-package canonical-package)
+                                           (Runtime.dispatch runtime))
+                                      (PubSub.unsubscribe canonical-package handler))))
+                (Scheduler.add-workflow runtime.scheduler.remote wf))
+              commit-wfs)
+      (E.each #(Scheduler.add-workflow runtime.scheduler.local $2)
+              head-wfs))))
 
 (fn Runtime.Command.solve-package [package]
   (fn [runtime]

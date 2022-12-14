@@ -195,7 +195,6 @@
     (api.nvim_buf_set_lines ui.buf 0 1 false
                             [(fmt "workflows: %s active %s waiting"
                                   (-> (Runtime.workflow-stats ui.runtime)
-                                      (vim.pretty_print)
                                       (#(values $1.active $1.queued))))])
     (api.nvim_buf_set_lines ui.buf 1 -1 false text-lines)
     (->> (E.map (fn [i parts]
@@ -330,7 +329,7 @@
                                       max)
                                     max)) 0))
     (->> (Runtime.Command.discover-status)
-        (Runtime.dispatch runtime))
+         (Runtime.dispatch runtime))
 
     ; (Runtime.discover-current-status runtime)
     (schedule-redraw ui)))

@@ -87,6 +87,7 @@
                            $3 $1 next-id)
             [] package-trees))
 
+;; TODO: canonical-setS and proably cid -> [...]
 (fn* Package.packages->canonical-set
   (where [package-trees] (table? package-trees))
   (E.reduce #(E.depth-walk (fn [acc node]
@@ -98,6 +99,7 @@
             {} package-trees))
 
 (fn* Package.walk-packages
+  "Depth walk given package tree, calling `(f package history)`."
   (where [f package-trees] (and (function? f) (table? package-trees)))
   (E.each #(E.depth-walk f $2 next-id)
           package-trees))
@@ -116,7 +118,22 @@
                                 list))
                            [] package-trees))
 
+; (fn Package.iter-packages [package-trees]
+;   "Create an iterator which returns `package-uid` `package` when called"
+;   ;; This is really pretty inefficent but also probably doesn't matter so much unless
+;   ;; there are thousands of plugins.
+;   ;; Improvement depends on ruin.depth-walk using a better internal structure
+;   ;; instead of relying on the current stack.
+;   (var i 0)
+;   (let [seq (Package.packages->seq package-trees)
+;         *next* (fn []
+;                  (set i (+ i 1))
+;                  (match (. seq i)
+;                    package (values package.uid package)))]
+;     (values *next* {} {})))
+
 (fn* Package.find-canonical-set
+  "Given package or canonical-id, find all other packages in the canonical set"
   (where [package package-trees] (. package :canonical-id))
   (Package.find-canonical-set package.canonical-id package-trees)
   (where [canonical-id package-trees] (string? canonical-id))
