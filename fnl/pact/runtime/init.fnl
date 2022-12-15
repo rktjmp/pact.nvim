@@ -134,8 +134,9 @@
           head-wfs (E.map #(Discover.make-head-commit-workflow $2 runtime.path.transaction)
                           packages)]
       (E.each (fn [_ [wf canonical-package]]
-                (wf:attach-handler #(->> (Runtime.Command.solve-package canonical-package)
-                                         (Runtime.dispatch runtime))
+                (wf:attach-handler #(E.each #(Runtime.dispatch runtime $2)
+                                            [(Runtime.Command.solve-package canonical-package)
+                                             (Runtime.Command.solve-latest canonical-package)])
                                    #nil)
                 (Scheduler.add-workflow runtime.scheduler.remote wf))
               commit-wfs)
@@ -146,6 +147,11 @@
   (fn [runtime]
     (use Solve :pact.runtime.solve)
     (Solve.solve runtime package)))
+
+(fn Runtime.Command.solve-latest [package]
+  (fn [runtime]
+    (use SolveLatest :pact.runtime.solve-latest)
+    (SolveLatest.solve runtime package)))
 
 (fn Runtime.dispatch [runtime command]
   (match (command runtime)
