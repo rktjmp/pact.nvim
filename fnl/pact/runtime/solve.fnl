@@ -8,6 +8,7 @@
      FS :pact.workflow.exec.fs
      PubSub :pact.pubsub
      Package :pact.package
+     Runtime :pact.runtime
      {:format fmt} string)
 
 (local Solve {})
@@ -52,9 +53,9 @@
                   [e]))
         (fn [msg]
           (update-sibling (fn [p]
-                            (E.append$ package.events msg)
-                            (set package.text msg)
-                            (PubSub.broadcast package :events-changed)))))
+                            (E.append$ p.events msg)
+                            (set p.text msg)
+                            (PubSub.broadcast p :events-changed)))))
       (runtime.scheduler.local:add-workflow wf))))
 
 Solve
