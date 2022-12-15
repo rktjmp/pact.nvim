@@ -64,6 +64,7 @@
             :head (FS.join-path root :HEAD)} ;; github-user-repo-nvim/HEAD
      :order 0 ;(E.reduce #(+ $1 1) 1 runtime.packages)
      :events []
+     :workflows []
      :state :waiting
      :text "waiting for scheduler"}))
 

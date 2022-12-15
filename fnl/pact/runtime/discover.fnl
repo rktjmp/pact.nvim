@@ -22,14 +22,18 @@
              package.canonical-id
              (Package.source package)
              (FS.join-path path-prefix package.path.head))]
+    (update-siblings (fn [package]
+                       (tset package.workflows wf true)))
     (wf:attach-handler
       (fn [commits]
         (update-siblings (fn [package]
+                           (tset package.workflows wf nil)
                            (set package.commits commits)
                            (set package.state :unstaged)))
         (PubSub.broadcast package (R.ok :facts-updated)))
       (fn [err]
         (update-siblings (fn [package]
+                           (tset package.workflows wf nil)
                            (set package.text err)
                            (set package.commits [])
                            (set package.state :error)))
@@ -45,12 +49,15 @@
     (use DiscoverHeadCommit :pact.workflow.status.discover-head-commit)
     (let [wf (DiscoverHeadCommit.new package.canonical-id
                                      (FS.join-path path-prefix package.path.rtp))]
+      (tset package.workflows wf true)
       (wf:attach-handler
         (fn [commit]
+          (tset package.workflows wf nil)
           (set package.head commit)
           (set package.state :unstaged)
           (PubSub.broadcast package (R.ok :head-updated)))
         (fn [err]
+          (tset package.workflows wf nil)
           (set package.text err)
           (set package.state :error)
           (PubSub.broadcast package (R.err :head-updated)))

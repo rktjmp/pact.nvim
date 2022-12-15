@@ -27,20 +27,23 @@
     (E.reduce #(.. $1 (string.upper $2) $3)
                  "" #(string.gmatch joined "(%w)([%w]+)"))))
 
-(fn rate-limited-inc [[t n]]
+(var last-time 0)
+(var spinner-frame 0)
+
+(fn rate-limited-inc [value]
   ;; only increment n at a fixed fps
   ;; uv.now increments only at the event loop start, but this is ok for us.
   (let [every-n-ms (/ 1000 6)
         now (vim.loop.now)]
-    (if (< every-n-ms (- now t))
-      [now (+ n 1)]
-      [t n])))
+    (if (< every-n-ms (- now last-time))
+      (do
+        (set last-time now)
+        (+ value 1))
+      value)))
 
 (fn progress-symbol [progress]
-  (match progress
-    nil " "
-    [_ n] (let [symbols [:◐ :◓ :◑ :◒]]
-            (.. (. symbols (+ 1 (% n (length symbols)))) " "))))
+  (let [symbols [:◐ :◓ :◑ :◒]]
+    (. symbols (+ 1 (% progress (length symbols))))))
 
 (fn workflow-symbol []
   "⧖")
@@ -53,6 +56,8 @@
                               :indent (length $2)
                               :state :error}
         package-data #{:name $1.name
+                       :working? (E.any? #$1.timer $1.workflows)
+                       :waiting? (E.any? #$1 $1.workflows)
                        :constraint $1.constraint
                        :text $1.text
                        :indent (length $2)
@@ -63,7 +68,9 @@
     (E.map (fn [node history]
              (if (R.err? node)
                (configuration-error node history)
-               (package-data node history)))
+               (do
+                 (print node.uid (vim.inspect (E.any? #$ node.workflows)))
+                 (package-data node history))))
            #(Package.iter packages {:include-err? true}))))
 
 (fn ui-data->rows [ui-data]
@@ -91,6 +98,13 @@
     ;; specifically included as it must be utf8 aware, and the chunk generator
     ;; best knows how to do that curently.
     (let [{: name : text : state : constraint : indent} package
+          wf-col [(match [package.working? package.waiting?]
+                    [true _] {:text "work"
+                              :highlight :DiagnosticInfo}
+                   [_ true] {:text "wait"
+                             :highlight :Comment}
+                   _ {:text "____"
+                      :highlight :None})]
           name-col [{:text (indent-with indent)
                      :highlight "@comment"
                      :length (indent-width indent)}
@@ -107,7 +121,7 @@
                                      :warning :DiagnosticWarn
                                      :error :DiagnosticError
                                      _ (highlight-for :staged :text))}]]
-      [name-col constraint-col action-col message-col]))
+      [wf-col name-col constraint-col action-col message-col]))
 
   ;; convert each package into a collection of columns, into a collection of lines
   (E.map #(package->columns $2) ui-data))
@@ -216,12 +230,9 @@
 
     (write-lines const.lede)
 
-    ;; debug data
-    (write-lines [(fmt "workflows: %s active %s waiting"
-                       (-> (Runtime.workflow-stats ui.runtime)
-                           (#(values $1.active $1.queued))))])
-
     (local package-line-offset current-line)
+    ;; we want to store where we started drawing packages so we can link back
+    ;; input events.
     (set ui.package-lines-offset package-line-offset)
     (write-lines (rows->lines rows))
 
