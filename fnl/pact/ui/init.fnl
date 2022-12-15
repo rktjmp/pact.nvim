@@ -1,13 +1,13 @@
 (import-macros {: ruin!} :pact.lib.ruin)
 (ruin!)
 
-(use enum :pact.lib.ruin.enum
+(use E :pact.lib.ruin.enum
      {: '*dout*} :pact.log
      inspect :pact.inspect
      scheduler :pact.workflow.scheduler
      {: subscribe : unsubscribe} :pact.pubsub
      {: ok? : err?} :pact.lib.ruin.result
-     result :pact.lib.ruin.result
+     R :pact.lib.ruin.result
      api vim.api
      FS :pact.workflow.exec.fs
      {:format fmt} string
@@ -35,7 +35,7 @@
 (fn highlight-for [section-name field]
   ;; my-section,  -> PactMySectionTitle
   (let [joined (table.concat  [:pact section-name field] "-")]
-    (enum.reduce #(.. $1 (string.upper $2) $3)
+    (E.reduce #(.. $1 (string.upper $2) $3)
                  "" #(string.gmatch joined "(%w)([%w]+)"))))
 
 (fn lede []
@@ -70,14 +70,14 @@
   "⧖")
 
 (fn render-section [ui section-name previous-lines]
-  (let [relevant-plugins (->> (enum.filter #(= $2.state section-name) ui.runtime.packages)
-                              (enum.map #$2)
-                              (enum.sort$ #(<= $1.order $2.order)))
-        new-lines (enum.reduce (fn [lines i package]
+  (let [relevant-plugins (->> (E.filter #(= $2.state section-name) ui.runtime.packages)
+                              (E.map #$2)
+                              (E.sort$ #(<= $1.order $2.order)))
+        new-lines (E.reduce (fn [lines i package]
                                  (let [name-length (length package.name)
                                        line [[package.name
                                               (highlight-for section-name :name)]
-                                             [(string.rep " " (- (+ 1 ui.layout.max-name-length) name-length))
+                                             [(string.rep " " (- (+ 1 ui.layout.col-1-width) name-length))
                                               nil]
                                              [(progress-symbol package.progress)
                                               (highlight-for section-name :name)]
@@ -87,16 +87,16 @@
                                    (tset ui.package->line package.id (+ 2
                                                                         (length previous-lines)
                                                                         (length lines)))
-                                   (enum.append$ lines line)))
+                                   (E.append$ lines line)))
                                [] relevant-plugins)]
     (if (< 0 (length new-lines))
       (-> previous-lines
-          (enum.append$ [[(.. "" (section-title section-name))
+          (E.append$ [[(.. "" (section-title section-name))
                           (highlight-for section-name :title)]
                          [" " nil]
                          [(fmt "(%s)" (length new-lines)) :PactComment]])
-          (enum.concat$ new-lines)
-          (enum.append$ [["" nil]]))
+          (E.concat$ new-lines)
+          (E.append$ [["" nil]]))
       (values previous-lines))))
 
 (fn log-line-breaking? [log-line]
@@ -112,118 +112,208 @@
 
 (fn output-classic [ui]
   (let [sections [:error :active :unstaged :staged :waiting :updated :held :up-to-date]
-        lines (-> (enum.reduce (fn [lines _ section] (render-section ui section lines))
+        lines (-> (E.reduce (fn [lines _ section] (render-section ui section lines))
                            (lede) sections)
-                  (enum.concat$ (usage)))
+                  (E.concat$ (usage)))
         ;; pretty gnarly, we want to split the line data out into just flat text
         ;; to be inserted into the buffer, and a list of [start stop highlight]
         ;; groups for extmark highlighting.
-        lines->text-and-extmarks (enum.reduce
+        lines->text-and-extmarks (E.reduce
                                   (fn [[str extmarks] _ [txt ?extmarks]]
                                     [(.. str txt)
                                      (if ?extmarks
-                                       (enum.append$ extmarks [(length str)
+                                       (E.append$ extmarks [(length str)
                                                                (+ (length str) (length txt))
                                                                ?extmarks])
                                        extmarks)]))
-        [text extmarks] (enum.reduce (fn [[lines extmarks] _ line]
+        [text extmarks] (E.reduce (fn [[lines extmarks] _ line]
                                       (let [[new-lines new-extmarks] (lines->text-and-extmarks ["" []] line)]
-                                        [(enum.append$ lines new-lines)
-                                         (enum.append$ extmarks new-extmarks)]))
+                                        [(E.append$ lines new-lines)
+                                         (E.append$ extmarks new-extmarks)]))
                                     [[] []] lines)]
-    (when (enum.any? #(string.match $2 "\n") text)
+    (when (E.any? #(string.match $2 "\n") text)
       (print "pact.ui text had unexpected new lines")
       (print (vim.inspect text)))
     (api.nvim_buf_set_option ui.buf :modifiable true)
     (api.nvim_buf_set_lines ui.buf 0 -1 false text)
     (api.nvim_buf_set_option ui.buf :modifiable false)
-    (enum.map (fn [i line-marks]
-                (enum.map (fn [_ [start stop hl]]
+    (E.map (fn [i line-marks]
+                (E.map (fn [_ [start stop hl]]
                             (api.nvim_buf_add_highlight ui.buf ui.ns-id hl (- i 1) start stop))
                           line-marks))
               extmarks)
-    ; (enum.map #(if $2.log-open
+    ; (E.map #(if $2.log-open
     ;              (api.nvim_buf_set_extmark ui.buf ui.ns-id (- $2.on-line 1) 0
-    ;                                        {:virt_lines (enum.map #(log-line->chunks $2)
+    ;                                        {:virt_lines (E.map #(log-line->chunks $2)
     ;                                                               $2.log)}))
     ;           ui.plugins-meta)
     ))
 
-(fn output [ui]
-  (use R :pact.lib.ruin.result
-       E :pact.lib.ruin.enum
+(fn package-tree->ui-data [packages]
+  (use Package :pact.package
        Runtime :pact.runtime)
-  (let [data (Runtime.walk-packages ui.runtime
-                                    (fn [acc node history]
-                                      (if (R.err? node)
-                                        (E.append$ acc {:name "Configuration Error"
-                                                        :text (R.unwrap node)
-                                                        :indent (length history)
-                                                        :state :error})
-                                        (E.append$ acc {:name node.name
-                                                        :constraint node.constraint
-                                                        :text node.text
-                                                        :indent (length history)
-                                                        :state node.state
-                                                        :events node.events
-                                                        :error (and (R.err? (E.last node.events))
-                                                                    (E.last node.events))})))
-                                    [])
-        lines-with-extmarks  (E.reduce (fn [lines _ {: name : text : state : constraint : indent}]
-                                         (E.append$ lines [[(string.rep " " indent) "@comment"]
-                                                           [name (match state
-                                                                   :warning :DiagnosticWarn
-                                                                   :error :DiagnosticError
-                                                                   _ (highlight-for :staged :name))]
-                                                           [(string.rep " " (- (+ 1 ui.layout.max-name-length)
-                                                                               (length name)
-                                                                               indent))
-                                                            :text]
-                                                           [(tostring constraint) (highlight-for :staged :comment)]
-                                                           [" " "@comment"]
-                                                           [text (match state
-                                                                   :warning :DiagnosticWarn
-                                                                   :error :DiagnosticError
-                                                                   _ (highlight-for :staged :text))]]))
-                                       [] data)
-        text-lines (E.map (fn [_ parts]
-                            (-> (E.map (fn [_ [text _]] text) parts)
-                                (table.concat "")))
-                          lines-with-extmarks)]
+  (let [configuration-error #{:name "Configuration Error"
+                              :text (R.unwrap $1)
+                              :indent (length $2)
+                              :state :error}
+        package-data #{:name $1.name
+                       :constraint $1.constraint
+                       :text $1.text
+                       :indent (length $2)
+                       :state $1.state
+                       :events $1.events
+                       :error (and (R.err? (E.last $1.events))
+                                   (E.last $1.events))}]
+    (Package.Tree.map (fn [node history]
+                        (if (R.err? node)
+                          (configuration-error node history)
+                          (package-data node history)))
+                      packages)))
 
-    (api.nvim_buf_set_option ui.buf :modifiable true)
-    (api.nvim_buf_set_lines ui.buf 0 1 false
-                            [(fmt "workflows: %s active %s waiting"
-                                  (-> (Runtime.workflow-stats ui.runtime)
-                                      (#(values $1.active $1.queued))))])
-    (api.nvim_buf_set_lines ui.buf 1 -1 false text-lines)
-    (->> (E.map (fn [i parts]
-                  (-> (E.reduce (fn [[cursor exts] _ [text hl]]
-                                  [(+ cursor (length text))
-                                   (E.append$ exts {:line i
-                                                    :start cursor
-                                                    :stop (+ cursor (length text))
-                                                    :hl hl})])
-                                [0 []] parts)
-                      ((fn [[_ marks]] marks))))
-                lines-with-extmarks)
-         (E.flatten)
-         (E.each (fn [_ {: line : start : stop : hl}]
-                   ;; line -0 for wf status, should be -1 normally
-                   (api.nvim_buf_add_highlight ui.buf ui.ns-id hl (- line 0) start stop))))
-    ;; TODO this should be more ... good. We want to throw back "rich" errors
-    ;; that are more than just text messages.
-    (E.each #(if $2.error
-               (let [msg (R.unwrap $2.error)
-                     lines (E.map #[[$1 :PactError]] #(string.gmatch (inspect msg) "([^\n]+)"))]
-                 (api.nvim_buf_set_extmark ui.buf ui.ns-id (- $1 0) 0
-                                           {:virt_lines lines})))
-            data)
+(fn ui-data->rows [ui-data]
+  (fn indent-with [n]
+    (match n
+      0 "  "
+      1 "   +"
+      n (fmt "   %s+" (string.rep " " (- n 0)))))
+
+  (fn indent-width [n]
+    ;; (length) will show bytes not char width
+    (match (indent-with n)
+      ; "  " 0
+      s (-> (length s)
+            ; (- 2)
+            )))
+
+  (fn package->columns [package]
+    ;; Columns should be roughly:
+    ;;
+    ;; name | constraint | action/newer? | message
+    ;;
+    ;; Each column may contain multiple "chunk" tables, which describe
+    ;; text content, highlight group and optionally length. Length may be
+    ;; specifically included as it must be utf8 aware, and the chunk generator
+    ;; best knows how to do that curently.
+    (let [{: name : text : state : constraint : indent} package
+          name-col [{:text (indent-with indent)
+                     :highlight "@comment"
+                     :length (indent-width indent)}
+                    {:text name
+                     :highlight (match state
+                                  :warning :DiagnosticWarn
+                                  :error :DiagnosticError
+                                  _ (highlight-for :staged :name))}]
+          constraint-col [{:text (tostring constraint)
+                           :highlight (highlight-for :staged :text)}]
+          action-col [{:text "no-action" :highlight "action"}]
+          message-col [{:text text
+                        :highlight (match state
+                                     :warning :DiagnosticWarn
+                                     :error :DiagnosticError
+                                     _ (highlight-for :staged :text))}]]
+      [name-col constraint-col action-col message-col]))
+
+  ;; convert each package into a collection of columns, into a collection of lines
+  (E.map #(package->columns $2) ui-data))
+
+(fn rows->lines [rows]
+  (fn decomp-line [line-chunks]
+    ;; combine columns with column separators
+    (-> (E.map #(-> (E.map (fn [_ {: text}] text) $2)
+                (table.concat "")) line-chunks)
+        (table.concat "")))
+  (E.map #(decomp-line $2) rows))
+
+(fn rows->extmarks [rows]
+  (var cursor 0)
+  (fn decomp-column [column]
+    ;; combine column chunks into [{: hl : start : stop} ...]
+    (-> (E.reduce (fn [data _ {: text : highlight :length len}]
+                    (let [start cursor
+                          stop (+ cursor (or len (length text)))]
+                      (set cursor stop)
+                      (E.append$ data {:start start
+                                       :stop stop
+                                       :highlight highlight})))
+                  [] column)))
+  (fn decomp-line [line]
+    ;; combine columns with column separators
+    (set cursor 0) ;; ugly...
+    (-> (E.map #(decomp-column $2) line)
+        (E.flatten)))
+  (E.map #(decomp-line $2) rows))
+
+(fn inject-padding-chunks [rows]
+  ;; Each row has columns, but they are not intrinsically aligned in the data
+  ;; we need to work out what the padding should be for each column on each
+  ;; line and add that as a new chunk in the line.
+  ;; It must be added as a new chunk so we can avoid over-highlight or
+  ;; mis-highligting text when we apply the extmarks.
+  (let [sum-col-chunk-widths #(E.reduce
+                                #(let [{: text :length len} $3]
+                                   (match [text len]
+                                     [nil nil] $1
+                                     [any nil] (+ $1 (length text))
+                                     [_ any] (+ $1 len)
+                                     _ $1))
+                                0 $1)
+        get-col-widths (E.map (fn [i col] [i (sum-col-chunk-widths col)]))
+        ;; woof
+        widths (->> rows
+                    ;; get widths of each column in each row as [col-n width]
+                    (E.map #(get-col-widths $2))
+                    (E.flatten)
+                    ;; group all widths by column
+                    (E.group-by (fn [_ [col-n w]] (values col-n w)))
+                    ;; find max width for each column
+                    (E.reduce (fn [maxes i widths] (E.set$ maxes i (math.max (unpack widths))))
+                              []))]
+    ;; now we can re-iterate the columns and inject a padding chunk
+    (E.map (fn [_ row]
+             (E.map (fn [col-n column]
+                      (let [cur-width (sum-col-chunk-widths column)
+                            padding (- (. widths col-n) cur-width)]
+                        ;; TODO performance if needed, drop copy for each
+                        (if (< 0 padding)
+                          (E.concat$ [] column [{:text (string.rep " " padding)
+                                                 :highlight "None"}])
+                          (E.concat$ [] column))))
+                    row))
+           rows)))
+
+(fn intersperse-column-breaks [rows]
+  (E.map #(E.intersperse $2 [{:text "  " :highlight "None"}])
+         rows))
+
+  (fn output [ui]
+    (use Packages :pact.package
+         Runtime :pact.runtime)
+    (let [rows (-> (package-tree->ui-data ui.runtime.packages)
+                   (ui-data->rows)
+                   (inject-padding-chunks)
+                   (intersperse-column-breaks))]
+
+      (api.nvim_buf_set_option ui.buf :modifiable true)
+
+      ;; debug data
+      (api.nvim_buf_set_lines ui.buf 0 1 false
+                              [(fmt "workflows: %s active %s waiting"
+                                    (-> (Runtime.workflow-stats ui.runtime)
+                                        (#(values $1.active $1.queued))))])
+
+      (api.nvim_buf_set_lines ui.buf 1 -1 false (rows->lines rows))
+      (E.each (fn [line marks]
+              (E.each (fn [_ {: start : stop : highlight}]
+                        ;; line -0 for wf status, should be -1 normally
+                        (api.nvim_buf_add_highlight ui.buf ui.ns-id highlight (- line 0) start stop))
+                      marks))
+            (rows->extmarks rows))
+
     (if _G.__pact_debug
       (let [lines (E.map #$1
                          #(string.gmatch (inspect _G.__pact_debug) "([^\n]+)"))]
-        (vim.pretty_print lines)
         (api.nvim_buf_set_lines ui.buf -1 -1 false lines)))
+
     (api.nvim_buf_set_option ui.buf :modifiable false)))
 
 (fn schedule-redraw [ui]
@@ -235,13 +325,13 @@
     (vim.defer_fn #(output ui) rate)))
 
 (fn exec-keymap-cc [ui]
-  (if (enum.any? #(= :staged $2.state) ui.plugins-meta)
+  (if (E.any? #(= :staged $2.state) ui.plugins-meta)
     #nil ;(exec-open-transaction ui)
     (vim.notify "Nothing staged, refusing to commit")))
 
 (fn exec-keymap-<cr> [ui]
   (let [[line _] (api.nvim_win_get_cursor ui.win)
-        meta (enum.find-value #(= line $2.on-line) ui.plugins-meta)]
+        meta (E.find-value #(= line $2.on-line) ui.plugins-meta)]
     (match [meta (?. meta :plugin :path :package)]
       [any path] (do
                    (print path)
@@ -251,7 +341,7 @@
 
 (fn exec-keymap-s [ui]
   (let [[line _] (api.nvim_win_get_cursor ui.win)
-        meta (enum.find-value #(= line $2.on-line) ui.plugins-meta)]
+        meta (E.find-value #(= line $2.on-line) ui.plugins-meta)]
     (if (and meta (= :unstaged meta.state))
       (do
         (tset meta :state :staged)
@@ -260,7 +350,7 @@
 
 (fn exec-keymap-u [ui]
   (let [[line _] (api.nvim_win_get_cursor ui.win)
-        meta (enum.find-value #(= line $2.on-line) ui.plugins-meta)]
+        meta (E.find-value #(= line $2.on-line) ui.plugins-meta)]
     (if (and meta (= :staged meta.state))
       (do
         (tset meta :state :unstaged)
@@ -270,7 +360,7 @@
 
 (fn exec-keymap-= [ui]
   (let [[line _] (api.nvim_win_get_cursor ui.win)
-        meta (enum.find-value #(= line $2.on-line) ui.plugins-meta)]
+        meta (E.find-value #(= line $2.on-line) ui.plugins-meta)]
     (if (and meta
              (or (= :staged meta.state) (= :unstaged meta.state))
              (= :sync (. meta.action 1)))
@@ -302,9 +392,6 @@
 
 (fn M.attach [win buf proxies opts]
   "Attach user-provided win+buf to pact view"
-  (use R :pact.lib.ruin.result
-       E :pact.lib.ruin.enum)
-
   (let [opts (or opts {})
         Runtime (require :pact.runtime)
         runtime (-> (Runtime.new {:concurrency-limit opts.concurrency-limit})
@@ -312,7 +399,7 @@
         ui (-> {: runtime
                 : win
                 : buf
-                :layout {:max-name-length 1}
+                :layout {:col-1-width 1}
                 :ns-id (api.nvim_create_namespace :pact-ui)
                 :package->line {}
                 :errors []}
@@ -321,7 +408,7 @@
     ;; TODO unsub all on win close
     (runtime:walk-packages #(if (not (R.err? $1))
                               (subscribe $1 #(schedule-redraw ui))))
-    (set ui.layout.max-name-length
+    (set ui.layout.col-1-width
          (runtime:walk-packages (fn [max package]
                                   (if (not (R.err? package))
                                     (if (< max (length package.name))
