@@ -58,6 +58,9 @@
                               :state :error}
         package-data #{:uid $1.uid
                        :name $1.name
+                       :latest (match $.latest-version
+                                 ver (table.concat ver.versions ",")
+                                 _ "")
                        :working? (E.any? #$1.timer $1.workflows)
                        :waiting? (E.any? #$1 $1.workflows)
                        :constraint $1.constraint
@@ -77,8 +80,8 @@
   (fn indent-with [n]
     (match n
       0 ""
-      1 " +"
-      n (fmt " %s+" (string.rep " " (- n 0)))))
+      1 " \\"
+      n (fmt " %s\\" (string.rep " " (- n 0)))))
 
   (fn indent-width [n]
     ;; (length) will show bytes not char width
@@ -99,12 +102,14 @@
     ;; best knows how to do that curently.
     (let [{: name : text : state : constraint : indent} package
           wf-col [(match [package.working? package.waiting?]
-                    [true _] {:text "\""
+                    [true _] {:text "*"
                               :highlight :DiagnosticInfo}
-                   [_ true] {:text "'"
+                   [_ true] {:text "_"
                              :highlight :Comment}
                    _ {:text " "
                       :highlight :Comment})]
+          latest-col [{:text package.latest
+                       :highlight :Comment}]
           name-col [{:text (indent-with indent)
                      :highlight "@comment"
                      :length (indent-width indent)}
@@ -121,7 +126,7 @@
                                      :warning :DiagnosticWarn
                                      :error :DiagnosticError
                                      _ (highlight-for :staged :text))}]]
-      {:content [wf-col name-col constraint-col action-col message-col]
+      {:content [wf-col name-col constraint-col action-col latest-col message-col]
        :meta {:uid package.uid}}))
 
   ;; convert each package into a collection of columns, into a collection of lines
