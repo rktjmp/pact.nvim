@@ -99,11 +99,11 @@
     ;; best knows how to do that curently.
     (let [{: name : text : state : constraint : indent} package
           wf-col [(match [package.working? package.waiting?]
-                    [true _] {:text "work"
+                    [true _] {:text "\""
                               :highlight :DiagnosticInfo}
-                   [_ true] {:text "wait"
+                   [_ true] {:text "'"
                              :highlight :Comment}
-                   _ {:text "____"
+                   _ {:text " "
                       :highlight :Comment})]
           name-col [{:text (indent-with indent)
                      :highlight "@comment"
