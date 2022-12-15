@@ -51,11 +51,13 @@
 (fn package-tree->ui-data [packages]
   (use Package :pact.package
        Runtime :pact.runtime)
-  (let [configuration-error #{:name "Configuration Error"
+  (let [configuration-error #{:uid :error
+                              :name "Configuration Error"
                               :text (R.unwrap $1)
                               :indent (length $2)
                               :state :error}
-        package-data #{:name $1.name
+        package-data #{:uid $1.uid
+                       :name $1.name
                        :working? (E.any? #$1.timer $1.workflows)
                        :waiting? (E.any? #$1 $1.workflows)
                        :constraint $1.constraint
@@ -68,9 +70,7 @@
     (E.map (fn [node history]
              (if (R.err? node)
                (configuration-error node history)
-               (do
-                 (print node.uid (vim.inspect (E.any? #$ node.workflows)))
-                 (package-data node history))))
+               (package-data node history)))
            #(Package.iter packages {:include-err? true}))))
 
 (fn ui-data->rows [ui-data]
@@ -121,7 +121,8 @@
                                      :warning :DiagnosticWarn
                                      :error :DiagnosticError
                                      _ (highlight-for :staged :text))}]]
-      [wf-col name-col constraint-col action-col message-col]))
+      {:content [wf-col name-col constraint-col action-col message-col]
+       :meta {:uid package.uid}}))
 
   ;; convert each package into a collection of columns, into a collection of lines
   (E.map #(package->columns $2) ui-data))
@@ -132,7 +133,9 @@
     (-> (E.map #(-> (E.map (fn [_ {: text}] text) $2)
                     (table.concat "")) line-chunks)
         (table.concat "")))
-  (E.map #(decomp-line $2) rows))
+  ;; TODO or here as we use this for lede/usage as well as package lines
+  ;; (which have meta data), could be refactored
+  (E.map #(decomp-line (or $2.content $2)) rows))
 
 (fn rows->extmarks [rows]
   (var cursor 0)
@@ -149,8 +152,11 @@
   (fn decomp-line [line]
     ;; combine columns with column separators
     (set cursor 0) ;; ugly...
-    (-> (E.map #(decomp-column $2) line)
-        (E.flatten)))
+    (-> (E.map #(decomp-column $2) line.content)
+        (E.flatten)
+        (#(if line.meta
+            (E.append$ $1 {:id line.meta.uid :start 0 :stop 0})
+            $1))))
   (E.map #(decomp-line $2) rows))
 
 (fn inject-padding-chunks [rows]
@@ -171,7 +177,7 @@
         ;; woof
         widths (->> rows
                     ;; get widths of each column in each row as [col-n width]
-                    (E.map #(get-col-widths $2))
+                    (E.map #(get-col-widths $2.content))
                     (E.flatten)
                     ;; group all widths by column
                     (E.group-by (fn [_ [col-n w]] (values col-n w)))
@@ -180,19 +186,21 @@
                               []))]
     ;; now we can re-iterate the columns and inject a padding chunk
     (E.map (fn [_ row]
-             (E.map (fn [col-n column]
-                      (let [cur-width (sum-col-chunk-widths column)
-                            padding (- (. widths col-n) cur-width)]
-                        ;; TODO performance if needed, drop copy for each
-                        (if (< 0 padding)
-                          (E.concat$ [] column [{:text (string.rep " " padding)
-                                                 :highlight "None"}])
-                          (E.concat$ [] column))))
-                    row))
+             {:meta row.meta
+              :content (E.map (fn [col-n column]
+                                (let [cur-width (sum-col-chunk-widths column)
+                                      padding (- (. widths col-n) cur-width)]
+                                  ;; TODO performance if needed, drop copy for each
+                                  (if (< 0 padding)
+                                    (E.concat$ [] column [{:text (string.rep " " padding)
+                                                           :highlight "None"}])
+                                    (E.concat$ [] column))))
+                              row.content)})
            rows)))
 
 (fn intersperse-column-breaks [rows]
-  (E.map #(E.intersperse $2 [{:text "  " :highlight "None"}])
+  (E.map #{:meta $2.meta
+           :content (E.intersperse $2.content [{:text "  " :highlight "None"}])}
          rows))
 
 (local const {:lede (-> (E.map #[[{:text $2 :highlight :PactComment}]]
@@ -214,37 +222,35 @@
                  (ui-data->rows)
                  (inject-padding-chunks)
                  (intersperse-column-breaks))]
-
+    ;; clear extmarks so we don't have them all pile up. We have to re-make
+    ;; then each draw as the lines are re-drawn.
+    (set ui.extmarks [])
     (var current-line 0)
-    (macro write-lines [lines]
-      `(do
-         (let [len# (length ,lines)]
-           (api.nvim_buf_set_lines ui.buf
-                                   current-line
-                                   (+ current-line len#)
-                                   false
-                                   ,lines)
-           (set ,(sym :current-line) (+ ,(sym :current-line) len#)))))
+    (fn write-lines [lines]
+      (let [len (length lines)]
+        (api.nvim_buf_set_lines ui.buf
+                                current-line
+                                (+ current-line len)
+                                false
+                                lines)
+        (set current-line (+ current-line len))))
 
     (api.nvim_buf_set_option ui.buf :modifiable true)
 
     (write-lines const.lede)
 
     (local package-line-offset current-line)
-    ;; we want to store where we started drawing packages so we can link back
-    ;; input events.
-    (set ui.package-lines-offset package-line-offset)
     (write-lines (rows->lines rows))
-
     (write-lines const.usage)
 
     (E.each (fn [line marks]
-              (E.each (fn [_ {: start : stop : highlight}]
-                        (api.nvim_buf_add_highlight ui.buf
-                                                    ui.ns-id
-                                                    highlight
-                                                    (- (+ package-line-offset line) 1)
-                                                    start stop))
+              (E.each (fn [_ mark]
+                        (let [{: id : start : stop : highlight} mark
+                              line (- (+ package-line-offset line) 1)]
+                          (if id
+                            (-> (api.nvim_buf_set_extmark ui.buf ui.ns-meta-id line 0 {})
+                                (#(tset ui.extmarks $1 id)))
+                            (api.nvim_buf_add_highlight ui.buf ui.ns-id highlight line start stop))))
                       marks))
             (rows->extmarks rows))
 
