@@ -12,16 +12,6 @@
 
 (local Runtime {})
 
-;; TODO deprecated for Package.walk-* (?)
-(fn Runtime.walk-packages [runtime f ?acc]
-  "Depth walk the package graphs, optionally with an accumulator. See `ruin.depth-walk'."
-  (fn nid [n] n.depends-on)
-  (if ?acc
-    (E.reduce #(E.depth-walk f $3 $1 nid)
-              ?acc runtime.packages)
-    (E.each #(E.depth-walk f $2 nid)
-            runtime.packages)))
-
 (fn Runtime.add-proxied-plugins [runtime proxies]
   ;; TODO rewrite doc
   "User defined plugins are wrapped in a thin proxy function so nothing else
@@ -125,8 +115,7 @@
                        :historic []}
          :packages {}
          :scheduler {:remote (Scheduler.new {:concurrency-limit opts.concurrency-limit})
-                     :local (Scheduler.new {:concurrency-limit opts.concurrency-limit})}
-         :walk-packages Runtime.walk-packages}
+                     :local (Scheduler.new {:concurrency-limit opts.concurrency-limit})}}
         (parse-disk-layout))))
 
 (set Runtime.Command {})
@@ -135,7 +124,7 @@
   (fn [runtime]
     (use Discover :pact.runtime.discover
          Scheduler :pact.workflow.scheduler)
-    (let [packages (Package.packages->seq runtime.packages)
+    (let [packages (E.map #$ #(Package.iter runtime.packages))
           commit-wfs (->> (E.group-by #(. $2 :canonical-id) packages)
                           (E.map (fn [_ canonical-set]
                                    [(Discover.make-discover-canonical-set-commits-workflow canonical-set

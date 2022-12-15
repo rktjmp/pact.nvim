@@ -22,8 +22,6 @@
 
 (local Package {:Action {}})
 
-(fn next-id [n] n.depends-on)
-
 ; (fn Package.Action.none [package]
 ;   (doto package
 ;         (tset :action [:none])))
@@ -78,80 +76,22 @@
     [:git url] url
     _ (error "can't get package source for unknown source type")))
 
-(fn Package.packages->seq [package-trees]
-  "create seq of all packages in thes graph"
-  (E.reduce #(E.depth-walk (fn [acc node]
-                             (if (not (R.err? node))
-                               (E.append$ acc node)
-                               acc))
-                           $3 $1 next-id)
-            [] package-trees))
-
-;; TODO: canonical-setS and proably cid -> [...]
-(fn* Package.packages->canonical-set
-  (where [package-trees] (table? package-trees))
-  (E.reduce #(E.depth-walk (fn [acc node]
-                             (if (and (not (R.err? node))
-                                      (not (. acc node.canonical-id)))
-                               (E.set$ acc node.canonical-id node)
-                               acc))
-                           $3 $1 next-id)
-            {} package-trees))
-
-(fn* Package.walk-packages
-  "Depth walk given package tree, calling `(f package history)`."
-  (where [f package-trees] (and (function? f) (table? package-trees)))
-  (E.each #(E.depth-walk f $2 next-id)
-          package-trees))
-
-(fn* Package.reduce-packages
-  (where [f ?acc package-trees] (and (function? f) (table? package-trees)))
-  (E.reduce #(E.depth-walk f $3 $1 next-id)
-            ?acc package-trees))
-
-(fn* Package.find-packages
-  (where [f package-trees] (and (function? f) (table? package-trees)))
-  ;; TODO: performance optimisation target, can call reduced
-  (Package.reduce-packages (fn [list node history]
-                             (if (f node history)
-                                (E.append$ list node)
-                                list))
-                           [] package-trees))
-
-; (fn Package.iter-packages [package-trees]
-;   "Create an iterator which returns `package-uid` `package` when called"
-;   ;; This is really pretty inefficent but also probably doesn't matter so much unless
-;   ;; there are thousands of plugins.
-;   ;; Improvement depends on ruin.depth-walk using a better internal structure
-;   ;; instead of relying on the current stack.
-;   (var i 0)
-;   (let [seq (Package.packages->seq package-trees)
-;         *next* (fn []
-;                  (set i (+ i 1))
-;                  (match (. seq i)
-;                    package (values package.uid package)))]
-;     (values *next* {} {})))
-
-(fn* Package.find-canonical-set
-  "Given package or canonical-id, find all other packages in the canonical set"
-  (where [package package-trees] (. package :canonical-id))
-  (Package.find-canonical-set package.canonical-id package-trees)
-  (where [canonical-id package-trees] (string? canonical-id))
-  (Package.find-packages #(match? {:canonical-id canonical-id} $1) package-trees))
-
-;; experimental...
-(set Package.Tree {:walk Package.walk-packages
-                   :reduce Package.reduce-packages
-                   :map #(Package.Tree.reduce (fn [acc n h]
-                                                (E.append$ acc ($1 n h)))
-                                              [] $2)
-                   :each #(Package.Tree.reduce (fn [_ n h] (do
-                                                             ($1 n h)
-                                                             nil))
-                                               nil $2)
-                   :find Package.find-packages
-                   :find-canonical-set Package.find-canonical-set
-                   :->seq Package.packages->seq
-                   :->canonical-sets Package.packages->canonical-set})
+(fn Package.iter [packages opts]
+  (fn next-id [n] n.depends-on)
+  (let [opts (or opts {})
+        f (fn []
+            (E.each #(E.depth-walk (fn [package history]
+                                     (if (or opts.include-err? (not (R.err? package)))
+                                       (coroutine.yield package history)))
+                                   $2 next-id)
+                    packages)
+            ;; nil to termitate iter
+            nil)
+        iter (fn [coro]
+               (let [r (E.pack (coroutine.resume coro))]
+                 (match r
+                   [true _] (E.unpack r 2)
+                   [false _] (error (E.unpack r 2)))))]
+    (values iter (coroutine.create f) {})))
 
 (values Package)

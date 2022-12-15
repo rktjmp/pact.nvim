@@ -17,7 +17,10 @@
     (FS.join-path (. runtime :path in) path))
 
   (let [{:new solve-constraints/new} (require :pact.workflow.status.solve-constraints)
-        siblings (Package.find-canonical-set package runtime.packages)
+        siblings (E.reduce #(if (match? {:canonical-id package.canonical-id} $2)
+                              (E.append$ $1 $2)
+                              $1)
+                           [] #(Package.iter runtime.packages))
         update-sibling #(E.each (fn [_ p] ($1 p)) siblings)]
     ;; Pair each constraint with its package so any targetable errors can be
     ;; propagated back to the correct package.

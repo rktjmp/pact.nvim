@@ -3,6 +3,7 @@
 
 (use E :pact.lib.ruin.enum
      Render :pact.ui.render
+     Package :pact.package
      {: '*dout*} :pact.log
      inspect :pact.inspect
      scheduler :pact.workflow.scheduler
@@ -116,26 +117,15 @@
         ui (-> {: runtime
                 : win
                 : buf
-                :layout {:col-1-width 1}
                 :ns-id (api.nvim_create_namespace :pact-ui)
                 :package->line {}
                 :errors []}
                (prepare-interface))]
-
     ;; TODO unsub all on win close
-    (runtime:walk-packages #(if (not (R.err? $1))
-                              (subscribe $1 #(schedule-redraw ui))))
-    (set ui.layout.col-1-width
-         (runtime:walk-packages (fn [max package]
-                                  (if (not (R.err? package))
-                                    (if (< max (length package.name))
-                                      (length package.name)
-                                      max)
-                                    max)) 0))
+    (E.each #(subscribe $1 #(schedule-redraw ui))
+            #(Package.iter ui.runtime.packages))
     (->> (Runtime.Command.discover-status)
          (Runtime.dispatch runtime))
-
-    ; (Runtime.discover-current-status runtime)
     (schedule-redraw ui)))
 
     ; (let [topic (Runtime.run-status runtime)]

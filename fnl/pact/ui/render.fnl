@@ -60,11 +60,11 @@
                        :events $1.events
                        :error (and (R.err? (E.last $1.events))
                                    (E.last $1.events))}]
-    (Package.Tree.map (fn [node history]
-                        (if (R.err? node)
-                          (configuration-error node history)
-                          (package-data node history)))
-                      packages)))
+    (E.map (fn [node history]
+             (if (R.err? node)
+               (configuration-error node history)
+               (package-data node history)))
+           #(Package.iter packages {:include-err? true}))))
 
 (fn ui-data->rows [ui-data]
   (fn indent-with [n]
@@ -195,8 +195,7 @@
                          (rows->lines))})
 
 (fn Render.output [ui]
-  (use Packages :pact.package
-       Runtime :pact.runtime)
+  (use Runtime :pact.runtime)
   (let [rows (-> (package-tree->ui-data ui.runtime.packages)
                  (ui-data->rows)
                  (inject-padding-chunks)
