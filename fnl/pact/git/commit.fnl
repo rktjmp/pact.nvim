@@ -43,13 +43,18 @@
 (fn to-string [c]
   (let [join (fn [prefix list]
                (if (not (E.empty? list))
-                 (fmt "%s[%s]" prefix
-                      (-> (E.map (fn [_  name] name) list)
-                          (table.concat ",")))
+                 (fmt "(%s)"
+                      (-> (E.map (fn [_  name] (fmt "%s%s" prefix name)) list)
+                          (table.concat " ")
+                          ))
                  ""))]
-    (E.reduce #(.. $1 (join (string.sub $3 1 1) (. c $3)))
+    (E.reduce #(.. $1 (join (match $3
+                              :versions :v
+                              :branches ""
+                              :tags :#)
+                            (. c $3)))
               (fmt "%s@" c.short-sha)
-              [:branches :versions :tags])))
+              [:versions :branches :tags])))
 
 (fn* Commit.new
   (where [sha] (valid-sha? sha))

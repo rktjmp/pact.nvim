@@ -104,7 +104,7 @@
                    [_ true] {:text "wait"
                              :highlight :Comment}
                    _ {:text "____"
-                      :highlight :None})]
+                      :highlight :Comment})]
           name-col [{:text (indent-with indent)
                      :highlight "@comment"
                      :length (indent-width indent)}
