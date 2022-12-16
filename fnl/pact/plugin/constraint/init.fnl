@@ -15,6 +15,7 @@
   (setmetatable t {:__tostring
                    (fn [[_ kind spec]]
                      (let [datum (match kind
+                                   :head :HEAD
                                    :commit (let [{: abbrev-sha} (require :pact.git.commit)]
                                              (abbrev-sha spec))
                                    any spec)
@@ -23,6 +24,7 @@
                                   :tag :#
                                   :version ""
                                   :branch ""
+                                  :head "*"
                                   _ "??")]
                        ;; strip possible spaces from version spec
                        (.. name (string.gsub datum "%s" ""))))}))
@@ -42,6 +44,9 @@
 (fn Constraint.version? [c]
   (match? [:git :version any] c))
 
+(fn Constraint.head? [c]
+  (match? [:git :HEAD _] c))
+
 (fn Constraint.type [c]
   (match c
     [:git x _] x))
@@ -53,21 +58,23 @@
 
 (fn* Constraint.git?
   ;; we don't currently (?) check validity of contents, just shape
-  (where [[:git kind spec]] (and (one-of? [:commit :branch :tag :version] kind)
+  (where [[:git kind spec]] (and (one-of? [:HEAD :commit :branch :tag :version] kind)
                                  (string? spec)))
   true
   (where _)
   false)
 
 (fn* Constraint.git
-  "Create a git constraint, which may match against a commit, tag, branch or
-  version. A sha may optionally be given, if one is known which realises the
-  constraint to an actual git commit for comparing a remote vs local constraint.")
+  "Create a git constraint, which may match against a commit, tag, branch,
+  version or HEAD.")
 
 (fn+ Constraint.git [:version ver]
   (match (valid-version-spec? ver)
     true (set-tostring [:git :version ver])
     false (values nil "invalid version spec for version constraint")))
+
+(fn+ Constraint.git [:head]
+  (set-tostring [:git :head true]))
 
 (fn+ Constraint.git [:commit sha]
   (match (valid-sha? sha)
@@ -92,6 +99,8 @@
   (where [[:git :version version-spec] commit])
   (let [{: satisfies?} (require :pact.plugin.constraint.version)]
     (E.any? #(satisfies? version-spec $2) commit.versions))
+  (where [[:git :head _] commit])
+  (= true commit.HEAD?)
   (where [[:git _ _] {: sha}])
   false
   (where _)

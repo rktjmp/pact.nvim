@@ -67,7 +67,7 @@
                  [:tag t] [:tags t]
                  [:branch b] [:branches b]
                  [:version v] [:versions (expand-version v)]
-                 [:HEAD _] [:HEAD true]
+                 [:HEAD true] [:HEAD true]
                  ;; todo: reimplement validation of version numbers?
                  ; (where [:version v] (not (match-relaxed-version? v)))
                  ; (error (fmt "invalid version specification %s" v))
