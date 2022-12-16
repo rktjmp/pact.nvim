@@ -133,10 +133,17 @@
                   (E.map (fn [_ handler]
                            (let [{: on-ok : on-err : on-msg} handler]
                              (match event
+                               ;; Note: we elect to *not* unwrap the result
+                               ;; type as this ensures the reciever handler
+                               ;; always gets *all* results by unpacking,
+                               ;; otherwise its easy to miss some and saves
+                               ;; packing/unpacking ... all the time.
+                               ;; We often want to re-wrap errors into the
+                               ;; event stack *anyway*.
                                (where ok (R.ok? ok))
-                               (on-ok (R.unwrap ok))
+                               (on-ok ok)
                                (where err (R.err? err))
-                               (on-err (R.unwrap err))
+                               (on-err err)
                                (where msg (string? msg))
                                (on-msg msg))
                              (if (not detach-current)

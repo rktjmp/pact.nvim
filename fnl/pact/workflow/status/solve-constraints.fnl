@@ -44,8 +44,14 @@
         (err [[constraint-from constraint]
               (fmt "commit does not exist: %s" sha)])))
     ;; No local repo, just hope the user typed it in correctly..
-    (ok [[constraint-from constraint]
-         [(Commit.new (Constraint.value constraint))]]))
+    (let [sha (Constraint.value constraint)
+          ;;We may have a "short" sha in the constraint, so we need to fill it
+          ;;out with dummy data to let commit accept it. This *should* not be
+          ;;impactful as the value here is really just used as an optimisic
+          ;;placeholder.
+          full-sha (.. sha (string.rep "0" (- 40 (length sha))))]
+      (ok [[constraint-from constraint]
+           [(Commit.new full-sha)]])))
 
   ;; head, branch and tags just fall through to Constraint.solve
   (where [[constraint-from constraint] commits _] (or (Constraint.branch? constraint)
@@ -80,7 +86,7 @@
                         (E.filter (fn [_sha constraints] (= args.n (length constraints)))))]
     (if (E.empty? maybe-good)
       ;; nothing satisfied all, you could term this "disatisfied".
-      (err "could not reconcile constraints") ;; TODO note those that could? return ok/err pairs for ui?
+      (err "no commits matched any constraint") ;; TODO note those that could? return ok/err pairs for ui?
       ;; We found some satisfactory commits, but there is an edge case where
       ;; version constraints have an optimal commit in the set - that is: the
       ;; latest version that satisfies all constraints.
@@ -130,13 +136,6 @@
          (E.map #(solve-constraint-type $2 commits repo-path))
          (E.reduce #(R.join $1 $3) (ok))
          (#(R.map-ok $1 best-commit-or-err)))))
-    ;;; TODO TODO We can optimise the call to this wf, currently we call for
-    ;;; every package in a set but we end up solving for all packages in the set
-    ;;; so we can change it to just a single call and propagate the result to
-    ;;; correct targets by the constraint owner
-    ;;;
-    ;;; probably change from sending depended-by to uid and just set the message specifically
-
 
 (fn* new
   (where [id repo-path constraints commits])

@@ -25,17 +25,16 @@
           wf (solve-latest/new package.canonical-id commits)]
       (tset package.workflows wf true)
       (wf:attach-handler
-        (fn [?version]
+        (fn [latest]
           (update-sibling (fn [package]
                             (tset package.workflows wf nil)
-                            ;; TODO, cant append nil, worth recording "no latest"?
-                            (if ?version
-                              (E.append$ package.events ?version))
-                            (set package.latest-version ?version)
-                            ; (set package.text (tostring ?version))
+                            (E.append$ package.events latest)
+                            (match latest
+                              [:ok version] (set package.latest-version version)
+                              [:ok nil] nil)
                             (PubSub.broadcast package :solved-latest))))
         (fn [e]
-          (error e))
+          (error (fmt "solve-latest-failed: %s" e)))
         (fn [msg]
           (update-sibling (fn [package]
                             (E.append$ package.events msg)

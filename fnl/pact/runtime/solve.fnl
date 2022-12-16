@@ -35,22 +35,33 @@
           (update-sibling (fn [p]
                             (tset package.workflows wf nil)
                             (E.append$ p.events e)
-                            (set p.text (tostring e))
+                            (set p.text (vim.inspect e {:newline ""}))
                             (PubSub.broadcast p :solved))))
         (fn [e]
           (update-sibling (fn [p]
                             (tset package.workflows wf nil)
                             ;; store the error and set generic fail message
-                            (E.append$ p.events (R.err e))
+                            (E.append$ p.events e)
                             (set p.text (fmt "could not solve %s-way constraint due to error in canonical sibling" (length constraints)))
                             (set p.state :warning)
                             (PubSub.broadcast p :error)))
-          ;; now attach specific errors to each sibling if possible
-          (E.each (fn [_ [[_ uid] msg]]
-                    (-> (E.find-value #(match? {:uid uid} $2) siblings)
-                        (E.set$ :text msg) ;;TODO we'll not set text directly when we have more errors defined, it should just be the UI interpreting them
-                        (E.set$ :state :error)))
-                  [e]))
+          (match e
+            ;; just an error, apply to all
+            (where [:err msg nil] (string? msg))
+            (update-sibling (fn [p]
+                            (tset package.workflows wf nil)
+                            (E.append$ p.events e)
+                            (set p.text msg)
+                            (set p.state :error)
+                            (PubSub.broadcast p :error)))
+            ;; otherwise we have a list of failed
+            _ (E.each (fn [_ details]
+                        (match details
+                          [[_ uid] msg] (-> (E.find-value #(match? {:uid uid} $2) siblings)
+                                            (E.set$ :text msg) ;;TODO we'll not set text directly when we have more errors defined, it should just be the UI interpreting them
+                                            (E.set$ :state :error))
+                          _ (error details)))
+                      [(R.unwrap e)])))
         (fn [msg]
           (update-sibling (fn [p]
                             (E.append$ p.events msg)

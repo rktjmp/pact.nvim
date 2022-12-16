@@ -28,15 +28,16 @@
       (fn [commits]
         (update-siblings (fn [package]
                            (tset package.workflows wf nil)
-                           (set package.commits commits)
+                           (set package.commits (R.unwrap commits))
                            (set package.state :unstaged)))
         (PubSub.broadcast package (R.ok :facts-updated)))
       (fn [err]
         (update-siblings (fn [package]
                            (tset package.workflows wf nil)
-                           (set package.text err)
+                           (set package.text (tostring err))
                            (set package.commits [])
                            (set package.state :error)))
+        ;; TODO wrapping not needed anymore
         (PubSub.broadcast package (R.err :facts-updated)))
       (fn [msg]
         (update-siblings (fn [package]
@@ -53,12 +54,12 @@
       (wf:attach-handler
         (fn [commit]
           (tset package.workflows wf nil)
-          (set package.head commit)
+          (set package.head (R.unwrap commit))
           (set package.state :unstaged)
           (PubSub.broadcast package (R.ok :head-updated)))
         (fn [err]
           (tset package.workflows wf nil)
-          (set package.text err)
+          (set package.text (tostring err))
           (set package.state :error)
           (PubSub.broadcast package (R.err :head-updated)))
         (fn [msg]
