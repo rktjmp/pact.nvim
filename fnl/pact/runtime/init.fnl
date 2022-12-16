@@ -156,7 +156,6 @@
 (fn Runtime.Command.stage-package [package]
   "Set package state to staged, this will also propagate up and down its
   dependency tree."
-  (print :stage package.uid)
   (fn [runtime]
     (fn stage-down [packages]
       (E.each #(do
