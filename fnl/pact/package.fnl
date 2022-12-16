@@ -78,11 +78,17 @@
     _ (error "can't get package source for unknown source type")))
 
 (fn Package.iter [packages opts]
+  ;; TODO: currently we maintain [(make-pact) (make-pact)] in runtime.packages
+  ;; so we need the each in this. It does make iterating just one package and
+  ;; its dependencies awkward (?) as you need to pass int [package].
+  ;; Previously we had a placeholder "root" package, which may return with
+  ;; metapackages? It's awkward in a different away as you either must discard it
+  ;; on return or hide it in the UI or ...
   (fn next-id [n] n.depends-on)
   (let [opts (or opts {})
         f (fn []
             (E.each #(E.depth-walk (fn [package history]
-                                     (if (or opts.include-err? (not (R.err? package)))
+                                     (if (or (not (R.err? package)) opts.include-err?)
                                        (coroutine.yield package history)))
                                    $2 next-id)
                     packages)
@@ -93,6 +99,6 @@
                  (match r
                    [true _] (E.unpack r 2)
                    [false _] (error (E.unpack r 2)))))]
-    (values iter (coroutine.create f) {})))
+    (values iter (coroutine.create f) 0)))
 
 (values Package)

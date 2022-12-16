@@ -4,6 +4,7 @@
 (use E :pact.lib.ruin.enum
      Render :pact.ui.render
      Package :pact.package
+     Runtime :pact.runtime
      {: '*dout*} :pact.log
      inspect :pact.inspect
      scheduler :pact.workflow.scheduler
@@ -61,13 +62,10 @@
   (let [[line _] (api.nvim_win_get_cursor ui.win)
         line (- line 1)]
     (match (api.nvim_buf_get_extmarks ui.buf ui.ns-meta-id [line 0] [line 0] {})
-      [[extmark-id]] (vim.pretty_print extmark-id (. ui.extmarks extmark-id)))))
-        ; meta (E.find-value #(= line $2.on-line) ui.plugins-meta)]
-    ; (if (and meta (= :unstaged meta.state))
-      ; (do
-        ; (tset meta :state :staged)
-        ; (schedule-redraw ui))
-      ; (vim.notify "May only stage unstaged plugins"))))
+      [[extmark-id]] (let [package (E.find #(= $1.uid (. ui.extmarks extmark-id))
+                                           #(Package.iter ui.runtime.packages))
+                           command (Runtime.Command.stage-package package)]
+                       (Runtime.dispatch ui.runtime command)))))
 
 (fn exec-keymap-u [ui]
   (let [[line _] (api.nvim_win_get_cursor ui.win)

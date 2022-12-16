@@ -153,6 +153,23 @@
     (use SolveLatest :pact.runtime.solve-latest)
     (SolveLatest.solve runtime package)))
 
+(fn Runtime.Command.stage-package [package]
+  "Set package state to staged, this will also propagate up and down its
+  dependency tree."
+  (print :stage package.uid)
+  (fn [runtime]
+    (fn stage-down [packages]
+      (E.each #(do
+                 (tset $1 :state :parent-staged)
+                 (PubSub.broadcast $1 :staged))
+              #(Package.iter packages)))
+    (->> (E.map #(if (= $1.canonical-id package.canonical-id) $1)
+                #(Package.iter runtime.packages))
+         (E.each #(do
+                    (tset $2 :state :staged)
+                    (stage-down $2.depends-on)
+                    (PubSub.broadcast $2 :staged))))))
+
 (fn Runtime.dispatch [runtime command]
   (match (command runtime)
     v (print v))

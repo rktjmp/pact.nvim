@@ -120,7 +120,7 @@
                                   _ (highlight-for :staged :name))}]
           constraint-col [{:text (tostring constraint)
                            :highlight (highlight-for :staged :text)}]
-          action-col [{:text "no-action" :highlight "action"}]
+          action-col [{:text package.state :highlight "action"}]
           message-col [{:text text
                         :highlight (match state
                                      :warning :DiagnosticWarn
