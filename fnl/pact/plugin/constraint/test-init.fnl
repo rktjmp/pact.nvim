@@ -20,13 +20,22 @@
   (it "constructs"
     (must match [:git :branch :main] (constraint.git :branch :main))
     (must match [:git :tag :main] (constraint.git :tag :main))
-    (must match [:git :commit v-sha] (constraint.git :commit v-sha)
-    (must match [:git :version "<= 1.2.3"] (constraint.git :version "<= 1.2.3")))
+    (must match [:git :commit v-sha] (constraint.git :commit v-sha))
+    (must match (nil _) (constraint.git :commit (string.sub v-sha 1 6)))
+    (must match (nil _) (constraint.git :commit (.. v-sha 9)))
+    (must match [:git :commit :96de9a8] (constraint.git :commit (string.sub v-sha 1 7)))
+    (must match [:git :version "<= 1.2.3"] (constraint.git :version "<= 1.2.3"))
     (must match [:git :head true] (constraint.git :head)))
 
   (it "satisfies"
       (must match true
             (constraint.satisfies? (constraint.git :head) commit))
+      (must match true
+            (constraint.satisfies? (constraint.git :commit v-sha) commit))
+      (must match true
+            (constraint.satisfies? (constraint.git :commit (string.sub v-sha 1 7)) commit))
+      (must match false
+            (constraint.satisfies? (constraint.git :commit (.. 0 (string.sub v-sha 1 7))) commit))
       (must match true
             (constraint.satisfies? (constraint.git :branch :main) commit))
       (must match false

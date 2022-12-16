@@ -47,9 +47,10 @@
     (ok [[constraint-from constraint]
          [(Commit.new (Constraint.value constraint))]]))
 
-  ;; branch and tags just fall through to Constraint.solve
+  ;; head, branch and tags just fall through to Constraint.solve
   (where [[constraint-from constraint] commits _] (or (Constraint.branch? constraint)
-                                                      (Constraint.tag? constraint)))
+                                                      (Constraint.tag? constraint)
+                                                      (Constraint.head? constraint)))
   (match (Constraint.solve constraint commits)
     commit (ok  [[constraint-from constraint]
                  [commit]])

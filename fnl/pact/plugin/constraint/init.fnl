@@ -4,7 +4,7 @@
 (use {: 'fn* : 'fn+} :pact.lib.ruin.fn
      E :pact.lib.ruin.enum
      {:format fmt} string
-     {: valid-sha? : valid-version-spec?} :pact.valid)
+     {: valid-version-spec?} :pact.valid)
 
 (local Constraint {})
 
@@ -24,7 +24,7 @@
                                   :tag :#
                                   :version ""
                                   :branch ""
-                                  :head "*"
+                                  :head ""
                                   _ "??")]
                        ;; strip possible spaces from version spec
                        (.. name (string.gsub datum "%s" ""))))}))
@@ -45,7 +45,7 @@
   (match? [:git :version any] c))
 
 (fn Constraint.head? [c]
-  (match? [:git :HEAD _] c))
+  (match? [:git :head _] c))
 
 (fn Constraint.type [c]
   (match c
@@ -58,7 +58,7 @@
 
 (fn* Constraint.git?
   ;; we don't currently (?) check validity of contents, just shape
-  (where [[:git kind spec]] (and (one-of? [:HEAD :commit :branch :tag :version] kind)
+  (where [[:git kind spec]] (and (one-of? [:head :commit :branch :tag :version] kind)
                                  (string? spec)))
   true
   (where _)
@@ -66,7 +66,7 @@
 
 (fn* Constraint.git
   "Create a git constraint, which may match against a commit, tag, branch,
-  version or HEAD.")
+  version or head.")
 
 (fn+ Constraint.git [:version ver]
   (match (valid-version-spec? ver)
@@ -75,6 +75,12 @@
 
 (fn+ Constraint.git [:head]
   (set-tostring [:git :head true]))
+
+(fn valid-sha? [sha]
+  ;; we allow 7-40 chars in a commit spec
+  (and (string? sha)
+       (let [len (or (-?> (string.match sha "^(%x+)$") (length)) 0)]
+         (and (<= 7 len) (<= len 40)))))
 
 (fn+ Constraint.git [:commit sha]
   (match (valid-sha? sha)
@@ -90,8 +96,8 @@
   (values nil "must provide `commit|branch|tag|version` and appropriate value" ...))
 
 (fn* Constraint.satisfies?
-  (where [[:git :commit sha] {: sha}])
-  true
+  (where [[:git :commit sha] commit])
+  (not-nil? (string.match commit.sha (fmt "^%s" sha)))
   (where [[:git :tag tag] commit])
   (E.any? #(= tag $2) commit.tags)
   (where [[:git :branch branch] commit])

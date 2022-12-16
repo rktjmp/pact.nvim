@@ -2,7 +2,6 @@
 (ruin!)
 
 (use E :pact.lib.ruin.enum
-     {: valid-sha?} :pact.valid
      {:format fmt} string)
 
 (local Commit {})
@@ -58,10 +57,15 @@
               (fmt "%s@" (if c.HEAD? "HEAD" c.short-sha))
               [:versions :branches :tags])))
 
+(fn full-sha? [sha]
+  ;; commits *require* a full sha
+  (and (string? sha)
+       (= 40 (-?> (string.match sha "^(%x+)$") (length)))))
+
 (fn* Commit.new
-  (where [sha] (valid-sha? sha))
+  (where [sha] (full-sha? sha))
   (Commit.new sha [])
-  (where [sha data] (and (valid-sha? sha)))
+  (where [sha data] (full-sha? sha))
   (->> data
        (E.map #(match $2
                  [:tag t] [:tags t]
