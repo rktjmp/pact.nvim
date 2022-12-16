@@ -110,8 +110,8 @@
           ssh (string.match str :^ssh)]
       (not (= nil http ssh))))
   (let [(cmd cwd) (match (url? repo-path-or-url)
-                    true (values "git ls-remote --tags --heads $repo-path-or-url" ".")
-                    false (values "git ls-remote --tags --heads" repo-path-or-url))]
+                    true (values "git ls-remote $repo-path-or-url tags/* heads/* HEAD" ".")
+                    false (values "git ls-remote origin tags/* heads/* HEAD" repo-path-or-url))]
     (match (await (run cmd {: repo-path-or-url : cwd :env const.ENV}))
       (0 lines _) (values lines)
       (code _ err) (values nil (dump-err code err))

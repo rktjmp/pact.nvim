@@ -28,10 +28,12 @@
   ;; (.+) to catch branches and tags with slashes in them.
   ;; note this does not distinguish "version tags"
   ;; as we need to process all tags for deref's first
-  (match (string.match ref "refs/(.-)/(.+)")
-    (:heads name) [:branch name]
-    (:tags name) [:tag name]
-    _ (error (string.format "unexpected ref format: %s" ref))))
+  (if (= ref :HEAD)
+    [:HEAD true]
+    (match (string.match ref "refs/(.-)/(.+)")
+      (:heads name) [:branch name]
+      (:tags name) [:tag name]
+      _ (error (string.format "unexpected ref format: %s" ref)))))
 
 (fn match-relaxed-version? [str]
   ;; match vM.m.p M.m.p vM.m M.m vM and expand to full version
@@ -53,7 +55,7 @@
                               :branches ""
                               :tags :#)
                             (. c $3)))
-              (fmt "%s@" c.short-sha)
+              (fmt "%s@" (if c.HEAD? "HEAD" c.short-sha))
               [:versions :branches :tags])))
 
 (fn* Commit.new
@@ -65,11 +67,13 @@
                  [:tag t] [:tags t]
                  [:branch b] [:branches b]
                  [:version v] [:versions (expand-version v)]
+                 [:HEAD _] [:HEAD true]
                  ;; todo: reimplement validation of version numbers?
                  ; (where [:version v] (not (match-relaxed-version? v)))
                  ; (error (fmt "invalid version specification %s" v))
                  _ (error (fmt "unknown commit data: %s" (vim.inspect $2)))))
        (E.reduce #(match $3
+                    [:HEAD true] (E.set$ $1 :HEAD? true)
                     [where what] (do (E.append$ (. $1 where) what) $1)
                     _ (error (fmt "unsuported data %s" $3)))
                  {:sha sha :short-sha (Commit.abbrev-sha sha)
@@ -99,8 +103,7 @@
   ;; (when finding tags/versions etc)
   ;;
   ;; see https://git-scm.com/docs/git-check-ref-format
-  ;; Parse *expects* the input to be from `ls-remote --tags --heads url`
-  ;; for best results, does not currently look at HEAD.
+  ;; Parse *expects* the input to be from `ls-remote <origin|http> tags/* heads* HEAD`.
   (->> refs
        ;; group by sha -> [refs] (sha may point to n-refs)
        (E.group-by #(string.match $2 "(%x+)%s+(.+)"))
@@ -150,8 +153,10 @@
   (->> refs
        ;; drop any local heads, they should not matter
        (E.filter #(not (string.match $2 "%srefs/heads.+$")))
-       ;; rename remote heads to loal
+       ;; rename remote heads to local, which is actually what ls-remote views remotes as
        (E.map #(string.gsub $2 "%srefs/remotes/origin" " refs/heads"))
+       ;; also rename refs/heads/HEAD to HEAD
+       (E.map #(string.gsub $2 "%srefs/heads/HEAD$" " HEAD"))
        ;; now just act as remotes
        (Commit.remote-refs->commits)))
 

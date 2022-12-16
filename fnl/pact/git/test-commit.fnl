@@ -29,5 +29,6 @@
                   :tags ["v0.19.1"]
                   :versions ["0.19.1"]}]
           (commit.remote-refs->commits
-            ["008ac2d2953d1b92669e02af5df3ab2a7d651a77 refs/tags/v0.19.1"
+            ["008ac2d2953d1b92669e02af5df3ab2a7d651a77 HEAD"
+             "008ac2d2953d1b92669e02af5df3ab2a7d651a77 refs/tags/v0.19.1"
              "e509f4aea1ed09b012556fbd6a2a7c20b083ee59 refs/tags/v0.19.1^{}"]))))
