@@ -36,10 +36,10 @@
   (if (FS.dir-exists? repo-path)
     ;; Have a local repo, concretely check for constraint
     (result-let [sha (Constraint.value constraint)
-                 val (Git.verify-commit repo-path sha)]
-      (if val
+                 full-sha (Git.verify-commit repo-path sha)]
+      (if full-sha
         (ok {: constraint : package-uid
-             :commits [(Commit.new sha)]}) ;; TODO: use verify-commit returned value for "full" commit
+             :commits [(Commit.new full-sha)]})
         (err {: constraint : package-uid
               :msg (fmt "commit does not exist: %s" sha)})))
     ;; No local repo, just hope the user typed it in correctly..
