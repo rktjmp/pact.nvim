@@ -61,20 +61,22 @@
 ;; is iffy when termed :git?
 (fn* forge
   ;; default to tracking head when given no constraint
-  (where [forge-name user-repo] (and (string? user-repo)
+  (where [forge-name user-repo nil] (and (string? user-repo)
                                      (not (= :git forge-name))))
   (forge forge-name user-repo {:head true})
 
-  ;; otherwise strings are version constraints
-  ;; TODO: we could allow some inferance here, where 
-  ;; "= xyz" -> version (if valid-version-spec)
-  ;; "#tag" -> tag
-  ;; "main" -> branch
-  ;; nil -> HEAD
-  (where [forge-name user-repo constraint] (and (string? user-repo)
-                                                (string? constraint)
-                                                (valid-version-spec? constraint)))
-  (forge forge-name user-repo {:version constraint})
+  ;; otherwise infer type from prefix/string
+  (where [forge-name user-repo constraint] (and (string? user-repo) (string? constraint)))
+  (match constraint
+    (where _ (valid-version-spec? constraint))
+    (forge forge-name user-repo {:version constraint})
+    (where _ (string.match constraint "^#.+"))
+    (forge forge-name user-repo {:tag (string.match constraint "^#(.+)")})
+    (where _ (string.match constraint "^%^.+")) ;; ^ over @ for fennel :^sha support
+    ;; TODO: should validate sha is 8 or 40 chars and also push short-sha support stream
+    (forge forge-name user-repo {:commit (string.match constraint "^%^(.+)")})
+    _
+    (forge forge-name user-repo {:branch constraint}))
 
   ;; otherwise be explicit in your needs
   (where [forge-name user-repo opts] (and (string? user-repo)
