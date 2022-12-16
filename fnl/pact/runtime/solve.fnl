@@ -4,6 +4,7 @@
 (use R :pact.lib.ruin.result
      {: '*dout*} :pact.log
      {: 'result-let} :pact.lib.ruin.result
+     {: inspect!} :pact.lib.ruin.debug
      E :pact.lib.ruin.enum
      FS :pact.workflow.exec.fs
      PubSub :pact.pubsub
@@ -26,6 +27,8 @@
     ;; Pair each constraint with its package so any targetable errors can be
     ;; propagated back to the correct package.
     (let [constraints (E.map #[$2.uid $2.constraint] siblings)
+          s-way-cons (fmt "%s-way constraint%s" (length constraints) (if (= 1 (length constraints))
+                                                                       "" "s"))
           commits package.commits
           repo (rel-path->abs-path :repos package.path.head)
           wf (solve-constraints/new package.canonical-id repo constraints commits)]
@@ -35,33 +38,40 @@
           (update-sibling (fn [p]
                             (tset package.workflows wf nil)
                             (E.append$ p.events e)
+                            (set package.solves-to (R.unwrap e))
                             (set p.text (vim.inspect e {:newline ""}))
                             (PubSub.broadcast p :solved))))
         (fn [e]
+          (local {true oks false errs} (E.group-by #(R.ok? $2) (R.unwrap e)))
+          (local all-ok? (= (length (or oks [])) (length (R.unwrap e))))
           (update-sibling (fn [p]
                             (tset package.workflows wf nil)
-                            ;; store the error and set generic fail message
-                            (E.append$ p.events e)
-                            (set p.text (fmt "could not solve %s-way constraint due to error in canonical sibling" (length constraints)))
-                            (set p.state :warning)
-                            (PubSub.broadcast p :error)))
-          (match e
-            ;; just an error, apply to all
-            (where [:err msg nil] (string? msg))
-            (update-sibling (fn [p]
-                            (tset package.workflows wf nil)
-                            (E.append$ p.events e)
-                            (set p.text msg)
-                            (set p.state :error)
-                            (PubSub.broadcast p :error)))
-            ;; otherwise we have a list of failed
-            _ (E.each (fn [_ details]
-                        (match details
-                          [[_ uid] msg] (-> (E.find-value #(match? {:uid uid} $2) siblings)
-                                            (E.set$ :text msg) ;;TODO we'll not set text directly when we have more errors defined, it should just be the UI interpreting them
-                                            (E.set$ :state :error))
-                          _ (error details)))
-                      [(R.unwrap e)])))
+                            (let [result (E.find-value #(= (. (R.unwrap $2) :package-uid) p.uid)
+                                                       (R.unwrap e))]
+                              (E.append$ p.events result)
+                              ;; We'll put in a generic failure message, and
+                              ;; those that have specific errors will get those
+                              ;; next
+                              (if (R.ok? result)
+                                (set package.solves-to (R.unwrap e)))
+                              (if (and true all-ok?)
+                                (do
+                                  (set p.text
+                                       (fmt "no single commit satisfied %s" s-way-cons))
+                                  (set p.state :error))
+                                (do
+                                  (set p.text
+                                       (fmt "could not solve %s due to error in canonical sibling" s-way-cons))
+                                  (set p.state :warning)))
+                              (PubSub.broadcast p :error))))
+          (E.each (fn [_ e]
+                    (let [{: package-uid : constraint : msg} (R.unwrap e)
+                          p (E.find-value #(= $2.uid package-uid) siblings)]
+                      (set p.text msg)
+                      (set p.state :error)
+                      (PubSub.broadcast p :error)))
+                  (or errs [])))
+
         (fn [msg]
           (update-sibling (fn [p]
                             (E.append$ p.events msg)
