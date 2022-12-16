@@ -148,7 +148,7 @@
     ;; combine column chunks into [{: hl : start : stop} ...]
     (-> (E.reduce (fn [data _ {: text : highlight :length len}]
                     (let [start cursor
-                          stop (+ cursor (or len (length text)))]
+                          stop (+ cursor (or len (length (or text ""))))]
                       (set cursor stop)
                       (E.append$ data {:start start
                                        :stop stop
