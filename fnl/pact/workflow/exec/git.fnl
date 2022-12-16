@@ -91,7 +91,7 @@
   (verify-ref repo-path (.. "refs/remotes/origin/" branch)))
 
 (fn M.verify-tag [repo-path tag]
-  "Verify a given tag exists remotely. Local tages are ignored."
+  "Verify a given tag exists."
   ;; Generally I have not seen a difference in representation between local and
   ;; remote tags but there may be one in odd circumstances.
   (verify-ref repo-path (.. "refs/tags/" tag)))

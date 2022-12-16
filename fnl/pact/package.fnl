@@ -20,22 +20,47 @@
      FS :pact.workflow.exec.fs
      {:format fmt} string)
 
-(local Package {:Action {}})
 
-; (fn Package.Action.none [package]
-;   (doto package
-;         (tset :action [:none])))
+(local Health {})
+(local Package {:Action {}
+                :Health Health})
 
-; (fn Package.new [plugin]
-;   "Create a new package from a plugin spec"
-;   (-> {:id (.. plugin.id :-package)
-;        :spec plugin
-;        :source (. plugin :source)
-;        :path {:root false
-;               :HEAD false}
-;        :facts {}
-;        :events []}
-;       (Package.Action.none)))
+(fn Health.healthy [] [:healthy])
+(fn Health.healthy? [h] (match? [:healthy] h))
+
+(fn Health.degraded [msg] [:degraded msg])
+(fn Health.degraded? [h] (match? [:degraded] h))
+
+(fn Health.failing [msg] [:failing msg])
+(fn Health.failing? [h] (match? [:failing] h))
+
+(fn Health.update [old new]
+  (let [[old-kind & rest-old] old
+        [new-kind & rest-new] new
+        msgs #(E.concat$ [] rest-new rest-old)
+        score #(. {:healthy 0 :degraded 1 :failing 2} $1)]
+    (if (< (score old-kind) (score new-kind))
+      [new-kind (E.unpack (msgs))]
+      [old-kind (E.unpack (msgs))])))
+
+(fn Package.update-health [package health]
+  (assert (or (Health.healthy? health)
+              (Health.degraded? health)
+              (Health.failing? health))
+          "update-health given non-health value")
+  ;; health changes should propagate down and up?
+  (set package.health (Health.update package.health health))
+  (if package.depended-by
+    (Package.update-health package.depended-by (Health.degraded "degraded by subpackage")))
+  package)
+
+(fn Package.Action.stage [package]
+  (if package.solves-to
+    (do
+      (tset package :action [:stage package.solves-to])
+      (R.ok))
+    (do
+      (R.err "package has no solves-to"))))
 
 (var *last-id* 0)
 (fn gen-uid []
@@ -57,7 +82,7 @@
      :source spec.source
      :constraint spec.constraint
      :depended-by nil
-     :depends-on spec.dependencies ;; placeholder
+     :depends-on (or spec.dependencies []) ;; placeholder
      ;; these are kept relative as they will be different for every transaction
      :path {:root root ;; github-user-repo-nvim/
             :rtp package-path ;; start|opt/package.nvim
@@ -65,8 +90,13 @@
      :order 0 ;(E.reduce #(+ $1 1) 1 runtime.packages)
      :events []
      :workflows []
+     :action [:hold]
+     :health (Health.healthy)
      :state :waiting
-     :text "waiting for scheduler"}))
+     :text "waiting for scheduler" ;; TODO: deprecate this, UI not package
+     :commits nil ;; set by discover
+     :solves-to nil ;; set by solve
+     }))
 
 ; (fn Package.commit-path [package commit]
 ;   (FS.join-path package.root commit.sha))

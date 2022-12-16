@@ -85,7 +85,7 @@
 (fn+ Constraint.git [:commit sha]
   (match (valid-sha? sha)
     true (set-tostring [:git :commit sha])
-    false (values nil "invalid sha for commit constraint")))
+    false (values nil "invalid sha for commit constraint, must be 7-40 characters")))
 
 (fn+ Constraint.git [kind spec] (one-of? [:branch :tag] kind)
   (match (string? spec)

@@ -3,6 +3,7 @@
 
 (use E :pact.lib.ruin.enum
      R :pact.lib.ruin.result
+     Package :pact.package
      inspect :pact.inspect
      {: '*dout*} :pact.log
      api vim.api
@@ -58,6 +59,8 @@
                               :state :error}
         package-data #{:uid $1.uid
                        :name $1.name
+                       :health $1.health
+                       :solves-to $.solves-to
                        :latest (match $.latest-version
                                  ver (table.concat ver.versions ",")
                                  _ "")
@@ -108,6 +111,14 @@
                              :highlight :Comment}
                    _ {:text " "
                       :highlight :Comment})]
+          health-col [(match package.health
+                        [:healthy] {:text "healthy" :highlight :Comment}
+                        [:degraded msg] {:text msg :highlight :DiagnosticWarn}
+                        [:failing msg] {:text msg :highlight :DiagnosticError})]
+          local-col [{:text (tostring package.head)
+                       :highlight :Comment}]
+          remote-col [{:text (tostring package.solves-to)
+                       :highlight :Comment}]
           latest-col [{:text package.latest
                        :highlight :Comment}]
           name-col [{:text (indent-with indent)
@@ -126,7 +137,15 @@
                                      :warning :DiagnosticWarn
                                      :error :DiagnosticError
                                      _ (highlight-for :staged :text))}]]
-      {:content [wf-col name-col constraint-col action-col latest-col message-col]
+      {:content [wf-col
+                 name-col
+                 constraint-col
+                 local-col
+                 remote-col
+                 latest-col
+                 action-col
+                 health-col
+                 message-col]
        :meta {:uid package.uid}}))
 
   ;; convert each package into a collection of columns, into a collection of lines
@@ -159,7 +178,7 @@
     (set cursor 0) ;; ugly...
     (-> (E.map #(decomp-column $2) line.content)
         (E.flatten)
-        (#(if line.meta
+        (#(if (?. line :meta :id)
             (E.append$ $1 {:id line.meta.uid :start 0 :stop 0})
             $1))))
   (E.map #(decomp-line $2) rows))
@@ -205,7 +224,7 @@
 
 (fn intersperse-column-breaks [rows]
   (E.map #{:meta $2.meta
-           :content (E.intersperse $2.content [{:text "  " :highlight "None"}])}
+           :content (E.intersperse $2.content [{:text " " :highlight "@comment"}])}
          rows))
 
 (local const {:lede (-> (E.map #[[{:text $2 :highlight :PactComment}]]
@@ -221,10 +240,23 @@
                                  ";;   =  - View git log (staged/unstaged only)"])
                          (rows->lines))})
 
+(fn basic-column [t hl]
+  [{:text t :highlight hl}])
+
 (fn Render.output [ui]
   (use Runtime :pact.runtime)
   (let [rows (-> (package-tree->ui-data ui.runtime.packages)
                  (ui-data->rows)
+                 (->> (E.concat$ [{:content [(basic-column "wf" "@comment")
+                                             (basic-column "package" "@comment")
+                                             (basic-column "const" "@comment")
+                                             (basic-column "local" "@comment")
+                                             (basic-column "remote" "@comment")
+                                             (basic-column "latest" "@comment")
+                                             (basic-column "action" "@comment")
+                                             (basic-column "health" "@comment")
+                                             (basic-column "text" "@comment")]
+                             :meta {}}]))
                  (inject-padding-chunks)
                  (intersperse-column-breaks))]
     ;; clear extmarks so we don't have them all pile up. We have to re-make

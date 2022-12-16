@@ -38,7 +38,8 @@
           (update-sibling (fn [p]
                             (tset package.workflows wf nil)
                             (E.append$ p.events e)
-                            (set package.solves-to (R.unwrap e))
+                            (print :solves-to (tostring e))
+                            (set p.solves-to (R.unwrap e))
                             (set p.text (vim.inspect e {:newline ""}))
                             (PubSub.broadcast p :solved))))
         (fn [e]
@@ -53,13 +54,21 @@
                               ;; those that have specific errors will get those
                               ;; next
                               (if (R.ok? result)
-                                (set package.solves-to (R.unwrap e)))
+                                (set p.solves-to (R.unwrap e)))
                               (if (and true all-ok?)
                                 (do
+                                  (Package.update-health p
+                                                         (Package.Health.failing
+                                                           (fmt "no single commit satisfied %s"
+                                                                s-way-cons)))
                                   (set p.text
                                        (fmt "no single commit satisfied %s" s-way-cons))
                                   (set p.state :error))
                                 (do
+                                  (Package.update-health p
+                                                         (Package.Health.degraded
+                                                           (fmt "could not solve %s due to error in canonical sibling"
+                                                                s-way-cons)))
                                   (set p.text
                                        (fmt "could not solve %s due to error in canonical sibling" s-way-cons))
                                   (set p.state :warning)))
@@ -67,6 +76,7 @@
           (E.each (fn [_ e]
                     (let [{: package-uid : constraint : msg} (R.unwrap e)
                           p (E.find-value #(= $2.uid package-uid) siblings)]
+                      (Package.update-health p (Package.Health.failing msg))
                       (set p.text msg)
                       (set p.state :error)
                       (PubSub.broadcast p :error)))
