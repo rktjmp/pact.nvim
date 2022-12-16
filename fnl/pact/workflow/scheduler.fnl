@@ -42,7 +42,9 @@
       ;; dispatch any messages
       (->> (E.flatten [halted continued])
            (E.map (fn [_ [wf result]]
-                    (wf:handle result)
+                    (match (pcall #(wf:handle result))
+                      (false err) (vim.schedule
+                                    #(error (fmt "wf-handle pcall error: %s" err))))
                     (broadcast wf result))))
       ;; stop or nah?
       (when (= 0 (length scheduler.queue) (length scheduler.active))
