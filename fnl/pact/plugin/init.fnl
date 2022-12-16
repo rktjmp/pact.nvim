@@ -11,17 +11,17 @@
      {: join-path} :pact.workflow.exec.fs
      {:format fmt} string)
 
-(fn valid-args [user-repo constraint]
-  (and (string? user-repo)
-       (or (string? constraint)
-           (table? constraint))))
-
 (fn set-tostring [plugin]
   (setmetatable plugin {:__tostring #(fmt "%s@%s" plugin.source plugin.constraint)}))
 
 (fn opts->constraint [opts]
   (match-let [keys (enum.keys opts)
-              true (-> (enum.filter #(or (= :branch $1) (= :tag $1) (= :commit $1) (= :version $1)) opts)
+              ;; TODO this has better support in Constraint now
+              true (-> (enum.filter #(or (= :head $1)
+                                         (= :branch $1)
+                                         (= :tag $1)
+                                         (= :commit $1)
+                                         (= :version $1)) opts)
                        (enum.table->pairs)
                        (length)
                        (#(if (= 1 $1)
@@ -29,6 +29,7 @@
                            ;; return err, not (nil msg) due to or's behaviour with (values)
                            (err "options table must contain at most one constraint key"))))]
     (match opts
+      (where {: head} (= true head)) (constraints.git :head)
       (where {: version} (valid-version-spec? version)) (constraints.git :version version)
       {: version} (values nil "invalid version spec")
       (where {: commit} (valid-sha? commit)) (constraints.git :commit commit)
@@ -38,7 +39,7 @@
       (where {: tag} (and (string? tag) (<= 1 (length tag)))) (constraints.git :tag tag)
       {: tag} (values nil "invalid tag, must be non-empty string")
       _ (values nil
-                "expected semver constraint string or table with branch, tag, commit or version"))))
+                "expected semver constraint string or table with head, branch, tag, commit or version"))))
 
 (fn make [basic opts]
   (assert basic.name "plugin.make requires basic.name")
@@ -59,12 +60,25 @@
 ;; TODO: smell, can probably remove forge-name name as we no longer us it, and
 ;; is iffy when termed :git?
 (fn* forge
+  ;; default to tracking head when given no constraint
+  (where [forge-name user-repo] (and (string? user-repo)
+                                     (not (= :git forge-name))))
+  (forge forge-name user-repo {:head true})
+
+  ;; otherwise strings are version constraints
+  ;; TODO: we could allow some inferance here, where 
+  ;; "= xyz" -> version (if valid-version-spec)
+  ;; "#tag" -> tag
+  ;; "main" -> branch
+  ;; nil -> HEAD
   (where [forge-name user-repo constraint] (and (string? user-repo)
                                                 (string? constraint)
                                                 (valid-version-spec? constraint)))
   (forge forge-name user-repo {:version constraint})
+
+  ;; otherwise be explicit in your needs
   (where [forge-name user-repo opts] (and (string? user-repo)
-                                                (table? opts)))
+                                          (table? opts)))
   (-> (result-let [source ((. git-source forge-name) user-repo)
                    constraint (opts->constraint opts)]
         (make {:name user-repo
@@ -72,6 +86,8 @@
                : source
                : constraint} opts))
       (map-err (fn [e] (err (fmt "%s/%s %s" forge-name user-repo e)))))
+
+  ;; or you really messed up
   (where _)
   (err (fmt "requires user/repo and version-constraint string or constraint table, got %s"
             (inspect [...]))))

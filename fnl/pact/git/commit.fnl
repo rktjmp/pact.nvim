@@ -67,7 +67,14 @@
                  [:tag t] [:tags t]
                  [:branch b] [:branches b]
                  [:version v] [:versions (expand-version v)]
-                 [:HEAD true] [:HEAD true]
+                 ;; HACK: when we look for ^{} deref's we convert
+                 ;; to head@true for the lookup key (simpler find
+                 ;; by string instead of compare table values), this is
+                 ;; fine for other types as they just have strings anyway
+                 ;; but here we need to match true (which is what should be
+                 ;; passed for construction normally) and "true" for that
+                 ;; specific internal edge case.
+                 (where [:HEAD h] (or (= h true) (= h :true))) [:HEAD true]
                  ;; todo: reimplement validation of version numbers?
                  ; (where [:version v] (not (match-relaxed-version? v)))
                  ; (error (fmt "invalid version specification %s" v))
@@ -109,8 +116,14 @@
        (E.group-by #(string.match $2 "(%x+)%s+(.+)"))
        ;; flip to [:branch|tag|ver ..] -> sha
        (E.reduce (fn [acc sha refs]
-                   ;; change type name to type@name for simpler searching since
+                   ;; Change type name to type@name for simpler searching since
                    ;; we will need to lookup on (.. name "^{}").
+                   ;; This gives us
+                   ;; branch@main sha1
+                   ;; tag@t-1     sha1
+                   ;; tag@t-1^{}  sha2
+                   ;; We can then easily lookfor / resolve ^{} tag pairs by
+                   ;; just looking for the tag + ^{}.
                    (->> (E.map #(fmt "%s@%s" (unpack (ref->types $2))) refs)
                         (E.reduce #(E.set$ $1 $3 sha) acc)))
                  {})
