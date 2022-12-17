@@ -236,6 +236,20 @@
 (local const {:lede (-> (E.map #[[{:text $2 :highlight :PactComment}]]
                                [";; 🔪🩸🐐" ""])
                         (rows->lines))
+              :blank  (-> [[[{:text "" :highlight :None}]]]
+                             (rows->lines))
+              :unstaged  (-> [[[{:text "Unstaged " :highlight :PactUnstagedTitle}
+                                {:text "(n)" :highlight :PactComment}]]]
+                             (rows->lines))
+              :staged  (-> [[[{:text "Staged " :highlight :PactStagedTitle}
+                              {:text "(n)" :highlight :PactComment}]]]
+                           (rows->lines))
+              :no-plugins (-> (E.map #[[{:text $2 :highlight :DiagnosticError}]]
+                                     [""
+                                      ";; Whoops"
+                                      ";; "
+                                      ";; pact has no plugins defined! See `:h pact-usage`"
+                                      ";; "]))
               :usage (-> (E.map #[[{:text $2 :highlight :PactComment}]]
                                 [""
                                  ";; Usage:"
@@ -251,51 +265,84 @@
 
 (fn Render.output [ui]
   (use Runtime :pact.runtime)
-  (let [rows (-> (package-tree->ui-data ui.runtime.packages)
-                 (ui-data->rows)
-                 (->> (E.concat$ [{:content [(basic-column "wf" "@comment")
-                                             (basic-column "package" "@comment")
-                                             (basic-column "const" "@comment")
-                                             (basic-column "local" "@comment")
-                                             (basic-column "remote" "@comment")
-                                             (basic-column "latest" "@comment")
-                                             (basic-column "action" "@comment")
-                                             (basic-column "health" "@comment")
-                                             (basic-column "text" "@comment")]
-                             :meta {}}]))
-                 (inject-padding-chunks)
-                 (intersperse-column-breaks))]
+  (let [{true staged false unstaged} (->
+                                       ;; we want to group package by
+                                       ;; staged-unstaged, but a package is
+                                       ;; actually in the "staged" group if
+                                       ;; *any* of its deps are staged.
+                                       (E.group-by (fn [_ package]
+                                                     (E.any? #(Package.staged? $)
+                                                             #(Package.iter [package])))
+                                                   ;; we intentionally only iterate the "top" packages
+                                                   ui.runtime.packages))
+        staged (or staged [])
+        unstaged (or unstaged [])
+        staged-rows (-> (package-tree->ui-data staged)
+                        (ui-data->rows)
+                        (->> (E.concat$ [{:content [(basic-column "wf" "@comment")
+                                                    (basic-column "package" "@comment")
+                                                    (basic-column "const" "@comment")
+                                                    (basic-column "local" "@comment")
+                                                    (basic-column "remote" "@comment")
+                                                    (basic-column "latest" "@comment")
+                                                    (basic-column "action" "@comment")
+                                                    (basic-column "health" "@comment")
+                                                    (basic-column "text" "@comment")]
+                                          :meta {}}]))
+                        (inject-padding-chunks)
+                        (intersperse-column-breaks))
+        unstaged-rows (-> (package-tree->ui-data unstaged)
+                          (ui-data->rows)
+                          (->> (E.concat$ [{:content [(basic-column "wf" "@comment")
+                                                      (basic-column "package" "@comment")
+                                                      (basic-column "const" "@comment")
+                                                      (basic-column "local" "@comment")
+                                                      (basic-column "remote" "@comment")
+                                                      (basic-column "latest" "@comment")
+                                                      (basic-column "action" "@comment")
+                                                      (basic-column "health" "@comment")
+                                                      (basic-column "text" "@comment")]
+                                            :meta {}}]))
+                          (inject-padding-chunks)
+                          (intersperse-column-breaks))
+        ]
     ;; clear extmarks so we don't have them all pile up. We have to re-make
     ;; then each draw as the lines are re-drawn.
     (set ui.extmarks [])
     (var current-line 0)
     (fn write-lines [lines]
       (let [len (length lines)]
-        (api.nvim_buf_set_lines ui.buf
-                                current-line
-                                (+ current-line len)
-                                false
-                                lines)
+        (api.nvim_buf_set_lines ui.buf current-line (+ current-line len) false lines)
         (set current-line (+ current-line len))))
+    (fn draw-extmarks [lines offset]
+      (E.each (fn [line marks]
+                (E.each (fn [_ mark]
+                          (let [{: id : start : stop : highlight} mark
+                                line (- (+ offset line) 1)]
+                            (if id
+                              (-> (api.nvim_buf_set_extmark ui.buf ui.ns-meta-id line 0 {})
+                                  (#(tset ui.extmarks $1 id)))
+                              (api.nvim_buf_add_highlight ui.buf ui.ns-id highlight line start stop))))
+                        marks))
+              lines))
 
     (api.nvim_buf_set_option ui.buf :modifiable true)
 
     (write-lines const.lede)
 
-    (local package-line-offset current-line)
-    (write-lines (rows->lines rows))
+    ; (if (E.all? #(length $2) [staged-rows unstaged-rows])
+    ;   (write-lines const.no-plugins))
+
+    (write-lines const.staged)
+    (write-lines (rows->lines staged-rows))
+    (draw-extmarks (rows->extmarks staged-rows) (- current-line (length staged-rows)))
+
+    (write-lines const.unstaged)
+    (write-lines (rows->lines unstaged-rows))
+    (draw-extmarks (rows->extmarks unstaged-rows) (- current-line (length unstaged-rows)))
+
     (write-lines const.usage)
 
-    (E.each (fn [line marks]
-              (E.each (fn [_ mark]
-                        (let [{: id : start : stop : highlight} mark
-                              line (- (+ package-line-offset line) 1)]
-                          (if id
-                            (-> (api.nvim_buf_set_extmark ui.buf ui.ns-meta-id line 0 {})
-                                (#(tset ui.extmarks $1 id)))
-                            (api.nvim_buf_add_highlight ui.buf ui.ns-id highlight line start stop))))
-                      marks))
-            (rows->extmarks rows))
 
     (if _G.__pact_debug
       (let [lines (E.map #$1

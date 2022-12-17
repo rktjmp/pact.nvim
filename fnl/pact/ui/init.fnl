@@ -132,13 +132,5 @@
          (Runtime.dispatch runtime))
     (schedule-redraw ui)))
 
-    ; (let [topic (Runtime.run-status runtime)]
-    ;   (subscribe topic (fn [...] (print :x))))))
-      ; (do
-      ;   (let [lines [";; 🔪🩸🐐 Pact has no plugins defined!"
-      ;                ";; "
-      ;                ";; See `:h pact-usage`!"]]
-      ;     (api.nvim_buf_set_option buf :ft :pact)
-      ;     (api.nvim_buf_set_lines buf 0 -1 false lines))))))
 
 (values M)

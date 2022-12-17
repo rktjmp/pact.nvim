@@ -3,7 +3,8 @@
 
 (fn sha? [sha]
   (and (string? sha)
-       (= 40 (-> (string.match sha "^(%x+)$") (length)))))
+       (let [len (or (-?> (string.match sha "^(%x+)$") (length)) 0)]
+         (or (<= 7 len) (<= len 40)))))
 
 (fn version? [v]
   (and (string? v)
