@@ -125,6 +125,10 @@
   (tset package wf nil)
   package)
 
+(fn Package.update-latest [package version]
+  (set package.latest-version version)
+  package)
+
 (fn Package.source [package]
   ;; TODO should handle git, local, lua rocks, etc
   (match package.source
