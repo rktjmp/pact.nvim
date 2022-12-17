@@ -48,13 +48,12 @@
                     (broadcast wf result))))
       ;; if any halted workflows belonged to a set and that set is no longer present
       ;; in the active or queued, broadcast a generic ok event.
-      (->> (E.flatten [halted continued])
-           (E.map #(. $2 1))
+      (->> (E.map #(. $2 1) halted)
            (E.reject #(nil? $2.workflow-set))
            (E.reject (fn [_ {: workflow-set}]
-                       (and (E.any? #(= workflow-set $2.workflow-set) continued)
-                            (E.any? #(= workflow-set $2.workflow-set) scheduler.queued))))
-           (E.map #(broadcast $2.workflow-set (R.ok))))
+                       (or (E.any? #(= workflow-set $2.workflow-set) continued)
+                           (E.any? #(= workflow-set $2.workflow-set) scheduler.queue))))
+           (E.map #(broadcast $2.workflow-set (R.ok $2.workflow-set))))
       ;; stop or nah?
       (when (= 0 (length scheduler.queue) (length scheduler.active))
         (uv.timer_stop scheduler.timer-handle)
@@ -98,8 +97,9 @@
    :queue []
    :active []
    :timer-handle nil
-   :stop stop
-   :add-workflow add-workflow})
+   : stop
+   : add-workflow
+   : add-workflow-set})
 
 {: new
  : add-workflow : add-workflow-set

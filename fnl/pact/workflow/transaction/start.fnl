@@ -19,14 +19,15 @@
 (fn open [root-path transaction-id]
   (result-let [_ (or (fs.absolute-path? root-path)
                      (err (fmt "must be absolute path: %s" root-path)))
-               path (fmt "%s/%s/" root-path transaction-id)
+               path (fs.join-path root-path transaction-id)
                _ (or (not (fs.dir-exists? path))
-                     (err (fmt "transaction path already exists! %s" path)))
+                     (err (fmt "transaction path already exists, refusing to repeat! %s" path)))
                _ (yield (fmt "opening transaction %s" transaction-id))
-               _ (fs.make-path (fmt "%s/%s" root-path transaction-id))
-               _ (fs.make-path (fmt "%s/%s/start" root-path transaction-id))
-               _ (fs.make-path (fmt "%s/%s/opt" root-path transaction-id))]
-    (ok {:id transaction-id :path path})))
+               _ (fs.make-path (fs.join-path root-path transaction-id))
+               _ (fs.make-path (fs.join-path root-path transaction-id :start))
+               _ (fs.make-path (fs.join-path root-path transaction-id :opt))]
+    (ok {:id transaction-id
+         :path path})))
 
 (fn* new
   (where [id root-path])

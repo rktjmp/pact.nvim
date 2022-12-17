@@ -43,14 +43,6 @@
       [new-kind (E.unpack (msgs))]
       [old-kind (E.unpack (msgs))])))
 
-(fn Package.Action.stage [package]
-  (if package.solves-to
-    (do
-      (tset package :action [:stage package.solves-to])
-      (R.ok))
-    (do
-      (R.err "package has no solves-to"))))
-
 (var *last-id* 0)
 (fn gen-uid []
   (set *last-id* (+ 1 *last-id*))
@@ -61,7 +53,8 @@
   ;; Warning: some of these properties are place holders and should be
   ;; filled by another process.
   (let [root spec.canonical-id
-        package-name (string.match spec.name ".+/([^/]-)$") ;; TODO this will smell
+        package-name (or (string.match spec.name ".+/([^/]-)$")
+                         (string.gsub spec.name "/" "-")) ;; TODO this will smell
         package-path (FS.join-path (if spec.opt? :opt :start) package-name)]
     {:type :plugin
      :canonical-id spec.canonical-id ;; shared between packages with same origin
@@ -114,6 +107,7 @@
 
 (fn Package.resolve-constraint [package commit]
   ;; TODO: add "resolved" prop to constraint? Does the data belong together? could every constraint actually be promise/future like?
+  ;; TODO: solve-constraint to match key name?
   (set package.solves-to commit)
   package)
 

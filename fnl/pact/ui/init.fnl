@@ -44,9 +44,9 @@
     (vim.defer_fn #(Render.output ui) rate)))
 
 (fn exec-keymap-cc [ui]
-  (if (E.any? #(= :staged $2.state) ui.plugins-meta)
-    #nil ;(exec-open-transaction ui)
-    (vim.notify "Nothing staged, refusing to commit")))
+  ;; TODO dont try if no staged
+  (->> (Runtime.Command.run-transaction)
+      (Runtime.dispatch ui.runtime)))
 
 (fn exec-keymap-<cr> [ui]
   (let [[line _] (api.nvim_win_get_cursor ui.win)

@@ -55,7 +55,7 @@
 (fn M.create-stub-clone [repo-url repo-path]
   "Creates a blank clone of the remote repo. This contains enough data to see
   logs and interact with tags and branches, but contains no blobs or trees."
-  (match-run ["git --no-checkout --filter=tree:0 $repo-url $repo-path"
+  (match-run ["git clone --no-checkout --filter=tree:0 $repo-url $repo-path"
               {: repo-url : repo-path :env const.ENV}]
    (where-ok? [_ lines _]) (do
                              (vim.pretty_print lines)
@@ -127,22 +127,7 @@
                                sha (values sha))
     (where-err? [code out err]) (values nil (dump-err code [out err]))))
 
-
-;; TODO deprecated
-(fn M.set-origin [repo-path url]
-  (match (await (run "git remote add origin $url" {: url :cwd repo-path :env const.ENV}))
-    (0 _ _) (values url)
-    (code _ err) (values nil (dump-err code err))
-    (nil err) (values nil err)))
-
-;; TODO deprecated
-(fn M.get-origin [repo-path]
-  ;; TODO check origins before committing in workflows
-  (match (await (run "git remote get-url origin" {:cwd repo-path :env const.ENV}))
-    (0 [url] _) (values (string.match url "([^\r\n]+)"))
-    (code _ err) (values nil (dump-err code err))
-    (nil err) (values nil err)))
-
+;; deprecated
 (fn M.fetch-sha [repo-path sha]
   ;; TODO: best :--recurse-submodules option here?, esp re: fetch vs pull
   (match (await (run "git fetch --depth=1 origin $sha" {: sha :cwd repo-path :env const.ENV}))
@@ -150,19 +135,13 @@
     (code _ err) (values nil (dump-err code err))
     (nil err) (values nil err)))
 
+;; deprecated vs update-refs?
 (fn M.fetch [repo-path]
   ;; git-fetch on its own wont get new/other tags so we must
   ;; explicitly force. it *does* seem to get new branches, though
   ;; there is also some documentation to the contrary...
   (match (await (run "git fetch origin --tags" {:cwd repo-path :env const.ENV}))
     (0 _ _) (values true)
-    (code _ err) (values nil (dump-err code err))
-    (nil err) (values nil err)))
-
-(fn M.init [repo-path inited]
-  ;; repo-path should be absolute, so local dir is fine for cwd
-  (match (await (run "git init $repo-path" {: repo-path :cwd "." :env const.ENV}))
-    (0 _ _) (values repo-path)
     (code _ err) (values nil (dump-err code err))
     (nil err) (values nil err)))
 
@@ -224,7 +203,8 @@
                               (values nil (dump-err code o e)))))
 
 (fn M.add-worktree [repo-path worktree-path sha]
-  (print repo-path worktree-path sha)
+  ;; Note this is --no-checkout so we can sparse-check for packfile and read
+  ;; without getting everything, in case that has knock on dependencies.
   (match-run ["git worktree add --no-checkout --detach $worktree-path $sha"
               {: worktree-path : sha :cwd repo-path :env const.ENV}]
     (where-ok? [_ lines e]) (do

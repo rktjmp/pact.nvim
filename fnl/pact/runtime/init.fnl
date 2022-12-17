@@ -83,12 +83,26 @@
   (E.each #(FS.make-path $2)
           [runtime.path.root runtime.path.data runtime.path.repos])
 
-  ;; look for current HEAD transaction symlink
-  ;; otherwise create one to a default checkout
   (match (vim.loop.fs_lstat runtime.path.head)
-    (nil _ :ENOENT) (let [t-path (transaction-path runtime {:id 1})]
-                      (FS.make-path t-path)
-                      (FS.symlink t-path runtime.path.head)))
+    (nil _ :ENOENT) (let [t (Transaction.new runtime.path.data
+                                             runtime.path.repos
+                                             runtime.path.head)]
+                      (FS.make-path t.path.root)
+                      (FS.make-path (FS.join-path t.path.root :start))
+                      (FS.make-path (FS.join-path t.path.root :opt))
+                      (FS.symlink t.path.root runtime.path.head)))
+
+  ;; look for current HEAD transaction symlink otherwise create one to a
+  ;; default checkout
+  ;; TODO this could be stronger
+  (match (vim.loop.fs_lstat (FS.join-path runtime.path.root :start))
+    (nil _ :ENOENT) (FS.symlink (FS.join-path runtime.path.head :start)
+                                (FS.join-path runtime.path.root :start)))
+
+  (match (vim.loop.fs_lstat (FS.join-path runtime.path.root :opt))
+    (nil _ :ENOENT) (FS.symlink (FS.join-path runtime.path.head :opt)
+                                (FS.join-path runtime.path.root :opt)))
+
   runtime)
 
 (fn parse-disk-layout [runtime]
@@ -200,9 +214,61 @@
             #(Package.iter [package]))
     (R.ok)))
 
+(fn Runtime.Command.run-transaction []
+  ;; todo check any staged to commit ...
+  (fn [runtime]
+    (let [t (Transaction.new runtime.path.data
+                             runtime.path.repos
+                             runtime.path.head)
+          stage-wfs (E.map #(if (Package.staged? $)
+                              [$1 (Transaction.stage-package t $1)])
+                           ;; TODO: filter dups
+                           #(Package.iter runtime.packages))
+          {:setup setup-wf :commit commit-wf :rollback rollback-wf} (Transaction.workflows t)]
+      (E.each (fn [_ [package wf]]
+                (Package.track-workflow package wf)
+                (wf:attach-handler
+                  (fn [ok]
+                    (Package.untrack-workflow package wf)
+                    (vim.pretty_print :package-ok ok)
+                    (set package.text (vim.inspect ok {:newline ""}))
+                    (PubSub.broadcast package :changed))
+                  (fn [err]
+                    (Package.untrack-workflow package wf)
+                    (vim.pretty_print :package-err err)
+                    (set package.text (vim.inspect err {:newline ""}))
+                    (PubSub.broadcast package :changed))
+                  (fn [msg]
+                    (vim.pretty_print :package-msg msg)
+                    (set package.text msg)
+                    (PubSub.broadcast package :changed))))
+                stage-wfs)
+      ;; TODO bit of callback hell here but we'll fix it in post.
+      (setup-wf:attach-handler
+        (fn [ok]
+          ;; start stage-wfs
+          (vim.pretty_print "Setup transaction, starting staging")
+          (let [set-id (-> (E.map #(. $2 2) stage-wfs)
+                           (runtime.scheduler.remote:add-workflow-set))]
+            (PubSub.subscribe set-id (fn [x]
+                                       (commit-wf:attach-handler
+                                        (fn [e] (vim.pretty_print :commit-wf-ok e))
+                                        (fn [e] (vim.pretty_print :commit-wf-err e))
+                                        (fn [e] (vim.pretty_print :commit-wf-msg e)))
+                                       (runtime.scheduler.local:add-workflow commit-wf)
+                                       ;; commit
+                                       ;; this needs ... check packages for
+                                       ;; health? check all stage-wf callbacks
+                                       ;; were Ok?
+                                       (vim.pretty_print :pubsub x)))))
+        (fn [err]
+          (vim.pretty_print :err err)))
+      (vim.pretty_print :schedule-setup setup-wf)
+      (runtime.scheduler.local:add-workflow setup-wf))))
+
 (fn Runtime.dispatch [runtime command]
   (match (command runtime)
-    v (vim.pretty_print v))
+    v (vim.pretty_print :dispatch v))
   runtime)
 
 (values Runtime)
