@@ -19,74 +19,69 @@
     (FS.join-path (. runtime :path in) path))
 
   (let [{:new solve-constraints/new} (require :pact.workflow.status.solve-constraints)
-        siblings (E.reduce #(if (match? {:canonical-id package.canonical-id} $2)
-                              (E.append$ $1 $2)
-                              $1)
-                           [] #(Package.iter runtime.packages))
-        update-sibling #(E.each (fn [_ p] ($1 p)) siblings)]
+        siblings (E.map #(if (= $1.canonical-id package.canonical-id) $1)
+                        #(Package.iter runtime.packages))
+        update-siblings #(E.each (fn [_ p] ($1 p)) siblings)]
     ;; Pair each constraint with its package so any targetable errors can be
     ;; propagated back to the correct package.
     (let [constraints (E.map #[$2.uid $2.constraint] siblings)
           s-way-cons (fmt "%s-way constraint%s" (length constraints) (if (= 1 (length constraints))
                                                                        "" "s"))
           commits package.commits
-          repo (rel-path->abs-path :repos package.path.head)
+          repo (rel-path->abs-path :repos package.path.head) ;; TODO into module
           wf (solve-constraints/new package.canonical-id repo constraints commits)]
-      (tset package.workflows wf true)
+      (update-siblings #(Package.track-workflow $ wf))
       (wf:attach-handler
-        (fn [e]
-          (update-sibling (fn [p]
-                            (tset package.workflows wf nil)
-                            (E.append$ p.events e)
-                            (print :solves-to (tostring e))
-                            (set p.solves-to (R.unwrap e))
-                            (set p.text (vim.inspect e {:newline ""}))
-                            (PubSub.broadcast p :solved))))
-        (fn [e]
-          (local {true oks false errs} (E.group-by #(R.ok? $2) (R.unwrap e)))
-          (local all-ok? (= (length (or oks [])) (length (R.unwrap e))))
-          (update-sibling (fn [p]
-                            (tset package.workflows wf nil)
-                            (let [result (E.find-value #(= (. (R.unwrap $2) :package-uid) p.uid)
-                                                       (R.unwrap e))]
-                              (E.append$ p.events result)
-                              ;; We'll put in a generic failure message, and
-                              ;; those that have specific errors will get those
-                              ;; next
-                              (if (R.ok? result)
-                                (set p.solves-to (R.unwrap e)))
-                              (if (and true all-ok?)
-                                (do
-                                  (Package.update-health p
-                                                         (Package.Health.failing
-                                                           (fmt "no single commit satisfied %s"
-                                                                s-way-cons)))
-                                  (set p.text
-                                       (fmt "no single commit satisfied %s" s-way-cons))
-                                  (set p.state :error))
-                                (do
-                                  (Package.update-health p
-                                                         (Package.Health.degraded
-                                                           (fmt "could not solve %s due to error in canonical sibling"
-                                                                s-way-cons)))
-                                  (set p.text
-                                       (fmt "could not solve %s due to error in canonical sibling" s-way-cons))
-                                  (set p.state :warning)))
-                              (PubSub.broadcast p :error))))
-          (E.each (fn [_ e]
-                    (let [{: package-uid : constraint : msg} (R.unwrap e)
-                          p (E.find-value #(= $2.uid package-uid) siblings)]
-                      (Package.update-health p (Package.Health.failing msg))
-                      (set p.text msg)
-                      (set p.state :error)
-                      (PubSub.broadcast p :error)))
-                  (or errs [])))
-
+        (fn [ok-commit]
+          (update-siblings #(-> $
+                                (Package.untrack-workflow wf)
+                                (Package.add-event wf ok-commit)
+                                (Package.resolve-constraint (R.unwrap ok-commit))
+                                (PubSub.broadcast :solved))))
+        (fn [ok-commits-err-constraints]
+          ;; This may be called with a mixture of ok-commit for constraints
+          ;; that were solved and err-constraints for constraints that could
+          ;; not be solved.
+          ;; The workflow is considered a "failure", but we do want to show
+          ;; which packages were vaguely ok, and which packages are actually
+          ;; borked.
+          (let [all-ok? (E.all? #(R.ok? $2) (R.unwrap ok-commits-err-constraints))
+                find-result (fn [uid]
+                              (E.find-value #(= (. (R.unwrap $2) :package-uid) uid)
+                                            (R.unwrap ok-commits-err-constraints)))]
+            (update-siblings (fn [p]
+                              (Package.untrack-workflow p wf)
+                              (let [relevant-result (find-result p.uid)]
+                                (Package.add-event p wf relevant-result)
+                                (match [all-ok? (R.ok? relevant-result)]
+                                  [true _]
+                                  (-> p
+                                      ;; This is a funny edge case where all
+                                      ;; constraints were solved but there was no
+                                      ;; shared commit between them, so technically
+                                      ;; they fail as a collection.
+                                      ;; TODO: E.hd may give "non-latest" for versions
+                                      (Package.resolve-constraint (E.hd (. (R.unwrap relevant-result) :commits)))
+                                      (Package.update-health (Package.Health.failing (fmt "no single commit satisfied %s"
+                                                                                          s-way-cons))))
+                                  [_ true]
+                                  (-> p
+                                      ;; sibling constraint was actually ok
+                                      (Package.resolve-constraint (R.unwrap relevant-result))
+                                      (Package.update-health (Package.Health.degraded
+                                                               (fmt "could not solve %s due to error in canonical sibling"
+                                                                    s-way-cons))))
+                                  [_ false]
+                                  (-> p
+                                      ;; sibling constraint failed, so we have specific error
+                                      (Package.update-health (Package.Health.failing
+                                                               (fmt "could not solve %s due to error in canonical sibling"
+                                                                    s-way-cons))))))
+                                (PubSub.broadcast p :error)))))
         (fn [msg]
-          (update-sibling (fn [p]
-                            (E.append$ p.events msg)
-                            (set p.text msg)
-                            (PubSub.broadcast p :events-changed)))))
+          (update-siblings #(-> $
+                                (Package.add-event wf msg)
+                                (PubSub.broadcast :events-changed)))))
       (runtime.scheduler.local:add-workflow wf))))
 
 Solve

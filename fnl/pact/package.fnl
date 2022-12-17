@@ -43,17 +43,6 @@
       [new-kind (E.unpack (msgs))]
       [old-kind (E.unpack (msgs))])))
 
-(fn Package.update-health [package health]
-  (assert (or (Health.healthy? health)
-              (Health.degraded? health)
-              (Health.failing? health))
-          "update-health given non-health value")
-  ;; health changes should propagate down and up?
-  (set package.health (Health.update package.health health))
-  (if package.depended-by
-    (Package.update-health package.depended-by (Health.degraded "degraded by subpackage")))
-  package)
-
 (fn Package.Action.stage [package]
   (if package.solves-to
     (do
@@ -92,7 +81,7 @@
      :workflows []
      :action [:hold]
      :health (Health.healthy)
-     :state :waiting
+     :state :state-prop-deprecated
      :text "waiting for scheduler" ;; TODO: deprecate this, UI not package
      :commits nil ;; set by discover
      :solves-to nil ;; set by solve
@@ -100,6 +89,41 @@
 
 ; (fn Package.commit-path [package commit]
 ;   (FS.join-path package.root commit.sha))
+
+(fn Package.add-event [package workflow event]
+  ;; TODO bundle wf here too when event stream less ui integrated
+  (E.append$ package.events event)
+  package)
+
+(fn Package.update-health [package health]
+  "Set health to current health level or degrade, you can never improve health."
+  (assert (or (Health.healthy? health)
+              (Health.degraded? health)
+              (Health.failing? health))
+          "update-health given non-health value")
+  ;; health changes should propagate down and up?
+  (set package.health (Health.update package.health health))
+  (if package.depended-by
+    (Package.update-health package.depended-by
+                           (Health.degraded "degraded by subpackage")))
+  package)
+
+(fn Package.update-commits [package commits]
+  (set package.commits commits)
+  package)
+
+(fn Package.resolve-constraint [package commit]
+  ;; TODO: add "resolved" prop to constraint? Does the data belong together? could every constraint actually be promise/future like?
+  (set package.solves-to commit)
+  package)
+
+(fn Package.track-workflow [package wf]
+  (tset package wf true)
+  package)
+
+(fn Package.untrack-workflow [package wf]
+  (tset package wf nil)
+  package)
 
 (fn Package.source [package]
   ;; TODO should handle git, local, lua rocks, etc
