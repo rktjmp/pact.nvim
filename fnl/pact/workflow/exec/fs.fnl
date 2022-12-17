@@ -48,7 +48,10 @@
   (not-nil? (string.match path "^/")))
 
 (fn git-dir? [path]
-  (= :directory (what-is-at (.. path "/.git"))))
+  (match (what-is-at (.. path "/.git"))
+    :directory true ;; git repo
+    :file true ;; git worktree
+    _ false))
 
 (fn dir-exists? [path]
   (= :directory (what-is-at path)))
