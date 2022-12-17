@@ -3,6 +3,7 @@
 
 (use R :pact.lib.ruin.result
      E :pact.lib.ruin.enum
+     Log :pact.log
      {:format fmt} string
      {:loop uv} vim)
 
@@ -42,6 +43,8 @@
       ;; dispatch any messages
       (->> (E.flatten [halted continued])
            (E.map (fn [_ [wf result]]
+                    (if (R.err? result)
+                      (Log.log [wf.id result]))
                     (match (pcall #(wf:handle result))
                       (false err) (vim.schedule
                                     #(error (fmt "wf-handle pcall error: %s" err))))

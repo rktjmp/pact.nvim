@@ -5,7 +5,6 @@
      R :pact.lib.ruin.result
      Package :pact.package
      inspect :pact.inspect
-     {: '*dout*} :pact.log
      api vim.api
      {:format fmt} string)
 
@@ -28,6 +27,7 @@
     (E.reduce #(.. $1 (string.upper $2) $3)
                  "" #(string.gmatch joined "(%w)([%w]+)"))))
 
+;; TODO use a proper delta timer
 (var last-time 0)
 (var spinner-frame 0)
 
@@ -60,6 +60,7 @@
         package-data #{:uid $1.uid
                        :name $1.name
                        :health $1.health
+                       :head $.head
                        :solves-to $.solves-to
                        :latest (match $.latest-version
                                  ver (table.concat ver.versions ",")

@@ -5,7 +5,7 @@
      Render :pact.ui.render
      Package :pact.package
      Runtime :pact.runtime
-     {: '*dout*} :pact.log
+     Log :pact.log
      inspect :pact.inspect
      scheduler :pact.workflow.scheduler
      {: subscribe : unsubscribe} :pact.pubsub
@@ -125,6 +125,7 @@
                 :package->line {}
                 :errors []}
                (prepare-interface))]
+    (Log.new-log-file :pact.log) ;; TODO real path
     ;; TODO unsub all on win close
     (E.each #(subscribe $1 #(schedule-redraw ui))
             #(Package.iter ui.runtime.packages))

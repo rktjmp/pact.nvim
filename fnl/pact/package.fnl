@@ -18,6 +18,7 @@
 (use R :pact.lib.ruin.result
      E :pact.lib.ruin.enum
      FS :pact.workflow.exec.fs
+     Log :pact.log
      {:format fmt} string)
 
 
@@ -85,6 +86,7 @@
 
 (fn Package.add-event [package workflow event]
   ;; TODO bundle wf here too when event stream less ui integrated
+  (Log.log [workflow.id event])
   (E.append$ package.events event)
   package)
 

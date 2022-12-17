@@ -2,7 +2,6 @@
 (ruin!)
 
 (use R :pact.lib.ruin.result
-     {: '*dout*} :pact.log
      {: 'result-let} :pact.lib.ruin.result
      E :pact.lib.ruin.enum
      FS :pact.workflow.exec.fs
@@ -54,6 +53,7 @@
       (wf:attach-handler
         (fn [commit]
           (tset package.workflows wf nil)
+          ;; may be nil
           (set package.head (R.unwrap commit))
           (set package.state :unstaged)
           (PubSub.broadcast package (R.ok :head-updated)))

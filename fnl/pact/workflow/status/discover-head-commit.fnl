@@ -14,12 +14,12 @@
   "Fetch commits from local repo, will update repo refs before hand"
   (result-let [_ (log "getting local HEAD")
                HEAD-sha (Git.HEAD-sha repo-path)
-               commit (Commit.commit HEAD-sha)]
+               commit (Commit.new HEAD-sha)]
     (log "retrieved HEAD")
-    (ok {:head commit})))
+    (ok commit)))
 
 (fn detect-kind [repo-path]
-  (result-> (log "discovering HEAD commit")
+  (result-> (log "discovering HEAD commit %s" repo-path)
             (or (FS.absolute-path? repo-path)
                 (err (fmt "plugin path must be absolute, got %s" repo-path)))
             (#(if (FS.git-dir? repo-path)
@@ -28,10 +28,10 @@
                 ;; so we have no head sha.
                 (do
                   (log "no local HEAD")
-                  (ok {}))))))
+                  (ok))))))
 
 (fn* new
   (where [id repo-path])
-  (new-workflow id #(detect-kind repo-path)))
+  (new-workflow (fmt "discover-head-commit:%s" id) #(detect-kind repo-path)))
 
 {: new}

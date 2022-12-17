@@ -2,7 +2,6 @@
 (ruin!)
 
 (use R :pact.lib.ruin.result
-     {: '*dout*} :pact.log
      {: 'result-let} :pact.lib.ruin.result
      {: inspect!} :pact.lib.ruin.debug
      E :pact.lib.ruin.enum
