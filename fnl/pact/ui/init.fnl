@@ -58,24 +58,24 @@
       [any nil] (vim.notify (fmt "%s has no path to open" any.plugin.name))
       _ nil)))
 
-(fn exec-keymap-s [ui]
+(fn cursor->package [ui]
   (let [[line _] (api.nvim_win_get_cursor ui.win)
         line (- line 1)]
     (match (api.nvim_buf_get_extmarks ui.buf ui.ns-meta-id [line 0] [line 0] {})
-      [[extmark-id]] (let [package (E.find #(= $1.uid (. ui.extmarks extmark-id))
-                                           #(Package.iter ui.runtime.packages))
-                           command (Runtime.Command.stage-package package)]
-                       (Runtime.dispatch ui.runtime command)))))
+      [[extmark-id]] (E.find #(= $1.uid (. ui.extmarks extmark-id))
+                             #(Package.iter ui.runtime.packages)))))
+
+(fn exec-keymap-s [ui]
+  (match (cursor->package ui)
+    package (->> (Runtime.Command.stage-package-tree package)
+                 (Runtime.dispatch ui.runtime))
+    nil (print :no-package-under-cursor)))
 
 (fn exec-keymap-u [ui]
-  (let [[line _] (api.nvim_win_get_cursor ui.win)
-        meta (E.find-value #(= line $2.on-line) ui.plugins-meta)]
-    (if (and meta (= :staged meta.state))
-      (do
-        (tset meta :state :unstaged)
-        (schedule-redraw ui))
-      (vim.notify "May only unstage staged plugins"))))
-
+  (match (cursor->package ui)
+    package (->> (Runtime.Command.unstage-package-tree package)
+                 (Runtime.dispatch ui.runtime))
+    nil (print :no-package-under-cursor)))
 
 (fn exec-keymap-= [ui]
   (let [[line _] (api.nvim_win_get_cursor ui.win)

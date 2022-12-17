@@ -129,6 +129,36 @@
   (set package.latest-version version)
   package)
 
+(fn Package.healthy? [package]
+  (Package.Health.healthy? package.health))
+
+(fn Package.degraded? [package]
+  (Package.Health.degraded? package.health))
+
+(fn Package.failing? [package]
+  (Package.Health.failing? package.health))
+
+(fn Package.stageable? [package]
+  (and (Package.healthy? package) (not-nil? package.solves-to)))
+
+(fn Package.staged? [package]
+  (= (?. package :action 1) :stage))
+
+(fn Package.held? [package]
+  (= (?. package :action 1) :hold))
+
+(fn Package.stage [package]
+  (match-let [true (Package.healthy? package)
+              commit package.solves-to]
+    (values (E.set$ package :action [:stage package.solves-to])
+            (R.ok))
+    (else
+      false (values package (R.err "cannot stage unhealthy package"))
+      nil (values package (R.err "cannot stage package, no target commit set")))))
+
+(fn Package.unstage [package]
+  (values (E.set$ package :action [:hold]) (R.ok)))
+
 (fn Package.source [package]
   ;; TODO should handle git, local, lua rocks, etc
   (match package.source

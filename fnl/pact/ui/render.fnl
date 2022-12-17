@@ -69,6 +69,7 @@
                        :constraint $1.constraint
                        :text $1.text
                        :indent (length $2)
+                       :action (?. $ :action 1)
                        :state $1.state
                        :events $1.events
                        :error (and (R.err? (E.last $1.events))
@@ -117,6 +118,10 @@
                         [:failing msg] {:text msg :highlight :DiagnosticError})]
           local-col [{:text (tostring package.head)
                        :highlight :Comment}]
+          comp-col [{:text (if (= (?. package :head :sha) (?. package :solves-to :sha))
+                             "="
+                             "!=")
+                       :highlight :Comment}]
           remote-col [{:text (tostring package.solves-to)
                        :highlight :Comment}]
           latest-col [{:text package.latest
@@ -131,7 +136,7 @@
                                   _ (highlight-for :staged :name))}]
           constraint-col [{:text (tostring constraint)
                            :highlight (highlight-for :staged :text)}]
-          action-col [{:text package.state :highlight "action"}]
+          action-col [{:text (or package.action "none") :highlight "action"}]
           message-col [{:text text
                         :highlight (match state
                                      :warning :DiagnosticWarn
@@ -141,6 +146,7 @@
                  name-col
                  constraint-col
                  local-col
+                 comp-col
                  remote-col
                  latest-col
                  action-col
@@ -178,7 +184,7 @@
     (set cursor 0) ;; ugly...
     (-> (E.map #(decomp-column $2) line.content)
         (E.flatten)
-        (#(if (?. line :meta :id)
+        (#(if (?. line :meta :uid)
             (E.append$ $1 {:id line.meta.uid :start 0 :stop 0})
             $1))))
   (E.map #(decomp-line $2) rows))

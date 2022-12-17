@@ -24,10 +24,10 @@
                                          (= :version $1)) opts)
                        (enum.table->pairs)
                        (length)
-                       (#(if (= 1 $1)
-                           true
-                           ;; return err, not (nil msg) due to or's behaviour with (values)
-                           (err "options table must contain at most one constraint key"))))]
+                       (#(match $1
+                           1 true
+                           0 true
+                           n (err "options table must contain at most one constraint key"))))]
     (match opts
       (where {: head} (= true head)) (constraints.git :head)
       (where {: version} (valid-version-spec? version)) (constraints.git :version version)
@@ -38,8 +38,7 @@
       {: branch} (values nil "invalid branch, must be non-empty string")
       (where {: tag} (and (string? tag) (<= 1 (length tag)))) (constraints.git :tag tag)
       {: tag} (values nil "invalid tag, must be non-empty string")
-      _ (values nil
-                "expected semver constraint string or table with head, branch, tag, commit or version"))))
+      _ (constraints.git :head))))
 
 (fn make [basic opts]
   (assert basic.name "plugin.make requires basic.name")
@@ -51,7 +50,7 @@
                          (string.gsub "%W" "-")
                          (string.gsub "-+" "-"))
         plug (doto basic
-                   (tset :dependencies (or opts.dependencies []))
+                   (tset :dependencies (or opts.dependencies opts.deps []))
                    (tset :opt? (= true (or opts.opt? opts.opt)))
                    (tset :after opts.after)
                    (tset :canonical-id canonical-id))]

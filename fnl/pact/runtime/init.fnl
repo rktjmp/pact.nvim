@@ -8,6 +8,7 @@
      FS :pact.workflow.exec.fs
      PubSub :pact.pubsub
      Package :pact.package
+     Transaction :pact.runtime.transaction
      {:format fmt} string)
 
 (local Runtime {})
@@ -75,7 +76,7 @@
 ;; TODO
 (fn Runtime.exec-discover-orphans [runtime])
 
-(fn parse-disk-layout [runtime]
+(fn smoke-test-first-run [runtime]
   "Look at current disk state, possibly prepare it to a known good state, then
   set some information on runtime"
   ;; must have some directories created
@@ -84,16 +85,19 @@
 
   ;; look for current HEAD transaction symlink
   ;; otherwise create one to a default checkout
-  (let [current-head (match (vim.loop.fs_lstat runtime.path.head)
-                       {:type :link} (vim.loop.fs_readlink runtime.path.head)
-                       (nil _ :ENOENT) (let [t-path (transaction-path runtime {:id 1})]
-                                         (FS.make-path t-path)
-                                         (FS.symlink t-path runtime.path.head)
-                                         {:type :link} (vim.loop.fs_readlink runtime.path.head)))
+  (match (vim.loop.fs_lstat runtime.path.head)
+    (nil _ :ENOENT) (let [t-path (transaction-path runtime {:id 1})]
+                      (FS.make-path t-path)
+                      (FS.symlink t-path runtime.path.head)))
+  runtime)
+
+(fn parse-disk-layout [runtime]
+  "Look at current disk state, possibly prepare it to a known good state, then
+  set some information on runtime"
+  (let [current-head  (vim.loop.fs_readlink runtime.path.head) ;; TODO: re-add error checks
         transaction-id (string.match current-head ".+/([^/]-)$")]
     (set runtime.transaction.head.id transaction-id)
-    ;; TODO: put somewhere else? better name?
-    (set runtime.path.transaction current-head))
+    (set runtime.path.transaction current-head)) ;; TODO: put somewhere else? better name?
 
   runtime)
 
@@ -105,17 +109,21 @@
 
 (fn Runtime.new [opts]
   (let [Scheduler (require :pact.workflow.scheduler)
-        FS (require :pact.workflow.exec.fs)]
+        FS (require :pact.workflow.exec.fs)
+        data-path (FS.join-path (vim.fn.stdpath :data) :site/pack/pact/data)
+        repos-path (FS.join-path (vim.fn.stdpath :data) :site/pack/pact/data/repos)
+        ]
     (-> {:path {:root (FS.join-path (vim.fn.stdpath :data) :site/pack/pact)
-                :head (FS.join-path (vim.fn.stdpath :data) :site/pack/pact/data/HEAD)
-                :data (FS.join-path (vim.fn.stdpath :data) :site/pack/pact/data)
-                :repos (FS.join-path (vim.fn.stdpath :data) :site/pack/pact/data/repos)}
-         :transaction {:head {}
-                       :pending {}
+                :data data-path
+                :head (FS.join-path data-path :HEAD)
+                :repos repos-path}
+         :transaction {:head {:id nil}
+                       :staged (Transaction.new data-path repos-path)
                        :historic []}
          :packages {}
          :scheduler {:remote (Scheduler.new {:concurrency-limit opts.concurrency-limit})
                      :local (Scheduler.new {:concurrency-limit opts.concurrency-limit})}}
+        (smoke-test-first-run)
         (parse-disk-layout))))
 
 (set Runtime.Command {})
@@ -125,12 +133,14 @@
     (use Discover :pact.runtime.discover
          Scheduler :pact.workflow.scheduler)
     (let [packages (E.map #$ #(Package.iter runtime.packages))
+          ;; we can get the commits once for all canonicals
           commit-wfs (->> (E.group-by #(. $2 :canonical-id) packages)
                           (E.map (fn [_ canonical-set]
                                    [(Discover.make-discover-canonical-set-commits-workflow canonical-set
                                                                                            runtime.path.repos)
                                     ;; remember a package for triggering solve workflow
                                     (. canonical-set 1)])))
+          ;; but heads must be gotten per-package (??? TODO not true...)
           head-wfs (E.map #(Discover.make-head-commit-workflow $2 runtime.path.transaction)
                           packages)]
       (E.each (fn [_ [wf canonical-package]]
@@ -153,25 +163,46 @@
     (use SolveLatest :pact.runtime.solve-latest)
     (SolveLatest.solve runtime package)))
 
-(fn Runtime.Command.stage-package [package]
-  "Set package state to staged, this will also propagate up and down its
-  dependency tree."
+(fn compose [f g]
+  (fn [x] (f (g x))))
+
+(fn Runtime.Command.stage-package-tree [package]
+  "Set package state to staged, this will also propagate *down* its
+  dependency tree. If any package in the tree is unhealthy, the stage command
+  will fail."
   (fn [runtime]
-    (fn stage-down [packages]
-      (E.each #(do
-                 (tset $1 :state :parent-staged)
-                 (PubSub.broadcast $1 :staged))
-              #(Package.iter packages)))
-    (->> (E.map #(if (= $1.canonical-id package.canonical-id) $1)
-                #(Package.iter runtime.packages))
-         (E.each #(do
-                    (tset $2 :state :staged)
-                    (stage-down $2.depends-on)
-                    (PubSub.broadcast $2 :staged))))))
+    ;; TODO decide on propagation rules
+    ;; TODO: perhaps nicer if stage returned ok-err, but then it can't return
+    ;; package for chaning and would be out of step with other functions.
+    ;; Either find a way to disambuguate the behaviour.
+    (if (E.all? Package.stageable?
+                #(Package.iter [package]))
+      (do
+        (E.each #(do
+                   (Package.stage $)
+                   (PubSub.broadcast $ :changed))
+                   #(Package.iter [package]))
+        (R.ok))
+      (do
+        (R.err "unable to stage tree, some packages unstagable")))))
+
+(fn Runtime.Command.unstage-package-tree [package]
+  "Set package state to unstaged, this will also propagate *down* its
+  dependency tree. Any unhealthy packages in the tree are ignored."
+  (fn [runtime]
+    ;; TODO decide on propagation rules
+    ;; TODO: perhaps nicer if stage returned ok-err, but then it can't return
+    ;; package for chaning and would be out of step with other functions.
+    ;; Either find a way to disambuguate the behaviour.
+    (E.each #(do
+               (Package.unstage $)
+               (PubSub.broadcast $ :changed))
+            #(Package.iter [package]))
+    (R.ok)))
 
 (fn Runtime.dispatch [runtime command]
   (match (command runtime)
-    v (print v))
+    v (vim.pretty_print v))
   runtime)
 
 (values Runtime)
