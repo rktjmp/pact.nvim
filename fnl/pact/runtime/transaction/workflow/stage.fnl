@@ -28,7 +28,9 @@
     _ (result-let [_ (log "creating worktree %s -> %s @ %s" repo-path worktree-path sha)
                    _ (Git.add-worktree repo-path worktree-path sha)
                    _ (log "checking out")
-                   _ (Git.checkout-sha worktree-path sha)]
+                   _ (Git.checkout-sha worktree-path sha)
+                   _ (log "updating submodules")
+                   _ (Git.update-submodules worktree-path)]
         (ok :worktree))))
 
 (fn create-links [source-path link-name]
