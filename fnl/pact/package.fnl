@@ -112,11 +112,11 @@
   package)
 
 (fn Package.track-workflow [package wf]
-  (tset package wf true)
+  (tset package :workflows wf true)
   package)
 
 (fn Package.untrack-workflow [package wf]
-  (tset package wf nil)
+  (tset package :workflows wf nil)
   package)
 
 (fn Package.update-latest [package version]

@@ -229,17 +229,14 @@
                 (Package.track-workflow package wf)
                 (wf:attach-handler
                   (fn [ok]
-                    (Package.untrack-workflow package wf)
-                    (vim.pretty_print :package-ok ok)
                     (set package.text (vim.inspect ok {:newline ""}))
-                    (PubSub.broadcast package :changed))
+                    (PubSub.broadcast package :changed)
+                    (Package.untrack-workflow package wf))
                   (fn [err]
-                    (Package.untrack-workflow package wf)
-                    (vim.pretty_print :package-err err)
                     (set package.text (vim.inspect err {:newline ""}))
-                    (PubSub.broadcast package :changed))
+                    (PubSub.broadcast package :changed)
+                    (Package.untrack-workflow package wf))
                   (fn [msg]
-                    (vim.pretty_print :package-msg msg)
                     (set package.text msg)
                     (PubSub.broadcast package :changed))))
                 stage-wfs)
