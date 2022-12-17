@@ -75,8 +75,7 @@
                                   (-> p
                                       ;; sibling constraint failed, so we have specific error
                                       (Package.update-health (Package.Health.failing
-                                                               (fmt "could not solve %s due to error in canonical sibling"
-                                                                    s-way-cons))))))
+                                                               (. (R.unwrap relevant-result) :msg))))))
                                 (PubSub.broadcast p :error)))))
         (fn [msg]
           (update-siblings #(-> $
