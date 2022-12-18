@@ -84,9 +84,9 @@
                           :HEAD nil}
                :target {:commit nil ;; solves to commit
                         :distance nil ;; local..commit
-                        :oneline [] ;; git log local..commit
+                        :oneline []} ;; git log local..commit
                :latest {:commit nil} ;; latest "version" found
-               :commits []}}}
+               :commits []}}
         (setmetatable {:__newindex (fn [t k v]
                                      (if (not= :depended-by k)
                                        (print :new-key t.name k v))
@@ -101,9 +101,8 @@
                 commit.short-sha))
 
 (fn Package.add-event [package workflow event]
-  ;; TODO bundle wf here too when event stream less ui integrated
   (Log.log [workflow.id event])
-  (E.append$ package.events event)
+  (table.insert package.events 1 [workflow.id event])
   package)
 
 (fn Package.update-health [package health]
@@ -139,7 +138,8 @@
   package)
 
 (fn Package.update-latest [package version]
-  (set package.latest-version version)
+  (Log.log [:latest package.name package.git version])
+  (set package.git.latest.commit version)
   package)
 
 (fn Package.healthy? [package]

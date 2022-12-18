@@ -74,7 +74,17 @@
                        :working? (E.any? #$1.timer $1.workflows)
                        :waiting? (E.any? #$1 $1.workflows)
                        :constraint $1.constraint
-                       :text $1.text
+                       :text (do
+                               (-> (inspect (?. $ :events 1 2) true)
+                                   (string.gmatch "([^\n]+)")
+                                   (E.map $1)
+                                   (table.concat " "))
+
+                               ; (E.reduce (fn [_ _ [_wf event]]
+                               ;             (if (string? event)
+                               ;               (E.reduced event)))
+                               ;         "no text" $.events)
+                               )
                        :indent (length $2)
                        :action (?. $ :action 1)
                        :state $1.state

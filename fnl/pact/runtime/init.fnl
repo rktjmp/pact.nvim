@@ -247,16 +247,19 @@
                 (Package.track-workflow package wf)
                 (wf:attach-handler
                   (fn [ok]
-                    (set package.text (vim.inspect ok {:newline ""}))
-                    (PubSub.broadcast package :changed)
-                    (Package.untrack-workflow package wf))
+                    (-> package
+                        (Package.add-event wf ok)
+                        (Package.untrack-workflow wf)
+                        (PubSub.broadcast :changed)))
                   (fn [err]
-                    (set package.text (vim.inspect err {:newline ""}))
-                    (PubSub.broadcast package :changed)
-                    (Package.untrack-workflow package wf))
+                    (-> package
+                        (Package.add-event wf err)
+                        (Package.untrack-workflow wf)
+                        (PubSub.broadcast :changed)))
                   (fn [msg]
-                    (set package.text msg)
-                    (PubSub.broadcast package :changed))))
+                    (-> package
+                        (Package.add-event wf msg)
+                        (PubSub.broadcast :changed)))))
                 stage-wfs)
       ;; TODO bit of callback hell here but we'll fix it in post.
       (setup-wf:attach-handler
