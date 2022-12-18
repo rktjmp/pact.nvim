@@ -22,50 +22,61 @@
              (Package.source package)
              (FS.join-path path-prefix package.path.head))]
     (update-siblings (fn [package]
-                       (tset package.workflows wf true)))
+                       (Package.track-workflow package wf)))
     (wf:attach-handler
       (fn [commits]
-        (update-siblings (fn [package]
-                           (tset package.workflows wf nil)
-                           (set package.commits (R.unwrap commits))
-                           (set package.state :unstaged)))
-        (PubSub.broadcast package (R.ok :facts-updated)))
+        (update-siblings #(-> $
+                              (Package.add-event wf commits)
+                              (Package.untrack-workflow wf)
+                              (Package.update-commits (R.unwrap commits))
+                              (E.set$ :state :unstaged)
+                              (PubSub.broadcast (R.ok :facts-updated)))))
       (fn [err]
-        (update-siblings (fn [package]
-                           (tset package.workflows wf nil)
-                           (set package.text (tostring err))
-                           (set package.commits [])
-                           (set package.state :error)))
-        ;; TODO wrapping not needed anymore
-        (PubSub.broadcast package (R.err :facts-updated)))
+        (update-siblings #(-> $
+                              (Package.add-event wf err)
+                              (Package.untrack-workflow wf)
+                              (Package.update-commits [])
+                              (E.set$ :text (tostring err))
+                              ;; TODO
+                              (Package.update-health
+                                (Package.Health.failing (fmt "E-9999")))
+                              ;; TODO wrapping not needed anymore
+                              (PubSub.broadcast package (R.err :facts-updated)))))
       (fn [msg]
-        (update-siblings (fn [package]
-                           (E.append$ package.events msg)
-                           (set package.text msg)
-                           (PubSub.broadcast package :events-changed)))))
+        (update-siblings #(-> $
+                              (Package.add-event wf msg)
+                              (E.set$ :text msg)
+                              (PubSub.broadcast package :events-changed)))))
     wf))
 
 (fn Discover.make-head-commit-workflow [package path-prefix]
     (use DiscoverHeadCommit :pact.workflow.status.discover-head-commit)
     (let [wf (DiscoverHeadCommit.new package.canonical-id
                                      (FS.join-path path-prefix package.path.rtp))]
-      (tset package.workflows wf true)
+      (Package.track-workflow package wf)
       (wf:attach-handler
         (fn [commit]
-          (tset package.workflows wf nil)
-          ;; may be nil
-          (set package.head (R.unwrap commit))
-          (set package.state :unstaged)
-          (PubSub.broadcast package (R.ok :head-updated)))
+          ;; may be nil ;; XXX
+          (-> package
+              (Package.set-head (R.unwrap commit))
+              (Package.untrack-workflow wf)
+              (Package.add-event wf commit)
+              (E.set$ :state :unstaged)
+              (PubSub.broadcast (R.ok :head-updated))))
         (fn [err]
-          (tset package.workflows wf nil)
-          (set package.text (tostring err))
-          (set package.state :error)
-          (PubSub.broadcast package (R.err :head-updated)))
+          (-> package
+              (Package.untrack-workflow wf)
+              (Package.add-event wf err)
+              (E.set$ :text (tostring err))
+              ;; TODO
+              (Package.update-health
+                (Package.Health.failing (fmt "E-9999")))
+              (PubSub.broadcast package (R.err :head-updated))))
         (fn [msg]
-          (E.append$ package.events msg)
-          (set package.text msg)
-          (PubSub.broadcast package :events-changed)))
+          (-> package
+              (Package.add-event wf msg)
+              (E.set$ :text msg)
+              (PubSub.broadcast package :events-changed))))
       wf))
 
 Discover
