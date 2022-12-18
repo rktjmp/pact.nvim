@@ -38,7 +38,7 @@
 (fn schedule-redraw [ui]
   ;; asked to render, we only want to hit 60fps otherwise we can really pin
   ;; with lots of workflows pinging back to us.
-  (local rate (/ 1000 30))
+  (local rate (/ 1000 60))
   (when (< (or ui.will-render 0) (vim.loop.now))
     (tset ui :will-render (+ rate (vim.loop.now)))
     (vim.defer_fn #(Render.output ui) rate)))
@@ -129,6 +129,8 @@
     ;; TODO unsub all on win close
     (E.each #(subscribe $1 #(schedule-redraw ui))
             #(Package.iter ui.runtime.packages))
+    (subscribe ui.runtime.scheduler.local #(schedule-redraw ui))
+    (subscribe ui.runtime.scheduler.remote #(schedule-redraw ui))
     (->> (Runtime.Command.discover-status)
          (Runtime.dispatch runtime))
     (schedule-redraw ui)))
