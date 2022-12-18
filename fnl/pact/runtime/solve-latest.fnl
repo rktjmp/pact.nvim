@@ -16,7 +16,7 @@
         siblings (E.map #(if (= $1.canonical-id package.canonical-id) $1)
                         #(Package.iter runtime.packages))
         update-siblings #(E.each (fn [_ p] ($1 p)) siblings)]
-    (let [commits package.commits
+    (let [commits package.git.commits
           wf (solve-latest/new package.canonical-id commits)]
       (update-siblings #(Package.track-workflow $ wf))
       (wf:attach-handler

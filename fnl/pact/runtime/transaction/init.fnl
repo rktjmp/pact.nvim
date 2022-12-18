@@ -3,6 +3,7 @@
 
 (use E :pact.lib.ruin.enum
      FS :pact.workflow.exec.fs
+     Package :pact.package
      {:format fmt} string)
 
 (local Transaction {})
@@ -20,12 +21,11 @@
 (fn Transaction.stage-package [transaction package]
   (use StageWorkflow :pact.runtime.transaction.workflow.stage
        Package :pact.package)
-  (let [repo-path (FS.join-path transaction.path.repos package.path.head)
+  (let [repo-path (FS.join-path transaction.path.repos package.git.repo.path)
         worktree-path (FS.join-path transaction.path.repos
-                                    package.path.root
-                                    package.solves-to.short-sha)
-        rtp-path (FS.join-path transaction.path.root package.path.rtp)
-        repo-url (Package.source package)
+                                    (Package.worktree-path package package.solves-to))
+        rtp-path (FS.join-path transaction.path.root package.install.path)
+        repo-url package.git.remote.origin
         sha package.solves-to.short-sha]
     (E.append$ transaction.packages package)
     (StageWorkflow.new package.uid repo-url repo-path worktree-path sha rtp-path)))

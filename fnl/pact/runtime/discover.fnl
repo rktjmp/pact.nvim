@@ -52,13 +52,14 @@
 (fn Discover.make-head-commit-workflow [package path-prefix]
     (use DiscoverHeadCommit :pact.workflow.status.discover-head-commit)
     (let [wf (DiscoverHeadCommit.new package.canonical-id
-                                     (FS.join-path path-prefix package.path.rtp))]
+                                     (FS.join-path path-prefix package.install.path))]
       (Package.track-workflow package wf)
       (wf:attach-handler
         (fn [commit]
-          ;; may be nil ;; XXX
+          ;; may be nil, for no local checkout, maybe change? TODO
+          (match (R.unwrap commit)
+            c (Package.set-head c))
           (-> package
-              (Package.set-head (R.unwrap commit))
               (Package.untrack-workflow wf)
               (Package.add-event wf commit)
               (E.set$ :state :unstaged)

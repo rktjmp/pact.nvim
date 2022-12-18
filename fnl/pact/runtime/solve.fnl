@@ -26,7 +26,7 @@
     (let [constraints (E.map #[$2.uid $2.constraint] siblings)
           s-way-cons (fmt "%s-way constraint%s" (length constraints) (if (= 1 (length constraints))
                                                                        "" "s"))
-          commits package.commits
+          commits package.git.commits
           repo (rel-path->abs-path :repos package.path.head) ;; TODO into module
           wf (solve-constraints/new package.canonical-id repo constraints commits)]
       (update-siblings #(Package.track-workflow $ wf))

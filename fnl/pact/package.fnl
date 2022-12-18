@@ -56,33 +56,46 @@
   (let [root spec.canonical-id
         package-name (or (string.match spec.name ".+/([^/]-)$")
                          (string.gsub spec.name "/" "-")) ;; TODO this will smell
-        package-path (FS.join-path (if spec.opt? :opt :start) package-name)]
-    {:type :plugin
-     :canonical-id spec.canonical-id ;; shared between packages with same origin
-     :uid (gen-uid) ;; globally unique between all packages
-     :spec spec
-     :name spec.name
-     :source spec.source
-     :constraint spec.constraint
-     :depended-by nil
-     :depends-on (or spec.dependencies []) ;; placeholder
-     ;; these are kept relative as they will be different for every transaction
-     :path {:root root ;; github-user-repo-nvim/
-            :rtp package-path ;; start|opt/package.nvim
-            :head (FS.join-path root :HEAD)} ;; github-user-repo-nvim/HEAD
-     :order 0 ;(E.reduce #(+ $1 1) 1 runtime.packages)
-     :events []
-     :workflows []
-     :action [:hold]
-     :health (Health.healthy)
-     :state :state-prop-deprecated
-     :text "waiting for scheduler" ;; TODO: deprecate this, UI not package
-     :commits nil ;; set by discover
-     :solves-to nil ;; set by solve
-     }))
+        rtp-path (FS.join-path (if spec.opt? :opt :start) package-name)]
+    (-> {:type :plugin
+         :canonical-id spec.canonical-id ;; shared between packages with same origin
+         :uid (gen-uid) ;; globally unique between all packages
+         :spec spec
+         :name spec.name
+         :source spec.source
+         :constraint spec.constraint
+         :depended-by nil
+         :depends-on (or spec.dependencies []) ;; placeholder
+         ;; these are kept relative as they will be different for every transaction
+         :path {:root root ;; github-user-repo-nvim/
+                :rtp rtp-path ;; start|opt/package.nvim
+                :head (FS.join-path root :HEAD)} ;; github-user-repo-nvim/HEAD
+         :order 0 ;(E.reduce #(+ $1 1) 1 runtime.packages)
+         :events []
+         :workflows []
+         :action [:hold]
+         :health (Health.healthy)
+         :state :state-prop-deprecated
+         :text "waiting for scheduler" ;; TODO: deprecate this, UI not package
+         :solves-to nil ;; set by solve
+         :install {:path rtp-path} ;; start|opt/<name>
+         :git {:remote {:origin (. spec.source 2)}
+               :repo {:path (FS.join-path root :HEAD)}
+               :checkout {:path nil ;; github-user-repo-nvim/sha
+                          :HEAD nil}
+               :commits []}}
+        (setmetatable {:__newindex (fn [t k v]
+                                     (if (not= :depended-by k)
+                                       (print :new-key t.name k v))
+                                     (rawset t k v))
+                       :__index (fn [t k]
+                                  (match (. Package k)
+                                    (where f (function? f)) f
+                                    _ nil))}))))
 
-; (fn Package.commit-path [package commit]
-;   (FS.join-path package.root commit.sha))
+(λ Package.worktree-path [package commit]
+  (FS.join-path (string.match package.git.repo.path "(.+)HEAD$")
+                commit.short-sha))
 
 (fn Package.add-event [package workflow event]
   ;; TODO bundle wf here too when event stream less ui integrated
@@ -104,7 +117,12 @@
   package)
 
 (fn Package.update-commits [package commits]
-  (set package.commits commits)
+  (set package.git.commits commits)
+  package)
+
+(fn Package.set-head [package commit]
+  (set package.git.checkout.HEAD commit)
+  (set package.git.checkout.path (Package.worktree-path package commit))
   package)
 
 (fn Package.resolve-constraint [package commit]
@@ -114,6 +132,8 @@
   package)
 
 (fn Package.track-workflow [package wf]
+  ;; For UI purposes we want to know what wf's are related to a package and
+  ;; know if they're running or waiting. This is a smell but will do for now TODO
   (tset package :workflows wf true)
   package)
 
@@ -142,6 +162,24 @@
 
 (fn Package.held? [package]
   (= (?. package :action 1) :hold))
+
+(fn Package.in-sync? [package]
+  "Is the given package in sync with its remote?"
+  (and (Package.on-disk? package)
+       (Package.solved? package)
+       (= package.git.checkout.HEAD.sha package.solves-to.sha)))
+
+(fn Package.on-disk? [package]
+  "Does the package exist on disk?"
+  (not-nil? package.git.checkout.path))
+
+(fn Package.solved? [package]
+  "Is the package constraint solved?"
+  (not-nil? package.solves-to))
+
+(fn Package.solve [package commit]
+  (set package.solves-to commit)
+  package)
 
 (fn Package.stage [package]
   (match-let [true (Package.healthy? package)
