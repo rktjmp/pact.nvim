@@ -60,6 +60,7 @@
                            (E.any? #(= workflow-set $2.workflow-set) scheduler.queue))))
            (E.group-by #$2.workflow-set)
            (E.map #(broadcast $1 (R.ok $1))))
+      (broadcast scheduler :tick)
       ;; stop or nah?
       (when (= 0 (length scheduler.queue) (length scheduler.active))
         (uv.timer_stop scheduler.timer-handle)
