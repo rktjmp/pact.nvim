@@ -7,6 +7,7 @@
      {:format fmt} string
      {:loop uv} vim)
 
+
 (local hertz (/ 1000 60))
 
 (var id 0)
@@ -33,7 +34,8 @@
           (->> (E.group-by
                  #(match (run $2)
                     (action value) (values action [$2 value])
-                    _ (error "workflow.run did not return 2 values"))
+                    _ (vim.schedule
+                        #(error "workflow.run did not return 2 values")))
                  scheduler.active)
                (E.merge$ {:halt [] :cont []}))]
       ;; collect anything that wants to be scheduled again, and update the
@@ -54,9 +56,10 @@
       (->> (E.map #(. $2 1) halted)
            (E.reject #(nil? $2.workflow-set))
            (E.reject (fn [_ {: workflow-set}]
-                       (or (E.any? #(= workflow-set $2.workflow-set) continued)
+                       (or (E.any? #(= workflow-set $2.workflow-set) scheduler.active)
                            (E.any? #(= workflow-set $2.workflow-set) scheduler.queue))))
-           (E.map #(broadcast $2.workflow-set (R.ok $2.workflow-set))))
+           (E.group-by #$2.workflow-set)
+           (E.map #(broadcast $1 (R.ok $1))))
       ;; stop or nah?
       (when (= 0 (length scheduler.queue) (length scheduler.active))
         (uv.timer_stop scheduler.timer-handle)
