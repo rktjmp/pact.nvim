@@ -42,12 +42,18 @@
         (+ value 1))
       value)))
 
-(fn progress-symbol [progress]
-  (let [symbols [:◐ :◓ :◑ :◒]]
+
+(fn workflow-active-symbol [progress]
+  (let [symbols [:◐ :◓ :◑ :◒]
+        symbols ["`" "'" "\""]
+        symbols ["\\" "|" "/" "-"]
+        ]
+
     (. symbols (+ 1 (% progress (length symbols))))))
 
-(fn workflow-symbol []
-  "⧖")
+(fn workflow-waiting-symbol []
+  "⧖"
+  ".")
 
 (fn package-tree->ui-data [packages]
   (use Package :pact.package
@@ -60,11 +66,11 @@
         package-data #{:uid $1.uid
                        :name $1.name
                        :health $1.health
-                       :head $.head
-                       :solves-to $.solves-to
-                       :latest (match $.latest-version
-                                 ver (table.concat ver.versions ",")
-                                 _ "")
+                       :head (?. $ :git :checkout :HEAD :short-sha)
+                       :solves-to (?. $ :git :target :commit :short-sha)
+                       :latest  (match (?. $ :git :latest :commit)
+                                  c (table.concat c.versions ",")
+                                  _ "")
                        :working? (E.any? #$1.timer $1.workflows)
                        :waiting? (E.any? #$1 $1.workflows)
                        :constraint $1.constraint
@@ -107,10 +113,12 @@
     ;; best knows how to do that curently.
     (let [{: name : text : state : constraint : indent} package
           wf-col [(match [package.working? package.waiting?]
-                    [true _] {:text "*"
-                              :highlight :DiagnosticInfo}
-                   [_ true] {:text "_"
-                             :highlight :Comment}
+                    [true _] {:text (workflow-active-symbol (vim.loop.now))
+                              :highlight :DiagnosticInfo
+                              :length 1}
+                   [_ true] {:text (workflow-waiting-symbol (vim.loop.gettimeofday))
+                             :highlight :Comment
+                             :length 1}
                    _ {:text " "
                       :highlight :Comment})]
           health-col [(match package.health

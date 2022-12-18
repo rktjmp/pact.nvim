@@ -35,7 +35,7 @@
           (update-siblings #(-> $
                                 (Package.untrack-workflow wf)
                                 (Package.add-event wf ok-commit)
-                                (Package.resolve-constraint (R.unwrap ok-commit))
+                                (Package.solve (R.unwrap ok-commit))
                                 (PubSub.broadcast :solved))))
         (fn [ok-commits-err-constraints]
           ;; This may be called with a mixture of ok-commit for constraints
@@ -60,13 +60,13 @@
                                       ;; shared commit between them, so technically
                                       ;; they fail as a collection.
                                       ;; TODO: E.hd may give "non-latest" for versions
-                                      (Package.resolve-constraint (E.hd (. (R.unwrap relevant-result) :commits)))
+                                      (Package.solve (E.hd (. (R.unwrap relevant-result) :commits)))
                                       (Package.update-health (Package.Health.failing (fmt "no single commit satisfied %s"
                                                                                           s-way-cons))))
                                   [_ true]
                                   (-> p
                                       ;; sibling constraint was actually ok
-                                      (Package.resolve-constraint (R.unwrap relevant-result))
+                                      (Package.solve (R.unwrap relevant-result))
                                       (Package.update-health (Package.Health.degraded
                                                                (fmt "could not solve %s due to error in canonical sibling"
                                                                     s-way-cons))))

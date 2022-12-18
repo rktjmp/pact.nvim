@@ -23,10 +23,10 @@
        Package :pact.package)
   (let [repo-path (FS.join-path transaction.path.repos package.git.repo.path)
         worktree-path (FS.join-path transaction.path.repos
-                                    (Package.worktree-path package package.solves-to))
+                                    (Package.worktree-path package package.git.target.commit))
         rtp-path (FS.join-path transaction.path.root package.install.path)
         repo-url package.git.remote.origin
-        sha package.solves-to.short-sha]
+        sha package.git.target.commit.short-sha]
     (E.append$ transaction.packages package)
     (StageWorkflow.new package.uid repo-url repo-path worktree-path sha rtp-path)))
 

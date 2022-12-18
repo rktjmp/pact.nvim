@@ -77,13 +77,16 @@
          :health (Health.healthy)
          :state :state-prop-deprecated
          :text "waiting for scheduler" ;; TODO: deprecate this, UI not package
-         :solves-to nil ;; set by solve
          :install {:path rtp-path} ;; start|opt/<name>
          :git {:remote {:origin (. spec.source 2)}
                :repo {:path (FS.join-path root :HEAD)}
                :checkout {:path nil ;; github-user-repo-nvim/sha
                           :HEAD nil}
-               :commits []}}
+               :target {:commit nil ;; solves to commit
+                        :distance nil ;; local..commit
+                        :oneline [] ;; git log local..commit
+               :latest {:commit nil} ;; latest "version" found
+               :commits []}}}
         (setmetatable {:__newindex (fn [t k v]
                                      (if (not= :depended-by k)
                                        (print :new-key t.name k v))
@@ -125,12 +128,6 @@
   (set package.git.checkout.path (Package.worktree-path package commit))
   package)
 
-(fn Package.resolve-constraint [package commit]
-  ;; TODO: add "resolved" prop to constraint? Does the data belong together? could every constraint actually be promise/future like?
-  ;; TODO: solve-constraint to match key name?
-  (set package.solves-to commit)
-  package)
-
 (fn Package.track-workflow [package wf]
   ;; For UI purposes we want to know what wf's are related to a package and
   ;; know if they're running or waiting. This is a smell but will do for now TODO
@@ -155,7 +152,7 @@
   (Package.Health.failing? package.health))
 
 (fn Package.stageable? [package]
-  (and (Package.healthy? package) (not-nil? package.solves-to)))
+  (and (Package.healthy? package) (Package.solved? package)))
 
 (fn Package.staged? [package]
   (= (?. package :action 1) :stage))
@@ -167,7 +164,7 @@
   "Is the given package in sync with its remote?"
   (and (Package.on-disk? package)
        (Package.solved? package)
-       (= package.git.checkout.HEAD.sha package.solves-to.sha)))
+       (= package.git.checkout.HEAD.sha package.git.target.commit.sha)))
 
 (fn Package.on-disk? [package]
   "Does the package exist on disk?"
@@ -175,16 +172,16 @@
 
 (fn Package.solved? [package]
   "Is the package constraint solved?"
-  (not-nil? package.solves-to))
+  (not-nil? package.git.target.commit))
 
 (fn Package.solve [package commit]
-  (set package.solves-to commit)
+  (set package.git.target.commit commit)
   package)
 
 (fn Package.stage [package]
   (match-let [true (Package.healthy? package)
-              commit package.solves-to]
-    (values (E.set$ package :action [:stage package.solves-to])
+              commit package.git.target.commit]
+    (values (E.set$ package :action [:stage commit])
             (R.ok))
     (else
       false (values package (R.err "cannot stage unhealthy package"))

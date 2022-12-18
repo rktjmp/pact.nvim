@@ -58,7 +58,7 @@
         (fn [commit]
           ;; may be nil, for no local checkout, maybe change? TODO
           (match (R.unwrap commit)
-            c (Package.set-head c))
+            c (Package.set-head package c))
           (-> package
               (Package.untrack-workflow wf)
               (Package.add-event wf commit)

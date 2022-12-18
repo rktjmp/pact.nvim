@@ -219,6 +219,25 @@
     (let [t (Transaction.new runtime.path.data
                              runtime.path.repos
                              runtime.path.head)
+          ;; Some misdirection of terms here, probably the transaction action
+          ;; name should be changed from stage. TODO.
+          ;; We want to stage every package, because every package is carried
+          ;; ahead to the next transaction, it's just some are carried ahead to
+          ;; new sha's and others are held at the same value.
+          ; truth-table [
+          ; _ (match [(Package.on-disk? package) (Package.staged? package) packge.head package.solves-to]
+          ;     ;; exists, is staged, current = next, no actual change
+          ;     (where [true true current commit] (and (not= current.short-sha commit.short-sha)))
+          ;     (stage commit)
+
+          ;     ;; exists, is staged, current != next, perform change
+
+          ;     [false true _ commit] (stage commit)
+          ;     [false false commit _] (stage commit)
+
+
+          ;     (where _ (not (Package.on-disk? package))) (Transaction.clone-package-tree t package)
+          ;     (where _ (and (Package.staged? package) package.solves-to)
           stage-wfs (E.map #(if (Package.staged? $)
                               [$1 (Transaction.stage-package t $1)])
                            ;; TODO: filter dups
