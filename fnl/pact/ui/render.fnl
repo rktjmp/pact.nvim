@@ -3,6 +3,7 @@
 
 (use E :pact.lib.ruin.enum
      R :pact.lib.ruin.result
+     Log :pact.log
      Package :pact.package
      inspect :pact.inspect
      api vim.api
@@ -208,7 +209,7 @@
             $1))))
   (E.map #(decomp-line $2) rows))
 
-(fn inject-padding-chunks [rows]
+(fn inject-padding-chunks [rows widths]
   ;; Each row has columns, but they are not intrinsically aligned in the data
   ;; we need to work out what the padding should be for each column on each
   ;; line and add that as a new chunk in the line.
@@ -221,24 +222,13 @@
                                      [any nil] (+ $1 (length text))
                                      [_ any] (+ $1 len)
                                      _ $1))
-                                0 $1)
-        get-col-widths (E.map (fn [i col] [i (sum-col-chunk-widths col)]))
-        ;; woof
-        widths (->> rows
-                    ;; get widths of each column in each row as [col-n width]
-                    (E.map #(get-col-widths $2.content))
-                    (E.flatten)
-                    ;; group all widths by column
-                    (E.group-by (fn [_ [col-n w]] (values col-n w)))
-                    ;; find max width for each column
-                    (E.reduce (fn [maxes i widths] (E.set$ maxes i (math.max (unpack widths))))
-                              []))]
+                                0 $1)]
     ;; now we can re-iterate the columns and inject a padding chunk
     (E.map (fn [_ row]
              {:meta row.meta
               :content (E.map (fn [col-n column]
                                 (let [cur-width (sum-col-chunk-widths column)
-                                      padding (- (. widths col-n) cur-width)]
+                                      padding (- (or (. widths col-n) 0) cur-width)]
                                   ;; TODO performance if needed, drop copy for each
                                   (if (< 0 padding)
                                     (E.concat$ [] column [{:text (string.rep " " padding)
@@ -257,12 +247,6 @@
                         (rows->lines))
               :blank  (-> [[[{:text "" :highlight :None}]]]
                              (rows->lines))
-              :unstaged  (-> [[[{:text "Unstaged " :highlight :PactUnstagedTitle}
-                                {:text "(n)" :highlight :PactComment}]]]
-                             (rows->lines))
-              :staged  (-> [[[{:text "Staged " :highlight :PactStagedTitle}
-                              {:text "(n)" :highlight :PactComment}]]]
-                           (rows->lines))
               :no-plugins (-> (E.map #[[{:text $2 :highlight :DiagnosticError}]]
                                      [""
                                       ";; Whoops"
@@ -278,9 +262,6 @@
                                  ";;   cc - Commit staging and fetch updates"
                                  ";;   =  - View git log (staged/unstaged only)"])
                          (rows->lines))})
-
-(fn basic-column [t hl]
-  [{:text t :highlight hl}])
 
 (λ packages->sections [packages]
   ;; We always operate on the top level packages, as we want to group
@@ -312,6 +293,9 @@
      :unstaged (or unstaged [])}))
 
 (fn make-headings [title count]
+  (fn basic-column [t hl]
+    [{:text t :highlight hl}])
+
   ; [[[{:text "Staged " :highlight :PactStagedTitle}
   ;    {:text "(n)" :highlight :PactComment}]]]
   [{:content [(basic-column "wf" "@comment")
@@ -325,29 +309,66 @@
               (basic-column "text" "@comment")]
     :meta {}}])
 
+(fn find-widths [rows]
+  (let [sum-col-chunk-widths #(E.reduce
+                                #(let [{: text :length len} $3]
+                                   (match [text len]
+                                     [nil nil] $1
+                                     [any nil] (+ $1 (length text))
+                                     [_ any] (+ $1 len)
+                                     _ $1))
+                                0 $1)
+        get-col-widths (E.map (fn [i col] [i (sum-col-chunk-widths col)]))]
+    (->> rows
+         ;; get widths of each column in each row as [col-n width]
+         (E.map #(get-col-widths $2.content))
+         (E.flatten)
+         ;; group all widths by column
+         (E.group-by (fn [_ [col-n w]] (values col-n w)))
+         ;; find max width for each column
+         (E.reduce (fn [maxes i widths]
+                     (E.set$ maxes i (math.max (unpack widths))))
+                   []))))
+
 (fn Render.output [ui]
   (use Runtime :pact.runtime)
-  (let [{true staged false unstaged} (->
-                                       ;; we want to group package by
-                                       ;; staged-unstaged, but a package is
-                                       ;; actually in the "staged" group if
-                                       ;; *any* of its deps are staged.
-                                       (E.group-by (fn [_ package]
-                                                     (E.any? #(Package.staged? $)
-                                                             #(Package.iter [package])))
-                                                   ;; we intentionally only iterate the "top" packages
-                                                   ui.runtime.packages))
-        {: waiting : in-sync : staged : unstaged} (packages->sections ui.runtime.packages)
-        make-section (fn [title packages]
+  (let [{: waiting : in-sync : staged : unstaged} (packages->sections ui.runtime.packages)
+        make-section (fn [packages]
                        (-> (package-tree->ui-data packages)
-                           (ui-data->rows)
-                           (->> (E.concat$ (make-headings title)))
-                           (inject-padding-chunks)
-                           (intersperse-column-breaks)))
-        staged-rows (make-section "Staged" staged)
-        unstaged-rows (make-section "Unstaged" unstaged)
-        in-sync-rows (make-section "In-sync" in-sync)
-        waiting-rows (make-section "Waiting" waiting)]
+                           (ui-data->rows)))
+        staged-rows (make-section staged)
+        unstaged-rows (make-section unstaged)
+        in-sync-rows (make-section in-sync)
+        waiting-rows (make-section waiting)
+        widths (->> (E.map #(find-widths $2)
+                           [waiting-rows in-sync-rows unstaged-rows staged-rows])
+                    (E.reduce (fn [maxes _ local-maxes]
+                                (E.each (fn [col local-max]
+                                          (tset maxes col (math.max (or (. maxes col) 0)
+                                                                    local-max)))
+                                        local-maxes)
+                                maxes)
+                              []))
+        staged-rows (-> staged-rows
+                        (inject-padding-chunks widths)
+                        (intersperse-column-breaks))
+        unstaged-rows (-> unstaged-rows
+                          (inject-padding-chunks widths)
+                          (intersperse-column-breaks))
+        in-sync-rows (-> in-sync-rows
+                         (inject-padding-chunks widths)
+                         (intersperse-column-breaks))
+        waiting-rows (-> waiting-rows
+                         (inject-padding-chunks widths)
+                         (intersperse-column-breaks))
+        unstaged-title [[[{:text "Unstaged " :highlight :PactUnstagedTitle}
+                          {:text (fmt "(%s)" (length unstaged-rows)) :highlight :PactComment}]]]
+        staged-title [[[{:text "Staged" :highlight :PactUnstagedTitle}
+                        {:text (fmt "(%s)" (length staged-rows)) :highlight :PactComment}]]]
+        in-sync-title [[[{:text "In Sync" :highlight :PactUnstagedTitle}
+                         {:text (fmt "(%s)" (length in-sync-rows)) :highlight :PactComment}]]]
+        waiting-title [[[{:text "Waiting " :highlight :PactUnstagedTitle}
+                         {:text (fmt "(%s)" (length waiting-rows)) :highlight :PactComment}]]]]
     ;; clear extmarks so we don't have them all pile up. We have to re-make
     ;; then each draw as the lines are re-drawn.
     (set ui.extmarks [])
@@ -374,18 +395,27 @@
 
     ; (if (E.all? #(length $2) [staged-rows unstaged-rows])
     ;   (write-lines const.no-plugins))
+    (fn write-title [x]
+      (-> (rows->lines x)
+          (write-lines x))
+      ;; TODO titles not really configured for extmarks
+      ; (-> (rows->extmarks x)
+      ;     (draw-extmarks (- current-line 1)))
+      )
 
-    (write-lines const.staged)
+    (write-title staged-title)
     (write-lines (rows->lines staged-rows))
     (draw-extmarks (rows->extmarks staged-rows) (- current-line (length staged-rows)))
 
-    (write-lines const.unstaged)
+    (write-title unstaged-title)
     (write-lines (rows->lines unstaged-rows))
     (draw-extmarks (rows->extmarks unstaged-rows) (- current-line (length unstaged-rows)))
 
+    (write-title in-sync-title)
     (write-lines (rows->lines in-sync-rows))
     (draw-extmarks (rows->extmarks in-sync-rows) (- current-line (length in-sync-rows)))
 
+    (write-title waiting-title)
     (write-lines (rows->lines waiting-rows))
     (draw-extmarks (rows->extmarks waiting-rows) (- current-line (length waiting-rows)))
 
