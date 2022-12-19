@@ -6,10 +6,14 @@
      Commit :pact.git.commit
      Git :pact.workflow.exec.git
      FS :pact.workflow.exec.fs
+     R :pact.lib.ruin.result
      E :pact.lib.ruin.enum
-     {: inspect!} :pact.lib.ruin.debug
+     PubSub :pact.pubsub
+     Package :pact.package
      {:format fmt} string
      {:new new-workflow : yield : log} :pact.workflow)
+
+(local DiscoverRemote {})
 
 (fn group-commits [commits]
   ;; Commits may share the multiple properties so filter each separately vs
@@ -54,4 +58,40 @@
   (where [id repo-url repo-path])
   (new-workflow id #(detect-kind repo-url repo-path)))
 
-{: new}
+(fn DiscoverRemote.workflow [canonical-set path-prefix]
+  (let [;; we only need one packge to work on
+        package (E.hd canonical-set)
+        ;; but need to propagate results to all in the set
+        update-siblings #(E.each (fn [_ p] ($1 p)) canonical-set)
+        wf (new package.canonical-id
+                (Package.source package)
+                (FS.join-path path-prefix package.path.head))]
+    (update-siblings (fn [package]
+                       (Package.track-workflow package wf)))
+    (wf:attach-handler
+      (fn [commits]
+        (update-siblings #(-> $
+                              (Package.add-event wf commits)
+                              (Package.untrack-workflow wf)
+                              (Package.update-commits (R.unwrap commits))
+                              (E.set$ :state :unstaged)
+                              (PubSub.broadcast (R.ok :facts-updated)))))
+      (fn [err]
+        (update-siblings #(-> $
+                              (Package.add-event wf err)
+                              (Package.untrack-workflow wf)
+                              (Package.update-commits [])
+                              (E.set$ :text (tostring err))
+                              ;; TODO
+                              (Package.update-health
+                                (Package.Health.failing (fmt "E-9999")))
+                              ;; TODO wrapping not needed anymore
+                              (PubSub.broadcast package (R.err :facts-updated)))))
+      (fn [msg]
+        (update-siblings #(-> $
+                              (Package.add-event wf msg)
+                              (E.set$ :text msg)
+                              (PubSub.broadcast package :events-changed)))))
+    wf))
+
+DiscoverRemote

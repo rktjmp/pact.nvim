@@ -143,18 +143,19 @@
 
 (fn Runtime.Command.discover-status []
   (fn [runtime]
-    (use Discover :pact.runtime.discover
+    (use DiscoverRemote :pact.runtime.discover.remote
+         DiscoverLocal :pact.runtime.discover.local
          Scheduler :pact.workflow.scheduler)
     (let [packages (E.map #$ #(Package.iter runtime.packages))
           ;; we can get the commits once for all canonicals
           commit-wfs (->> (E.group-by #(. $2 :canonical-id) packages)
                           (E.map (fn [_ canonical-set]
-                                   [(Discover.make-discover-canonical-set-commits-workflow canonical-set
-                                                                                           runtime.path.repos)
+                                   [(DiscoverRemote.workflow canonical-set
+                                                             runtime.path.repos)
                                     ;; remember a package for triggering solve workflow
                                     (. canonical-set 1)])))
           ;; but heads must be gotten per-package (??? TODO not true...)
-          head-wfs (E.map #(Discover.make-head-commit-workflow $2 runtime.path.transaction)
+          head-wfs (E.map #(DiscoverLocal.workflow $2 runtime.path.transaction)
                           packages)]
       (E.each (fn [_ [wf canonical-package]]
                 (wf:attach-handler #(E.each #(Runtime.dispatch runtime $2)
