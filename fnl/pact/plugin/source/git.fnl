@@ -50,7 +50,7 @@
 (fn sourcehut [user-repo]
   "Create sourcehut source with user/repo. Returns source or nil, err"
   (match-let [true (user-repo-ok? user-repo)]
-    (-> (git (.. "https://git.sr.ht.com/~" user-repo))
+    (-> (git (.. "https://git.sr.ht/~" user-repo))
         (decorate-tostring :sourcehut user-repo))))
 
 {: github
