@@ -75,7 +75,7 @@
     (where-err? [code out err]) (values nil (dump-err code [out err]))))
 
 (fn verify-ref [repo-path commit-ref]
-  (match-run ["git show --format='%H' -s $commit-ref"
+  (match-run ["git show --format=%H -s $commit-ref"
               {: commit-ref :cwd repo-path :env const.ENV}]
     (where-ok? [_ [line] _]) (values line)
     (where-err? [code out err]) (values false)))
