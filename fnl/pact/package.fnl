@@ -84,7 +84,7 @@
                           :HEAD nil}
                :target {:commit nil ;; solves to commit
                         :distance nil ;; local..commit
-                        :oneline []} ;; git log local..commit
+                        :diff-log []} ;; git log local..commit
                :latest {:commit nil} ;; latest "version" found
                :commits []}}
         (setmetatable {:__newindex (fn [t k v]
@@ -95,6 +95,10 @@
                                   (match (. Package k)
                                     (where f (function? f)) f
                                     _ nil))}))))
+
+(λ Package.update-target-logs [package logs]
+  (set package.git.target.diff-log logs)
+  package)
 
 (λ Package.worktree-path [package commit]
   (FS.join-path (string.match package.git.repo.path "(.+)HEAD$")
@@ -173,6 +177,9 @@
 (fn Package.solved? [package]
   "Is the package constraint solved?"
   (not-nil? package.git.target.commit))
+
+(λ Package.loading? [package]
+  (and (nil? package.git.target.commit)))
 
 (fn Package.solve [package commit]
   (set package.git.target.commit commit)

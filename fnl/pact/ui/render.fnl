@@ -282,6 +282,49 @@
 (fn basic-column [t hl]
   [{:text t :highlight hl}])
 
+(λ packages->sections [packages]
+  ;; We always operate on the top level packages, as we want to group
+  ;; package-trees not separate packages.
+  ;;
+  ;; We have these sections
+  ;;
+  ;; waiting: still collecting data for some package in the tree
+  ;; in-sync: collected all data, no update available
+  ;; unstaged: collected all data, one or more packages *can* be updated
+  ;; staged: collected all data, one or more packages *will* be updated
+  ;;
+  (let [waiting? (fn [package]
+                   (E.any? #(Package.loading? $1)
+                           #(Package.iter [package])))
+        in-sync? (fn [package]
+                   (E.any? #(Package.in-sync? $1)
+                           #(Package.iter [package])))
+        staged? (fn [package]
+                   (E.any? #(Package.staged? $1)
+                           #(Package.iter [package])))
+        ;; we intentionally only iterate the "top" packages
+        {true waiting false rest} (E.group-by #(waiting? $2) packages)
+        {true in-sync false rest} (E.group-by #(in-sync? $2) (or rest []))
+        {true staged false unstaged} (E.group-by #(staged? $2) (or rest []))]
+    {:waiting (or waiting [])
+     :in-sync (or in-sync [])
+     :staged (or staged [])
+     :unstaged (or unstaged [])}))
+
+(fn make-headings [title count]
+  ; [[[{:text "Staged " :highlight :PactStagedTitle}
+  ;    {:text "(n)" :highlight :PactComment}]]]
+  [{:content [(basic-column "wf" "@comment")
+              (basic-column "package" "@comment")
+              (basic-column "const" "@comment")
+              (basic-column "local" "@comment")
+              (basic-column "remote" "@comment")
+              (basic-column "latest" "@comment")
+              (basic-column "action" "@comment")
+              (basic-column "health" "@comment")
+              (basic-column "text" "@comment")]
+    :meta {}}])
+
 (fn Render.output [ui]
   (use Runtime :pact.runtime)
   (let [{true staged false unstaged} (->
@@ -294,37 +337,17 @@
                                                              #(Package.iter [package])))
                                                    ;; we intentionally only iterate the "top" packages
                                                    ui.runtime.packages))
-        staged (or staged [])
-        unstaged (or unstaged [])
-        staged-rows (-> (package-tree->ui-data staged)
-                        (ui-data->rows)
-                        (->> (E.concat$ [{:content [(basic-column "wf" "@comment")
-                                                    (basic-column "package" "@comment")
-                                                    (basic-column "const" "@comment")
-                                                    (basic-column "local" "@comment")
-                                                    (basic-column "remote" "@comment")
-                                                    (basic-column "latest" "@comment")
-                                                    (basic-column "action" "@comment")
-                                                    (basic-column "health" "@comment")
-                                                    (basic-column "text" "@comment")]
-                                          :meta {}}]))
-                        (inject-padding-chunks)
-                        (intersperse-column-breaks))
-        unstaged-rows (-> (package-tree->ui-data unstaged)
-                          (ui-data->rows)
-                          (->> (E.concat$ [{:content [(basic-column "wf" "@comment")
-                                                      (basic-column "package" "@comment")
-                                                      (basic-column "const" "@comment")
-                                                      (basic-column "local" "@comment")
-                                                      (basic-column "remote" "@comment")
-                                                      (basic-column "latest" "@comment")
-                                                      (basic-column "action" "@comment")
-                                                      (basic-column "health" "@comment")
-                                                      (basic-column "text" "@comment")]
-                                            :meta {}}]))
-                          (inject-padding-chunks)
-                          (intersperse-column-breaks))
-        ]
+        {: waiting : in-sync : staged : unstaged} (packages->sections ui.runtime.packages)
+        make-section (fn [title packages]
+                       (-> (package-tree->ui-data packages)
+                           (ui-data->rows)
+                           (->> (E.concat$ (make-headings title)))
+                           (inject-padding-chunks)
+                           (intersperse-column-breaks)))
+        staged-rows (make-section "Staged" staged)
+        unstaged-rows (make-section "Unstaged" unstaged)
+        in-sync-rows (make-section "In-sync" in-sync)
+        waiting-rows (make-section "Waiting" waiting)]
     ;; clear extmarks so we don't have them all pile up. We have to re-make
     ;; then each draw as the lines are re-drawn.
     (set ui.extmarks [])
@@ -359,6 +382,12 @@
     (write-lines const.unstaged)
     (write-lines (rows->lines unstaged-rows))
     (draw-extmarks (rows->extmarks unstaged-rows) (- current-line (length unstaged-rows)))
+
+    (write-lines (rows->lines in-sync-rows))
+    (draw-extmarks (rows->extmarks in-sync-rows) (- current-line (length in-sync-rows)))
+
+    (write-lines (rows->lines waiting-rows))
+    (draw-extmarks (rows->extmarks waiting-rows) (- current-line (length waiting-rows)))
 
     (write-lines const.usage)
 
