@@ -183,14 +183,23 @@
 (fn Runtime.Command.stage-package-tree [package]
   "Set package state to staged, this will also propagate *down* its
   dependency tree. If any package in the tree is unhealthy, the stage command
-  will fail."
+  will fail. If any parent of the package is unhealthy, the stage command will
+  fail.
+
+  Note that staging propagates *down* but checks *up and down*."
   (fn [runtime]
     ;; TODO decide on propagation rules
     ;; TODO: perhaps nicer if stage returned ok-err, but then it can't return
     ;; package for chaning and would be out of step with other functions.
     ;; Either find a way to disambuguate the behaviour.
-    (if (E.all? Package.stageable?
-                #(Package.iter [package]))
+    (fn all-parents-ok? [package acc]
+      (match [acc package.depended-by]
+        [false _ ] false
+        [true parent] (all-parents-ok? parent (and acc (Package.stageable? package)))
+        [true nil] (and acc (Package.stageable? package))))
+
+    (if (and (E.all? Package.stageable? #(Package.iter [package]))
+             (all-parents-ok? package true))
       (do
         (E.each #(do
                    (Package.stage $)
