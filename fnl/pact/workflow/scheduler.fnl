@@ -49,7 +49,10 @@
                       (Log.log [wf.id result]))
                     (match (pcall #(wf:handle result))
                       (false err) (vim.schedule
-                                    #(error (fmt "wf-handle pcall error: %s" err))))
+                                    #(error (fmt "wf-handle pcall error: %s %s %s"
+                                                 wf.id
+                                                 err
+                                                 (debug.traceback wf.thread)))))
                     (broadcast wf result))))
       ;; if any halted workflows belonged to a set and that set is no longer present
       ;; in the active or queued, broadcast a generic ok event.
