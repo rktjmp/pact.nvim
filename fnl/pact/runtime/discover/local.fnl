@@ -39,33 +39,39 @@
   (where [id repo-path])
   (new-workflow (fmt "discover-head-commit:%s" id) #(detect-kind repo-path)))
 
-(fn DiscoverLocal.workflow [package path-prefix]
-  (let [wf (new package.canonical-id (FS.join-path path-prefix package.install.path))]
-      (Package.track-workflow package wf)
-      (wf:attach-handler
-        (fn [commit]
-          ;; may be nil, for no local checkout, maybe change? TODO
-          (match (R.unwrap commit)
-            c (Package.set-head package c))
-          (-> package
-              (Package.untrack-workflow wf)
-              (Package.add-event wf commit)
-              (E.set$ :state :unstaged)
-              (PubSub.broadcast (R.ok :head-updated))))
-        (fn [err]
-          (-> package
-              (Package.untrack-workflow wf)
-              (Package.add-event wf err)
-              (E.set$ :text (tostring err))
-              ;; TODO
-              (Package.update-health
-                (Package.Health.failing (fmt "E-9999")))
-              (PubSub.broadcast package (R.err :head-updated))))
-        (fn [msg]
-          (-> package
-              (Package.add-event wf msg)
-              (E.set$ :text msg)
-              (PubSub.broadcast package :events-changed))))
-      wf))
+(fn DiscoverLocal.workflow [canonical-set path-prefix]
+  (let [;; we only need one packge to work on
+        package (E.hd canonical-set)
+        ;; but need to propagate results to all in the set
+        update-siblings #(E.each (fn [_ p] ($1 p)) canonical-set)
+        wf (new package.canonical-id (FS.join-path path-prefix package.install.path))]
+    (update-siblings (fn [package]
+                       (Package.track-workflow package wf)))
+    (wf:attach-handler
+      (fn [commit]
+        (update-siblings #(do
+                           ;; may be nil, for no local checkout, maybe change? TODO
+                           (match (R.unwrap commit)
+                             c (Package.set-head $ c))
+                           (-> $
+                               (Package.untrack-workflow wf)
+                               (Package.add-event wf commit)
+                               (E.set$ :state :unstaged)
+                               (PubSub.broadcast (R.ok :head-updated))))))
+      (fn [err]
+        (update-siblings #(-> $
+                              (Package.untrack-workflow wf)
+                              (Package.add-event wf err)
+                              (E.set$ :text (tostring err))
+                              ;; TODO
+                              (Package.update-health
+                                (Package.Health.failing (fmt "E-9999")))
+                              (PubSub.broadcast (R.err :head-updated)))))
+      (fn [msg]
+        #(-> $
+            (Package.add-event wf msg)
+            (E.set$ :text msg)
+            (PubSub.broadcast :events-changed))))
+    wf))
 
 DiscoverLocal

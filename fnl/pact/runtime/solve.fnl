@@ -36,7 +36,13 @@
                                 (Package.untrack-workflow wf)
                                 (Package.add-event wf ok-commit)
                                 (Package.solve (R.unwrap ok-commit))
-                                (PubSub.broadcast :solved))))
+                                (PubSub.broadcast :solved)))
+          (use DiscoverLogs :pact.runtime.discover.logs
+               Scheduler :pact.workflow.scheduler)
+         ; (vim.pretty_print :check package.git)
+          (if package.git.checkout.HEAD
+            (let [wf (DiscoverLogs.workflow package runtime.path.repos)]
+              (Scheduler.add-workflow runtime.scheduler.local wf))))
         (fn [ok-commits-err-constraints]
           ;; This may be called with a mixture of ok-commit for constraints
           ;; that were solved and err-constraints for constraints that could

@@ -192,6 +192,19 @@
     (code _ err) (values nil (dump-err code err))
     (nil err) (values nil err)))
 
+
+(fn M.log-breaking [repo-path old-sha new-sha]
+  ;; sha abbrevations are not a consistent width between repos, so send back full and
+  ;; manually trim
+  (match (await (run "git log --oneline --no-abbrev-commit --format=%H --grep=breaking --regexp-ignore-case $range"
+                     {:range (fmt "%s..%s" old-sha new-sha)
+                      :cwd repo-path
+                      :env const.ENV}))
+    ; (where (0 log _) (= 0 (length log))) (values nil "git log produced no output, are you moving backwards?")
+    (0 log _) (values log)
+    (code _ err) (values nil (dump-err code err))
+    (nil err) (values nil err)))
+
 (fn M.clone [url repo-path]
   (match-run ["git clone --no-checkout --filter=tree:0 $url $repo-path"
               {: url : repo-path :env const.ENV}]

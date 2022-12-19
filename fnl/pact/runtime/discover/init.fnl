@@ -11,6 +11,4 @@
 
 (local Discover {})
 
-
-
 Discover

@@ -67,9 +67,9 @@
          :depended-by nil
          :depends-on (or spec.dependencies []) ;; placeholder
          ;; these are kept relative as they will be different for every transaction
-         :path {:root root ;; github-user-repo-nvim/
-                :rtp rtp-path ;; start|opt/package.nvim
-                :head (FS.join-path root :HEAD)} ;; github-user-repo-nvim/HEAD
+         :path {:root root ;; github-user-repo-nvim/ ;; TODO deprecate
+                :rtp rtp-path ;; start|opt/package.nvim ;; TODO deprecate
+                :head (FS.join-path root :HEAD)} ;; TODO deprecate
          :order 0 ;(E.reduce #(+ $1 1) 1 runtime.packages)
          :events []
          :workflows []
@@ -79,12 +79,13 @@
          :text "waiting for scheduler" ;; TODO: deprecate this, UI not package
          :install {:path rtp-path} ;; start|opt/<name>
          :git {:remote {:origin (. spec.source 2)}
-               :repo {:path (FS.join-path root :HEAD)}
+               :repo {:path (FS.join-path root :HEAD)} ;; github-user-repo-nvim/HEAD
                :checkout {:path nil ;; github-user-repo-nvim/sha
-                          :HEAD nil}
+                          :HEAD nil} ;; TODO HEAD -> commit for consistency
                :target {:commit nil ;; solves to commit
                         :distance nil ;; local..commit
-                        :diff-log []} ;; git log local..commit
+                        :logs [] ;; git log local..commit
+                        :breaking? false} ;; any log has breaking in it
                :latest {:commit nil} ;; latest "version" found
                :commits []}}
         (setmetatable {:__newindex (fn [t k v]
@@ -97,7 +98,8 @@
                                     _ nil))}))))
 
 (λ Package.update-target-logs [package logs]
-  (set package.git.target.diff-log logs)
+  (set package.git.target.logs logs)
+  (set package.git.target.breaking? (E.any? #$2.breaking? logs))
   package)
 
 (λ Package.worktree-path [package commit]
@@ -156,7 +158,9 @@
   (Package.Health.failing? package.health))
 
 (fn Package.stageable? [package]
-  (and (Package.healthy? package) (Package.solved? package)))
+  (and (Package.healthy? package)
+       (Package.solved? package)
+       (not (Package.in-sync? package))))
 
 (fn Package.staged? [package]
   (= (?. package :action 1) :stage))
@@ -186,6 +190,7 @@
   package)
 
 (fn Package.stage [package]
+  ;; See runtime stage command for rules around staging (for now)
   (match-let [true (Package.healthy? package)
               commit package.git.target.commit]
     (values (E.set$ package :action [:stage commit])
@@ -203,6 +208,8 @@
     [:git url] url
     _ (error "can't get package source for unknown source type")))
 
+;; TODO probably Package.walk-down package + Package.walk-up package and detect
+;; if packages or package?
 (fn Package.iter [packages opts]
   ;; TODO: currently we maintain [(make-pact) (make-pact)] in runtime.packages
   ;; so we need the each in this. It does make iterating just one package and

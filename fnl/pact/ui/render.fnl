@@ -86,6 +86,9 @@
                                ;               (E.reduced event)))
                                ;         "no text" $.events)
                                )
+                       :distance (length (or (?. $ :git :target :logs) []))
+                       :breaking? (?. $ :git :target :breaking?)
+                       :logs (?. $ :git :target :logs)
                        :indent (length $2)
                        :action (?. $ :action 1)
                        :state $1.state
@@ -142,7 +145,7 @@
                              "="
                              "!=")
                        :highlight :Comment}]
-          remote-col [{:text (tostring package.solves-to)
+          remote-col [{:text (fmt "%s %s" (tostring package.solves-to) package.distance)
                        :highlight :Comment}]
           latest-col [{:text package.latest
                        :highlight :Comment}]

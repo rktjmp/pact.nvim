@@ -145,27 +145,25 @@
   (fn [runtime]
     (use DiscoverRemote :pact.runtime.discover.remote
          DiscoverLocal :pact.runtime.discover.local
+         DiscoverLogs :pact.runtime.discover.logs
          Scheduler :pact.workflow.scheduler)
-    (let [packages (E.map #$ #(Package.iter runtime.packages))
-          ;; we can get the commits once for all canonicals
-          commit-wfs (->> (E.group-by #(. $2 :canonical-id) packages)
-                          (E.map (fn [_ canonical-set]
-                                   [(DiscoverRemote.workflow canonical-set
-                                                             runtime.path.repos)
-                                    ;; remember a package for triggering solve workflow
-                                    (. canonical-set 1)])))
-          ;; but heads must be gotten per-package (??? TODO not true...)
-          head-wfs (E.map #(DiscoverLocal.workflow $2 runtime.path.transaction)
-                          packages)]
-      (E.each (fn [_ [wf canonical-package]]
-                (wf:attach-handler #(E.each #(Runtime.dispatch runtime $2)
-                                            [(Runtime.Command.solve-package canonical-package)
-                                             (Runtime.Command.solve-latest canonical-package)])
-                                   #nil)
-                (Scheduler.add-workflow runtime.scheduler.remote wf))
-              commit-wfs)
-      (E.each #(Scheduler.add-workflow runtime.scheduler.local $2)
-              head-wfs))))
+    (let [packages (E.map #$ #(Package.iter runtime.packages))]
+      (->> (E.group-by #(. $2 :canonical-id) packages)
+           (E.map (fn [_ canonical-set]
+                    [(DiscoverLocal.workflow canonical-set
+                                             runtime.path.transaction)
+                     (DiscoverRemote.workflow canonical-set
+                                              runtime.path.repos)
+                     ;; remember a package for triggering solve workflow
+                     (. canonical-set 1)]))
+           (E.each (fn [_ [local-wf remote-wf canonical-package]]
+                     (let [set-id (Scheduler.add-workflow-set runtime.scheduler.remote
+                                                              [local-wf remote-wf])]
+                       (PubSub.subscribe set-id
+                                         (fn []
+                                           (E.each #(Runtime.dispatch runtime $2)
+                                                   [(Runtime.Command.solve-package canonical-package)
+                                                    (Runtime.Command.solve-latest canonical-package)]))))))))))
 
 (fn Runtime.Command.solve-package [package]
   (fn [runtime]
@@ -176,9 +174,6 @@
   (fn [runtime]
     (use SolveLatest :pact.runtime.solve-latest)
     (SolveLatest.solve runtime package)))
-
-(fn compose [f g]
-  (fn [x] (f (g x))))
 
 (fn Runtime.Command.stage-package-tree [package]
   "Set package state to staged, this will also propagate *down* its
