@@ -5,22 +5,13 @@
      R :pact.lib.ruin.result
      Log :pact.log
      Package :pact.package
+     Constraint :pact.plugin.constraint
+     Commit :pact.git.commit
      inspect :pact.inspect
      api vim.api
      {:format fmt} string)
 
 (local Render {})
-
-; (fn section-title [section-name]
-;   (or (. {:error "Error"
-;           :waiting "Waiting"
-;           :active "Active"
-;           :held "Held"
-;           :updated "Updated"
-;           :up-to-date "Up to date"
-;           :unstaged "Unstaged"
-;           :staged "Staged"} section-name)
-;       section-name))
 
 (fn highlight-for [section-name field]
   ;; my-section,  -> PactMySectionTitle
@@ -127,10 +118,6 @@
             (- 2))))
 
   (fn package->columns [package]
-    ;; Columns should be roughly:
-    ;;
-    ;; name | constraint | action/newer? | message
-    ;;
     ;; Each column may contain multiple "chunk" tables, which describe
     ;; text content, highlight group and optionally length. Length may be
     ;; specifically included as it must be utf8 aware, and the chunk generator
@@ -143,14 +130,24 @@
                                 direction (?. package.git.target :direction)
                                 count (match (?. package.git.target.logs)
                                         nil ""
-                                        l (length l))]
+                                        l (length l))
+                                name (match (Constraint.type constraint)
+                                       :version (-> (E.map #$2
+                                                           (or (?. package.git.target :commit :versions) []))
+                                                    (table.concat ","))
+                                       :head :HEAD
+                                       :commit (Commit.abbrev-sha (Constraint.value constraint))
+                                       _ (Constraint.value constraint))
+                                breaking? (?. package.git.target :breaking?)
+                                hl #(if breaking? :DiagnosticWarn :DiagnosticInfo)
+                                ; sym #(if (= :ahead direction) "sync" "sync-back");:↦ :↤)
+                                warn #(if breaking? "⚠ " "")]
                             (match [from to count]
-                              [nil nil _] (mk-chunk :unknown :PactComment)
-                              [nil to _] (mk-chunk :clone :DiagnosticInfo)
-                              [same same _] (mk-chunk :in-sync :DiagnosticInfo)
-                              [from to _] (if package.git.target.breaking?
-                                            (mk-chunk (fmt "⚠ %s %s" count direction from to) :DiagnosticWarn)
-                                            (mk-chunk (fmt "%s %s" count direction from to) :DiagnosticInfo))))
+                              [nil nil _] (mk-chunk (fmt "%s" :working) :PactComment)
+                              [nil to _] (mk-chunk (fmt "clone %s" name) :DiagnosticInfo)
+                              [same same _] (mk-chunk (fmt "hold %s" name) :DiagnosticInfo)
+                              [from to count] (mk-chunk (fmt "%ssync %s (%s %s)" (warn) name count direction)
+                                                        (hl))))
                           (mk-chunk "")))
           name-col (mk-col
                      (mk-chunk (indent-with indent)
@@ -159,11 +156,10 @@
                      (mk-chunk name
                                (highlight-for-health package.health)))
           constraint-col (mk-col
-                           (mk-chunk (tostring constraint)
-                                     (highlight-for :staged :text)))
+                           (mk-chunk (tostring constraint)))
           latest-col (mk-col
                        (match (?. package :git :latest :commit)
-                         c (mk-chunk (fmt " (%s)" (table.concat c.versions ",")))
+                         c (mk-chunk (fmt "(%s)" (table.concat c.versions ",")))
                          _ (mk-chunk "")))]
       {:content (mk-content
                   name-col

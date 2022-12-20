@@ -2,22 +2,39 @@
 (ruin!)
 
 (use R :pact.lib.ruin.result
-     {: 'result-let} :pact.lib.ruin.result
+     {: 'result->> : 'result-> : 'result-let
+      : ok : err} :pact.lib.ruin.result
      E :pact.lib.ruin.enum
      FS :pact.workflow.exec.fs
      PubSub :pact.pubsub
      Package :pact.package
-     {:format fmt} string)
+     {:format fmt} string
+     Constraint :pact.plugin.constraint
+     {:new new-workflow : yield : log} :pact.workflow)
 
 (local SolveLatest {})
 
+(fn solve-latest [commits]
+  (result-let [_ (log "discovering latest commit")
+               ;; just aim high
+               constraint (Constraint.git :version "> 0.0.0")
+               latest (Constraint.solve constraint commits)]
+    (if (not latest)
+      (log "no latest commit found"))
+    ;; latest might be nil, but that's ok, there may be no versions
+    (ok latest)))
+
+(fn* new
+  (where [id commits])
+  (new-workflow id #(solve-latest commits)))
+
+
 (fn SolveLatest.solve [runtime package]
-  (let [{:new solve-latest/new} (require :pact.workflow.status.solve-latest)
-        siblings (E.map #(if (= $1.canonical-id package.canonical-id) $1)
+  (let [siblings (E.map #(if (= $1.canonical-id package.canonical-id) $1)
                         #(Package.iter runtime.packages))
         update-siblings #(E.each (fn [_ p] ($1 p)) siblings)]
     (let [commits package.git.commits
-          wf (solve-latest/new package.canonical-id commits)]
+          wf (new package.canonical-id commits)]
       (update-siblings #(Package.track-workflow $ wf))
       (wf:attach-handler
         (fn [latest]

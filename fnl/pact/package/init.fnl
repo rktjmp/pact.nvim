@@ -75,8 +75,6 @@
          :workflows []
          :action [:hold]
          :health (Health.healthy)
-         :state :state-prop-deprecated
-         :text "waiting for scheduler" ;; TODO: deprecate this, UI not package
          :install {:path rtp-path} ;; start|opt/<name>
          :git {:remote {:origin (. spec.source 2)}
                :repo {:path (FS.join-path root :HEAD)} ;; github-user-repo-nvim/HEAD
@@ -88,11 +86,7 @@
                         :breaking? false} ;; any log has breaking in it
                :latest {:commit nil} ;; latest "version" found
                :commits []}}
-        (setmetatable {:__newindex (fn [t k v]
-                                     (if (not= :depended-by k)
-                                       (print :new-key t.name k v))
-                                     (rawset t k v))
-                       :__index (fn [t k]
+        (setmetatable {:__index (fn [t k]
                                   (match (. Package k)
                                     (where f (function? f)) f
                                     _ nil))}))))

@@ -14,26 +14,9 @@
      api vim.api
      FS :pact.workflow.exec.fs
      {:format fmt} string
-     {: abbrev-sha} :pact.git.commit
-     orphan-find-wf :pact.workflow.orphan.find
-     orphan-remove-fw :pact.workflow.orphan.remove
-     status-wf :pact.workflow.git.status
-     clone-wf :pact.workflow.git.clone
-     sync-wf :pact.workflow.git.sync
-     diff-wf :pact.workflow.git.diff)
+     {: abbrev-sha} :pact.git.commit)
 
 (local M {})
-
-(fn log-line-breaking? [log-line]
-  ;; matches break breaking, might be over-eager
-  (not-nil? (string.match (string.lower log-line) :break)))
-
-(fn log-line->chunks [log-line]
-  (let [(sha log) (string.match log-line "(%x+)%s(.+)")]
-    [["  " :comment]
-     [(abbrev-sha sha) :comment]
-     [" " :comment]
-     [log (if (log-line-breaking? log) :DiagnosticError :DiagnosticHint)]]))
 
 (fn schedule-redraw [ui]
   ;; asked to render, we only want to hit 60fps otherwise we can really pin
@@ -134,6 +117,5 @@
     (->> (Runtime.Command.discover-status)
          (Runtime.dispatch runtime))
     (schedule-redraw ui)))
-
 
 (values M)

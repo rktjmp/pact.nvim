@@ -170,7 +170,7 @@
 
 (fn Runtime.Command.solve-latest [package]
   (fn [runtime]
-    (use SolveLatest :pact.runtime.solve-latest)
+    (use SolveLatest :pact.runtime.solve.latest)
     (SolveLatest.solve runtime package)))
 
 (fn Runtime.Command.stage-package-tree [package]
