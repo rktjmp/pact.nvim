@@ -123,9 +123,8 @@
 (fn Runtime.new [opts]
   (let [Scheduler (require :pact.workflow.scheduler)
         FS (require :pact.workflow.exec.fs)
-        data-path (FS.join-path (vim.fn.stdpath :data) :site/pack/pact/data)
-        repos-path (FS.join-path (vim.fn.stdpath :data) :site/pack/pact/data/repos)
-        ]
+        data-path (FS.join-path (vim.fn.stdpath :data) :pact)
+        repos-path (FS.join-path data-path :repos)]
     (-> {:path {:root (FS.join-path (vim.fn.stdpath :data) :site/pack/pact)
                 :data data-path
                 :head (FS.join-path data-path :HEAD)
@@ -283,7 +282,7 @@
 
 (fn Runtime.dispatch [runtime command]
   (match (command runtime)
-    v (vim.pretty_print :dispatch v))
+    (where x (R.err? x)) (vim.notify (R.unwrap x) vim.log.levels.ERROR))
   runtime)
 
 (values Runtime)
