@@ -183,21 +183,30 @@
 
   Note that staging propagates *down* but checks *up and down*."
   (fn [runtime]
-    ;; TODO decide on propagation rules
-    ;; TODO: perhaps nicer if stage returned ok-err, but then it can't return
-    ;; package for chaning and would be out of step with other functions.
-    ;; Either find a way to disambuguate the behaviour.
     (fn all-parents-ok? [package acc]
       (match [acc package.depended-by]
         [false _ ] false
-        [true parent] (all-parents-ok? parent (and acc (Package.stageable? package)))
-        [true nil] (and acc (Package.stageable? package))))
-
-    (if (and (E.all? Package.stageable? #(Package.iter [package]))
+        ;; Important note: If A -> B, and A is in-sync - and therefore "not
+        ;; stageable" we must still allow B to be staged!
+        [true parent] (all-parents-ok? parent (and acc (or (Package.stageable? package)
+                                                           (Package.in-sync? package))))
+        [true nil] (and acc (or (Package.stageable? package)
+                                (Package.in-sync? package)))))
+    (if (and ;; the direct package must be stagable
+             (Package.stageable? package)
+             ;; and any children must be in-sync or stagable
+             (E.all? #(or (Package.stageable? $1)
+                          (Package.in-sync? $1))
+                     #(Package.iter (or package.depends-on [])))
+             ;; and any parent must be in-sync or stageable
              (all-parents-ok? package true))
       (do
         (E.each #(do
-                   (Package.stage $)
+                   ;; We know the main package was allowed, and we do want to
+                   ;; stage any children, if they are stageable.
+                   ;; TODO: staging in-sync is effectively a no-op and we could just allow it for simpler code path
+                   (if (Package.stageable? $)
+                     (Package.stage $))
                    (PubSub.broadcast $ :changed))
                    #(Package.iter [package]))
         (R.ok))
