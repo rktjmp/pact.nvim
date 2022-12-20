@@ -43,6 +43,13 @@
     (tset ui :will-render (+ rate (vim.loop.now)))
     (vim.defer_fn #(Render.output ui) rate)))
 
+(fn cursor->package [ui]
+  (let [[line _] (api.nvim_win_get_cursor ui.win)
+        line (- line 1)]
+    (match (api.nvim_buf_get_extmarks ui.buf ui.ns-meta-id [line 0] [line 0] {})
+      [[extmark-id]] (E.find #(= $1.uid (. ui.extmarks extmark-id))
+                             #(Package.iter ui.runtime.packages)))))
+
 (fn exec-keymap-cc [ui]
   ;; TODO dont try if no staged
   (->> (Runtime.Command.run-transaction)
@@ -57,13 +64,6 @@
                    (vim.cmd (fmt ":new %s" path)))
       [any nil] (vim.notify (fmt "%s has no path to open" any.plugin.name))
       _ nil)))
-
-(fn cursor->package [ui]
-  (let [[line _] (api.nvim_win_get_cursor ui.win)
-        line (- line 1)]
-    (match (api.nvim_buf_get_extmarks ui.buf ui.ns-meta-id [line 0] [line 0] {})
-      [[extmark-id]] (E.find #(= $1.uid (. ui.extmarks extmark-id))
-                             #(Package.iter ui.runtime.packages)))))
 
 (fn exec-keymap-s [ui]
   (match (cursor->package ui)
