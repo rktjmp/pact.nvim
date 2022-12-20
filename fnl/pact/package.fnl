@@ -102,6 +102,10 @@
   (set package.git.target.breaking? (E.any? #$2.breaking? logs))
   package)
 
+(λ Package.update-target-direction [package direction]
+  (set package.git.target.direction direction)
+  package)
+
 (λ Package.worktree-path [package commit]
   (FS.join-path (string.match package.git.repo.path "(.+)HEAD$")
                 commit.short-sha))

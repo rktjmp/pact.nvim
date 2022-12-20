@@ -144,7 +144,6 @@
   (fn [runtime]
     (use DiscoverRemote :pact.runtime.discover.remote
          DiscoverLocal :pact.runtime.discover.local
-         DiscoverLogs :pact.runtime.discover.logs
          Scheduler :pact.workflow.scheduler)
     (let [packages (E.map #$ #(Package.iter runtime.packages))]
       (->> (E.group-by #(. $2 :canonical-id) packages)
@@ -274,10 +273,9 @@
                                        ;; this needs ... check packages for
                                        ;; health? check all stage-wf callbacks
                                        ;; were Ok?
-                                       (vim.pretty_print :pubsub x)))))
+                                       ))))
         (fn [err]
           (vim.pretty_print :err err)))
-      (vim.pretty_print :schedule-setup setup-wf)
       (runtime.scheduler.local:add-workflow setup-wf))))
 
 (fn Runtime.dispatch [runtime command]

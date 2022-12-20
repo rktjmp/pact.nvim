@@ -48,10 +48,9 @@
         symbols [:○
                  :◯
                  :◉]
-        symbols [:⍐ :⍗]
-        symbols [:∫
-                 :∬
-                 :∭]
+        symbols [:⁐ :‿ :⁀]
+        ; symbols [:⍐ :⍗]
+        ; symbols [:∫ :∬ :∭]
         ]
     (. symbols (+ 1 (% progress (length symbols))))))
 
@@ -88,7 +87,9 @@
                        :health $1.health
                        :git {:checkout {:commit (?. $ :git :checkout :HEAD)}
                              :target {:commit (?. $ :git :target :commit)
-                                      :logs (?. $ :git :target :logs)}
+                                      :logs (?. $ :git :target :logs)
+                                      :breaking? (?. $ :git :target :breaking?)
+                                      :direction (?. $ :git :target :direction)}
                              :latest {:commit (?. $ :git :latest :commit)}}
                        :working? (E.any? #$1.timer $1.workflows)
                        :waiting? (E.any? #$1 $1.workflows)
@@ -99,8 +100,6 @@
                                    (E.map $1)
                                    (table.concat " ")))
                        :distance (length (or (?. $ :git :target :logs) []))
-                       :breaking? (?. $ :git :target :breaking?)
-                       :logs (?. $ :git :target :logs)
                        :indent (length $2)
                        :action (?. $ :action 1)
                        :events $1.events
@@ -117,7 +116,7 @@
   (fn indent-with [n]
     (match n
       0 ""
-      1 " └" ; ⁐‿⁀
+      1 " └"
       n (fmt " %s└" (string.rep " " (- n 0)))))
 
   (fn indent-width [n]
@@ -141,6 +140,7 @@
                         (if package.git
                           (let [from (?. package.git.checkout.commit :short-sha)
                                 to (?. package.git.target.commit :short-sha)
+                                direction (?. package.git.target :direction)
                                 count (match (?. package.git.target.logs)
                                         nil ""
                                         l (length l))]
@@ -148,7 +148,9 @@
                               [nil nil _] (mk-chunk :unknown :PactComment)
                               [nil to _] (mk-chunk :clone :DiagnosticInfo)
                               [same same _] (mk-chunk :in-sync :DiagnosticInfo)
-                              [from to _] (mk-chunk (fmt "%s ahead" count) :DiagnosticInfo)))
+                              [from to _] (if package.git.target.breaking?
+                                            (mk-chunk (fmt "⚠ %s %s" count direction from to) :DiagnosticWarn)
+                                            (mk-chunk (fmt "%s %s" count direction from to) :DiagnosticInfo))))
                           (mk-chunk "")))
           name-col (mk-col
                      (mk-chunk (indent-with indent)
@@ -166,8 +168,8 @@
       {:content (mk-content
                   name-col
                   constraint-col
-                  latest-col
-                  commits-col)
+                  commits-col
+                  latest-col)
        :meta {:uid package.uid
               :workflow (match [package.working? package.waiting?]
                           [true _] {:text (workflow-active-symbol (vim.loop.now))

@@ -17,15 +17,21 @@
 
 (λ get-logs [repo-path from-sha to-sha]
   (if (= from-sha to-sha)
-    (ok [] [])
+    (ok [] [] :static)
     (result-let [_ (log "discovering logs between %s..%s" from-sha to-sha)
                  _ (or (FS.absolute-path? repo-path)
                        (err (fmt "plugin path must be absolute, got %s" repo-path)))
                  _ (or (FS.git-dir? repo-path)
                        (err (fmt "unable to diff, directory %s is not a git repo" repo-path)))
-                 lines (Git.log-diff repo-path from-sha to-sha)
-                 breaking (Git.log-breaking repo-path from-sha to-sha)]
-      (ok lines breaking))))
+                 ahead (Git.log-diff repo-path from-sha to-sha)
+                 backward (Git.log-diff repo-path to-sha from-sha)
+                 ahead-breaking (Git.log-breaking repo-path from-sha to-sha)
+                 backward-breaking (Git.log-breaking repo-path to-sha from-sha)]
+      (match [(E.empty? ahead) (E.empty? backward)]
+        [false true] (ok ahead ahead-breaking :ahead)
+        [true false] (ok backward backward-breaking :backward)
+        [true true] (err (fmt "logs returned no results in both directions but sha's were not equal?? %s..%s" from-sha to-sha))
+        [false false] (err (fmt "logs returned results in both directions?? %s..%s" from-sha to-sha))))))
 
 (λ Logs.workflow [package path-prefix]
   (let [wf (new-workflow (fmt "discover-logs:%s" package.canonical-id)
@@ -36,13 +42,14 @@
       (Package.track-workflow package wf)
       (wf:attach-handler
         (fn [log-details]
-          (let [(oneline breaking) (R.unwrap log-details)
+          (let [(oneline breaking direction) (R.unwrap log-details)
                 logs (E.map #(let [(sha log) (string.match $2 "^(%x+) (.+)$")
                                    breaking? (E.any? #(= sha $2) breaking)]
                                {: sha : log : breaking?})
                             oneline)]
           (-> package
               (Package.update-target-logs logs)
+              (Package.update-target-direction direction)
               (Package.untrack-workflow wf)
               (Package.add-event wf log-details)
               (PubSub.broadcast :logs-updated))))
