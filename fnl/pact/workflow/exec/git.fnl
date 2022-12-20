@@ -97,8 +97,7 @@
   (verify-ref repo-path (.. "refs/tags/" tag)))
 
 (fn M.ls-local [repo-path]
-  ;; TODO may need to show deref'd
-  (match-run ["git show-ref" {:cwd repo-path :env const.ENV}]
+  (match-run ["git show-ref --dereference" {:cwd repo-path :env const.ENV}]
     (where-ok? [_ lines _]) (values lines)
     (where-err? [code out err]) (values nil (dump-err code [out err]))))
 
