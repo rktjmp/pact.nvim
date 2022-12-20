@@ -17,8 +17,11 @@
 (fn Log.log [data ?tag ?location]
   (let [inspect (require :pact.inspect)
         data (inspect data)]
+    (if ?tag
+      (uv.fs_write Log.fd (.. "#" (inspect ?tag) "\n")))
     (uv.fs_write Log.fd data)
     (uv.fs_write Log.fd "\n")
-    (uv.fs_fsync Log.fd)))
+    (uv.fs_fsync Log.fd))
+  data)
 
 Log

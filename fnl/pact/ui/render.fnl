@@ -43,20 +43,17 @@
         (+ value 1))
       value)))
 
-
 (fn workflow-active-symbol [progress]
   (let [symbols [:◐ :◓ :◑ :◒]
         symbols ["`" "'" "\""]
-        symbols ["\\" "|" "/" "-"]
-        ]
-
+        symbols ["\\" "|" "/" "-"]]
     (. symbols (+ 1 (% progress (length symbols))))))
 
 (fn workflow-waiting-symbol []
-  "⧖"
-  ".")
+  "⧖" ".")
 
 (fn package-tree->ui-data [packages]
+  "Extract and construct UI specific data from packages"
   (use Package :pact.package
        Runtime :pact.runtime)
   (let [configuration-error #{:uid :error
@@ -216,8 +213,8 @@
   ;; Each row has columns, but they are not intrinsically aligned in the data
   ;; we need to work out what the padding should be for each column on each
   ;; line and add that as a new chunk in the line.
-  ;; It must be added as a new chunk so we can avoid over-highlight or
-  ;; mis-highligting text when we apply the extmarks.
+  ;; It must be added as a new chunk so we can avoid over-highlight backgrounds
+  ;; when we apply the extmarks.
   (let [sum-col-chunk-widths #(E.reduce
                                 #(let [{: text :length len} $3]
                                    (match [text len]
@@ -240,43 +237,69 @@
                               row.content)})
            rows)))
 
-(fn intersperse-column-breaks [rows]
+(λ intersperse-column-breaks [rows]
+  "Add gaps between columns"
   (E.map #{:meta $2.meta
            :content (E.intersperse $2.content [{:text " " :highlight "@comment"}])}
          rows))
 
-(local const {:lede (-> (E.map #[[{:text $2 :highlight :PactComment}]]
-                               [";; 🔪🩸🐐" ""])
-                        (rows->lines))
-              :blank  (-> [[[{:text "" :highlight :None}]]]
-                             (rows->lines))
-              :no-plugins (-> (E.map #[[{:text $2 :highlight :DiagnosticError}]]
-                                     [""
-                                      ";; Whoops"
-                                      ";; "
-                                      ";; pact has no plugins defined! See `:h pact-usage`"
-                                      ";; "]))
-              :usage (-> (E.map #[[{:text $2 :highlight :PactComment}]]
-                                [""
-                                 ";; Usage:"
-                                 ";; "
-                                 ";;   s  - Stage plugin for update"
-                                 ";;   u  - Unstage plugin"
-                                 ";;   cc - Commit staging and fetch updates"
-                                 ";;   =  - View git log (staged/unstaged only)"])
-                         (rows->lines))})
+(fn row->column-widths [row]
+  (fn width-of-column [column]
+    (E.reduce #(let [{: text :length len} $3]
+                 (match [text len]
+                   [nil nil] $1
+                   [any nil] (+ $1 (length text))
+                   [_ any] (+ $1 len)
+                   _ $1))
+              0 column))
+  (E.map #(width-of-column $2) row.content))
+
+(fn rows->column-widths [rows]
+  (E.map #(row->column-widths $2) rows))
+
+(fn widths->maximum-widths [widths]
+  (E.reduce (fn [col-max _ col-widths]
+              ;; note we use each as some cols may not contain all (or any)
+              ;; values and we want to retain any seen.
+              (E.each (fn [col-n width]
+                        (E.set$ col-max col-n (math.max (or (. col-max col-n) 0)
+                                                        width)))
+                      col-widths)
+              col-max) {} widths))
+
+(fn find-maximum-column-widths [rows]
+  (->> rows
+       ;; get width of each column of each row
+       (E.map #(row->column-widths $2))
+       ;; find max width of each column
+       (widths->maximum-widths)))
+
+(fn mk-chunk [text ?hl] {:text text :highlight (or ?hl :PactComment)})
+(fn mk-col [...] [...])
+(fn mk-content [...] [...])
+(fn mk-row [content ?meta] {:content content :meta (or ?meta {})})
+(fn mk-basic-row [content] (mk-row (mk-content (mk-col (mk-chunk content :PactComment)))))
+
+(local const {:lede [(mk-basic-row ";; 🔪🩸🐐")
+                     (mk-basic-row "")]
+              :blank [(mk-basic-row "")]
+              :no-plugins [(mk-basic-row "")
+                           (mk-basic-row ";;")
+                           (mk-basic-row ";; Whoops!")
+                           (mk-basic-row ";;")
+                           (mk-basic-row ";; pact has no plugins defined! See `:h pact-usage`")
+                           (mk-basic-row ";;")
+                           (mk-basic-row "")]
+              :usage [(mk-basic-row "")
+                      (mk-basic-row ";; Usage:")
+                      (mk-basic-row ";;")
+                      (mk-basic-row ";;   s  - Stage plugin for update")
+                      (mk-basic-row ";;   u  - Unstage plugin")
+                      (mk-basic-row ";;   cc - Commit staging and fetch updates")
+                      (mk-basic-row ";;   =  - View git log (staged/unstaged only)")]})
 
 (λ packages->sections [packages]
-  ;; We always operate on the top level packages, as we want to group
-  ;; package-trees not separate packages.
-  ;;
-  ;; We have these sections
-  ;;
-  ;; waiting: still collecting data for some package in the tree
-  ;; in-sync: collected all data, no update available
-  ;; unstaged: collected all data, one or more packages *can* be updated
-  ;; staged: collected all data, one or more packages *will* be updated
-  ;;
+  ;; Given a list of packages, split then into groups for each UI section
   (let [waiting? (fn [package]
                    (E.any? #(Package.loading? $1)
                            #(Package.iter [package])))
@@ -290,88 +313,87 @@
         {true waiting false rest} (E.group-by #(waiting? $2) packages)
         {true in-sync false rest} (E.group-by #(in-sync? $2) (or rest []))
         {true staged false unstaged} (E.group-by #(staged? $2) (or rest []))]
+    ;; TODO error? at least error if not staged/unstaged, so they don't get lost in waiting
     {:waiting (or waiting [])
      :in-sync (or in-sync [])
      :staged (or staged [])
      :unstaged (or unstaged [])}))
 
-(fn make-headings [title count]
-  (fn basic-column [t hl]
-    [{:text t :highlight hl}])
-
-  ; [[[{:text "Staged " :highlight :PactStagedTitle}
-  ;    {:text "(n)" :highlight :PactComment}]]]
-  [{:content [(basic-column "wf" "@comment")
-              (basic-column "package" "@comment")
-              (basic-column "const" "@comment")
-              (basic-column "local" "@comment")
-              (basic-column "remote" "@comment")
-              (basic-column "latest" "@comment")
-              (basic-column "action" "@comment")
-              (basic-column "health" "@comment")
-              (basic-column "text" "@comment")]
-    :meta {}}])
-
-(fn find-widths [rows]
-  (let [sum-col-chunk-widths #(E.reduce
-                                #(let [{: text :length len} $3]
-                                   (match [text len]
-                                     [nil nil] $1
-                                     [any nil] (+ $1 (length text))
-                                     [_ any] (+ $1 len)
-                                     _ $1))
-                                0 $1)
-        get-col-widths (E.map (fn [i col] [i (sum-col-chunk-widths col)]))]
-    (->> rows
-         ;; get widths of each column in each row as [col-n width]
-         (E.map #(get-col-widths $2.content))
-         (E.flatten)
-         ;; group all widths by column
-         (E.group-by (fn [_ [col-n w]] (values col-n w)))
-         ;; find max width for each column
-         (E.reduce (fn [maxes i widths]
-                     (E.set$ maxes i (math.max (unpack widths))))
-                   []))))
-
 (fn Render.output [ui]
+  ;; We always operate on the top level packages, as we want to group
+  ;; package-trees not separate packages.
+  ;;
+  ;; We have these sections
+  ;;
+  ;; waiting: still collecting data for some package in the tree
+  ;; in-sync: collected all data, no update available
+  ;; unstaged: collected all data, one or more packages *can* be updated
+  ;; staged: collected all data, one or more packages *will* be updated
+  ;;
+  ;; Line format:
+  ;;
+  ;; Each line is constructed of n-columns, and each column has n-chunks in it.
+  ;; Chunks tables containing {:text ... :highlight ...} and optionally a :length n
+  ;; key for unicode characters that span multiple bytes - needed so we can
+  ;; accurately judge "render width" in the buffer. Note that extmarks are byte
+  ;; indexed and should not use the length key (I think? TODO? Was this the case in shenzhenio?)
+  ;;
+  ;; These chunks are collated to determine column widths, and these columns
+  ;; are collated to determine line content which is written out.
+  ;; The chunks are used to apply extmarks.
+  ;;
+  ;; There is an additional {:id} key associated with the chunk which indicates
+  ;; that an extmark should be placed to map between rows and packages in
+  ;; keybindings.
   (use Runtime :pact.runtime)
-  (let [{: waiting : in-sync : staged : unstaged} (packages->sections ui.runtime.packages)
-        make-section (fn [packages]
-                       (-> (package-tree->ui-data packages)
-                           (ui-data->rows)))
-        staged-rows (make-section staged)
-        unstaged-rows (make-section unstaged)
-        in-sync-rows (make-section in-sync)
-        waiting-rows (make-section waiting)
-        widths (->> (E.map #(find-widths $2)
-                           [waiting-rows in-sync-rows unstaged-rows staged-rows])
-                    (E.reduce (fn [maxes _ local-maxes]
-                                (E.each (fn [col local-max]
-                                          (tset maxes col (math.max (or (. maxes col) 0)
-                                                                    local-max)))
-                                        local-maxes)
-                                maxes)
-                              []))
-        staged-rows (-> staged-rows
-                        (inject-padding-chunks widths)
-                        (intersperse-column-breaks))
-        unstaged-rows (-> unstaged-rows
-                          (inject-padding-chunks widths)
-                          (intersperse-column-breaks))
-        in-sync-rows (-> in-sync-rows
-                         (inject-padding-chunks widths)
-                         (intersperse-column-breaks))
-        waiting-rows (-> waiting-rows
-                         (inject-padding-chunks widths)
-                         (intersperse-column-breaks))
-        unstaged-title [[[{:text "Unstaged " :highlight :PactUnstagedTitle}
-                          {:text (fmt "(%s)" (length unstaged-rows)) :highlight :PactComment}]]]
-        staged-title [[[{:text "Staged" :highlight :PactUnstagedTitle}
-                        {:text (fmt "(%s)" (length staged-rows)) :highlight :PactComment}]]]
-        in-sync-title [[[{:text "In Sync" :highlight :PactUnstagedTitle}
-                         {:text (fmt "(%s)" (length in-sync-rows)) :highlight :PactComment}]]]
-        waiting-title [[[{:text "Waiting " :highlight :PactUnstagedTitle}
-                         {:text (fmt "(%s)" (length waiting-rows)) :highlight :PactComment}]]]]
+  (let [;; split packages into sections
+        {: waiting : in-sync : staged : unstaged} (packages->sections ui.runtime.packages)
+        ;; We must create stub sections first which contains the text content
+        ;; but none of it will be aligned.
+        [staged-rows
+         unstaged-rows
+         in-sync-rows
+         waiting-rows] (E.map #(-> $2
+                                   (package-tree->ui-data)
+                                   (ui-data->rows))
+                              [staged unstaged in-sync waiting])
+        ;; get the max widths of every section, then the max width between sections
+        ;; which will then dictate the padding needed across all lines.
+        column-widths (->> (E.map #(->> (E.map #(row->column-widths $2) $2)
+                                        (widths->maximum-widths))
+                                  [waiting-rows in-sync-rows unstaged-rows staged-rows])
+                           (widths->maximum-widths))
+        ;; now that we know column widths we can insert padding chunks into every column
+        ;; so they all align.
+        [staged-rows
+         unstaged-rows
+         in-sync-rows
+         waiting-rows] (E.map #(-> $2
+                                   (inject-padding-chunks column-widths)
+                                   (intersperse-column-breaks))
+                              [staged-rows unstaged-rows in-sync-rows waiting-rows])
+
+        ;; Generate title lines. These dont follow the strict alignment and need us to know
+        ;; the row counts before creation.
+        title-map {:unstaged {:t "Unstaged" :hl "Unstaged"}
+                   :staged {:t "Staged" :hl "Staged"}
+                   :in-sync {:t "In Sync" :hl "InSync"}
+                   :waiting {:t "Discovering Facts" :hl "Waiting"}}
+        [staged-title
+         unstaged-title
+         in-sync-title
+         waiting-title] (E.map (fn [_ [section count]]
+                                 [(mk-row
+                                    (mk-content
+                                      (mk-col (mk-chunk (. title-map section :t)
+                                                        (fmt "Pact%sTitle" (. title-map section :hl)))
+                                              (mk-chunk (fmt " (%s)" count)
+                                                        :PactComment))))])
+                               [[:staged (length staged-rows)]
+                                [:unstaged (length unstaged-rows)]
+                                [:in-sync (length in-sync-rows)]
+                                [:waiting (length waiting-rows)]])]
+
     ;; clear extmarks so we don't have them all pile up. We have to re-make
     ;; then each draw as the lines are re-drawn.
     (set ui.extmarks [])
@@ -391,39 +413,28 @@
                               (api.nvim_buf_add_highlight ui.buf ui.ns-id highlight line start stop))))
                         marks))
               lines))
+    (fn write-rows [rows]
+      (-> (rows->lines rows)
+          (write-lines))
+      (-> (rows->extmarks rows)
+          (draw-extmarks (- current-line (length rows)))))
+
+    (fn write-section [title section]
+      (when (not (E.empty? section))
+        (write-rows title)
+        (write-rows section)
+        (write-rows const.blank)))
 
     (api.nvim_buf_set_option ui.buf :modifiable true)
 
-    (write-lines const.lede)
-
+    (write-rows const.lede)
     ; (if (E.all? #(length $2) [staged-rows unstaged-rows])
     ;   (write-lines const.no-plugins))
-    (fn write-title [x]
-      (-> (rows->lines x)
-          (write-lines x))
-      ;; TODO titles not really configured for extmarks
-      ; (-> (rows->extmarks x)
-      ;     (draw-extmarks (- current-line 1)))
-      )
-
-    (write-title staged-title)
-    (write-lines (rows->lines staged-rows))
-    (draw-extmarks (rows->extmarks staged-rows) (- current-line (length staged-rows)))
-
-    (write-title unstaged-title)
-    (write-lines (rows->lines unstaged-rows))
-    (draw-extmarks (rows->extmarks unstaged-rows) (- current-line (length unstaged-rows)))
-
-    (write-title in-sync-title)
-    (write-lines (rows->lines in-sync-rows))
-    (draw-extmarks (rows->extmarks in-sync-rows) (- current-line (length in-sync-rows)))
-
-    (write-title waiting-title)
-    (write-lines (rows->lines waiting-rows))
-    (draw-extmarks (rows->extmarks waiting-rows) (- current-line (length waiting-rows)))
-
-    (write-lines const.usage)
-
+    (write-section unstaged-title unstaged-rows)
+    (write-section staged-title staged-rows)
+    (write-section in-sync-title in-sync-rows)
+    (write-section waiting-title waiting-rows)
+    (write-rows const.usage)
 
     (if _G.__pact_debug
       (let [lines (E.map #$1
