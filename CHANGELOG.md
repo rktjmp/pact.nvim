@@ -1,9 +1,13 @@
 # 🔪🩸🐐 `pact` Changelog
 
+## 0.0.9
+
+- Fixed incorrect sourcehut url generation. [contributor: pluffie](https://github.com/pluffie)
+
 ## 0.0.8
 
-- Allow re-defining existing plugins from `pact`.
-- Reduce CPU usage by throttling scheduler and further throttling draw calls
+- Allowed re-defining existing plugins from `pact`.
+- Reduced CPU usage by throttling scheduler and further throttling draw calls
 
 ## 0.0.7
 

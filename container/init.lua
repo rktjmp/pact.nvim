@@ -6,7 +6,7 @@ if vim.fn.empty(vim.fn.glob(pact_path)) > 0 then
     'git',
     'clone',
     '--depth', '1',
-    '--branch', 'v0.0.8',
+    '--branch', 'v0.0.9',
     'https://github.com/rktjmp/pact.nvim',
     pact_path
   })
