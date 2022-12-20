@@ -64,13 +64,11 @@
     (ui.attach win buf plugin-proxies opts)))
 
 (fn make-pact [...]
-  (table.insert plugin-proxies [...])
-  ; (vim.pretty_print plugin-proxies)
-  
-  )
+  (table.insert plugin-proxies [...]))
 
 {: open
  : make-pact
+ :make_pact make-pact
  :git providers.git
  :github providers.github
  :path providers.path
