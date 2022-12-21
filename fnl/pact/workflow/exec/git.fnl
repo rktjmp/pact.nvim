@@ -57,9 +57,7 @@
   logs and interact with tags and branches, but contains no blobs or trees."
   (match-run ["git clone --no-checkout --filter=tree:0 $repo-url $repo-path"
               {: repo-url : repo-path :env const.ENV}]
-   (where-ok? [_ lines _]) (do
-                             (vim.pretty_print lines)
-                             (values true))
+    (where-ok? [_ lines _]) (values true)
     (where-err? [code out err]) (values nil (dump-err code [out err]))))
 
 (fn M.update-refs [repo-path]
@@ -69,9 +67,7 @@
   ;; We actually could force pulling these refs into their own namespace but
   ;; probably not much to gain by that at the moment.
   (match-run ["git fetch --filter=tree:0" {:cwd repo-path :env const.ENV}]
-   (where-ok? [_ lines _]) (do
-                             (vim.pretty_print lines)
-                             (values true))
+    (where-ok? [_ lines _]) (values true)
     (where-err? [code out err]) (values nil (dump-err code [out err]))))
 
 (fn verify-ref [repo-path commit-ref]

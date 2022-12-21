@@ -64,7 +64,7 @@
         ;; but need to propagate results to all in the set
         update-siblings #(E.each (fn [_ p] ($1 p)) canonical-set)
         wf (new package.canonical-id
-                (Package.source package)
+                package.git.remote.origin
                 (FS.join-path path-prefix package.path.head))]
     (update-siblings (fn [package]
                        (Package.track-workflow package wf)))

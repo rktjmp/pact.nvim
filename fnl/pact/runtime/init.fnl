@@ -49,8 +49,8 @@
           ;; userspec->package cant set this to real packages, so we must do it
           ;; after construction.
           (E.set$ package :depends-on dependencies))
-        (where r (R.err? r))
         ;; retain errors in tree for reporting reasons
+        (where r (R.err? r))
         (values r)))
     ;; The proxies list contains one list per call to make-pact, so we'll
     ;; collate them all.
@@ -68,9 +68,6 @@
   ;; so if a depends on b depends on a, we end up with flat a + b, and we can
   ;; just install them? 
   (E.set$ runtime :packages (unproxy-spec-graph proxies)))
-
-(fn transaction-path [runtime transaction]
-  (FS.join-path runtime.path.data transaction.id))
 
 ;; TODO
 (fn Runtime.exec-discover-orphans [runtime])
@@ -140,6 +137,7 @@
 
 (set Runtime.Command {})
 
+
 (fn Runtime.Command.discover-status []
   (fn [runtime]
     (use DiscoverRemote :pact.runtime.discover.remote
@@ -192,7 +190,7 @@
                                 (Package.in-sync? package)))))
     (if (and ;; the direct package must be stagable
              (Package.stageable? package)
-             ;; and any children must be in-sync or stagable
+             ;; and all children must be in-sync or stagable
              (E.all? #(or (Package.stageable? $1)
                           (Package.in-sync? $1))
                      #(Package.iter (or package.depends-on [])))

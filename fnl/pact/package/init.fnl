@@ -117,7 +117,7 @@
           "update-health given non-health value")
   ;; health changes should propagate down and up?
   (set package.health (Health.update package.health health))
-  (if package.depended-by
+  (if (and package.depended-by (or (Health.degraded? health) (Health.failing? health)))
     (Package.update-health package.depended-by
                            (Health.degraded "degraded by subpackage")))
   package)
@@ -142,7 +142,6 @@
   package)
 
 (fn Package.update-latest [package version]
-  (Log.log [:latest package.name package.git version])
   (set package.git.latest.commit version)
   package)
 
@@ -183,6 +182,7 @@
 (λ Package.loading? [package]
   (and (nil? package.git.target.commit)))
 
+;; TODO dumb name
 (fn Package.solve [package commit]
   (set package.git.target.commit commit)
   package)
@@ -199,12 +199,6 @@
 
 (fn Package.unstage [package]
   (values (E.set$ package :action [:hold]) (R.ok)))
-
-(fn Package.source [package]
-  ;; TODO should handle git, local, lua rocks, etc
-  (match package.source
-    [:git url] url
-    _ (error "can't get package source for unknown source type")))
 
 ;; TODO probably Package.walk-down package + Package.walk-up package and detect
 ;; if packages or package?
