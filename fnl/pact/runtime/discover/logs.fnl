@@ -37,7 +37,7 @@
   (let [wf (new-workflow (fmt "discover-logs:%s" package.canonical-id)
                          #(get-logs (FS.join-path path-prefix
                                                   package.git.repo.path)
-                                    package.git.checkout.HEAD.sha
+                                    package.git.checkout.commit.sha
                                     package.git.target.commit.sha))]
       (Package.track-workflow package wf)
       (wf:attach-handler

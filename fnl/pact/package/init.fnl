@@ -79,7 +79,7 @@
          :git {:remote {:origin (. spec.source 2)}
                :repo {:path (FS.join-path root :HEAD)} ;; github-user-repo-nvim/HEAD
                :checkout {:path nil ;; github-user-repo-nvim/sha
-                          :HEAD nil} ;; TODO HEAD -> commit for consistency
+                          :commit nil}
                :target {:commit nil ;; solves to commit
                         :distance nil ;; local..commit
                         :logs [] ;; git log local..commit
@@ -127,7 +127,7 @@
   package)
 
 (fn Package.set-head [package commit]
-  (set package.git.checkout.HEAD commit)
+  (set package.git.checkout.commit commit)
   (set package.git.checkout.path (Package.worktree-path package commit))
   package)
 
@@ -170,7 +170,7 @@
   "Is the given package in sync with its remote?"
   (and (Package.on-disk? package)
        (Package.solved? package)
-       (= package.git.checkout.HEAD.sha package.git.target.commit.sha)))
+       (= package.git.checkout.commit.sha package.git.target.commit.sha)))
 
 (fn Package.on-disk? [package]
   "Does the package exist on disk?"

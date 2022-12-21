@@ -197,7 +197,7 @@
           (use DiscoverLogs :pact.runtime.discover.logs
                Scheduler :pact.workflow.scheduler)
          ; (vim.pretty_print :check package.git)
-          (if package.git.checkout.HEAD
+          (if package.git.checkout.commit
             (let [wf (DiscoverLogs.workflow package runtime.path.repos)]
               (Scheduler.add-workflow runtime.scheduler.local wf))))
         (fn [ok-commits-err-constraints]

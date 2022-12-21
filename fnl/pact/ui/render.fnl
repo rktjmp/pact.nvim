@@ -76,7 +76,7 @@
         package-data #{:uid $1.uid
                        :name $1.name
                        :health $1.health
-                       :git {:checkout {:commit (?. $ :git :checkout :HEAD)}
+                       :git {:checkout {:commit (?. $ :git :checkout :commit)}
                              :target {:commit (?. $ :git :target :commit)
                                       :logs (?. $ :git :target :logs)
                                       :breaking? (?. $ :git :target :breaking?)
