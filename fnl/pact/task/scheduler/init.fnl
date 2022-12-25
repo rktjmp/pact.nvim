@@ -10,32 +10,34 @@
 
 (fn make-timer-cb [scheduler]
   (fn []
-    ;; can we add an additional task to the active list?
+    ;; dequeue upto concurrency-limit
     (while (and (< (length scheduler.active) scheduler.concurrency-limit)
                 (< 0 (length scheduler.queue)))
-      ;; activate task
       (let [task (table.remove scheduler.queue 1)]
         (table.insert scheduler.active 1 task)))
+
     ;; tick every active task
     (let [{: exec} (require :pact.task)
           ;; pair the tasks with the run results so we can drop halted and
           ;; retain continued wfs in the active list.
-          {:halt halted :cont continued}
+          {:halt halted :cont continued :wait waiting}
           (->> (E.group-by
                  #(match (exec $2.task)
                     (action value) (values action [$2 value])
                     _ (vim.schedule
-                        ;; TODO debug.traceback this
-                        #(error "task.exec did not return 2 values")))
+                        #(error (debug.traceback $2.task.thread
+                                                 "task.exec did not return 2 values"))))
                  scheduler.active)
-               (E.merge$ {:halt [] :cont []}))]
+               (E.merge$ {:halt [] :cont [] :wait []}))]
       ;; collect anything that wants to be scheduled again, and update the
       ;; currently active list. Do this before dispatching any messaages so
       ;; any error in that occurs in dispatching doesn't leave zombie tasks.
       (tset scheduler :active (E.map (fn [_ [meta-task _result]] meta-task) continued))
+      (E.concat$ scheduler.queue (E.map (fn [_ [meta-task _]] meta-task) waiting))
+      ; (print (vim.inspect halted) (vim.inspect continued) (vim.inspect waiting))
       ;; dispatch any messages
       (->> (E.flatten [halted continued])
-           (E.map (fn [_ [{: task : message : resolved : rejected} result]]
+           (E.map (fn [_ [{: task : messaged : resolved : rejected} result]]
                     (macro safely-call [...]
                       `(match (pcall ,...)
                          (false err#) (vim.schedule
@@ -44,32 +46,44 @@
                     ;; log errors separately to rejected calls for now TODO drop this?
                     (when (R.err? result)
                       (Log.log [task.id result])
-                      (vim.schedule #(error (fmt "task error: %s %s %s"
-                                                 task.id result (debug.traceback task.thread)))))
+                      (vim.schedule #(vim.notify (fmt "task error: %s %s %s"
+                                                      task.id result (debug.traceback task.thread))
+                                                vim.log.levels.WARN)))
                     ;; dispatch any sub-task messages that could not be
                     ;; yielded by the normal fashion.
-                    (E.each #(safely-call message $2) task.sub-task-messages)
+                    (E.each #(safely-call messaged $2) task.sub-task-messages)
                     (set task.sub-task-messages [])
                     ;; dispatch regular result
                     (match result
                       (where ok (R.ok? ok)) (safely-call resolved ok)
                       (where err (R.err? err)) (safely-call rejected err)
-                      (where msg (string? msg)) (safely-call message msg)))))
+                      (where msg (string? msg)) (safely-call messaged msg)))))
       ;; stop or nah?
       (when (= 0 (length scheduler.queue) (length scheduler.active))
         (uv.timer_stop scheduler.timer-handle)
         (uv.close scheduler.timer-handle)
         (tset scheduler :timer-handle nil)))))
 
-(fn queue-task [scheduler task ?resolved ?rejected ?message]
+(fn queue-task [scheduler task ?resolved ?rejected ?messaged]
   "Enqueue a task with on-event and on-complete callbacks.
   Starts scheduler loop if it's not currently running"
   (assert (and task.thread task.id) "add-task arg did not look like task")
-  (table.insert scheduler.queue {:task task
-                                 :resolved (or ?resolved #nil)
-                                 :rejected (or ?rejected #nil)
-                                 :message (or ?message #nil)})
-
+  (let [index (if (coroutine.running) 1 (+ (length scheduler.queue) 1))]
+    ;; TODO turn into tree?
+    ;; Given tasks A B C, if they all spawn subtasks, we want to put the subtasks
+    ;; at the head of the queue so they run earlier, otherwise we'd "start"
+    ;; all tasks before they actually made any progress.
+    ;; However We put the actual originating task at the tail of the queue after
+    ;; executing it.
+    ;; A B C -> aa B C A -> bb C A B -> ...
+    ;; Otherwise we can lock the scheduler by filling it with "waiting" tasks.
+    ;; Ideally we would actually track tasks as a tree so we could depth-first
+    ;; each root task and be sure they run through before starting the next root
+    ;; task.
+    (table.insert scheduler.queue index {:task task
+                                         :resolved (or ?resolved #nil)
+                                         :rejected (or ?rejected #nil)
+                                         :messaged (or ?messaged #nil)}))
   (when (= nil scheduler.timer-handle)
     (let [h (uv.new_timer)]
       (tset scheduler :timer-handle h)
@@ -94,6 +108,7 @@
   {:id (gen-id :scheduler)
    :concurrency-limit (or (?. opts :concurrency-limit) 5)
    :queue []
+   :waiting []
    :active []
    :timer-handle nil
    :timer-rate-per-ms (/ 1000 60)})

@@ -16,14 +16,6 @@
 (fn stop-timer [task]
   (E.set$ task :timer (- (uv.now) task.timer)))
 
-(fn still-awaiting? [tasks]
-  (->> (E.map (fn [_ task-or-thread]
-                (if (M.task? task-or-thread)
-                  task-or-thread.thread
-                  task-or-thread))
-              tasks)
-       (E.any? #(not= :dead (coroutine.status $2)))))
-
 (fn resume [task ...]
   "Called by the scheduler, task should yield or return a value"
   (match [(coroutine.resume task.thread ...)]
@@ -36,6 +28,7 @@
     ;;                          as task result.
     ;; We return the following values:
     ;; [:cont value] <- keep us scheduled
+    ;; [:wait] <- we're waiting (lets us run other co's while respecting concurrency-limit)
     ;; [:halt value] <- unschedule us, we no longer want to progress
 
     ;; Coroutines can yield a string up to pass information messages to the
@@ -51,8 +44,9 @@
     (where [true thread] (thread? thread))
     (do
       (table.insert task.events [:suspended])
+      ; (print :awaiting-thread task.id task.thread (inspect thread))
       (tset task :awaiting [thread])
-      (values :cont thread))
+      (values :wait thread))
 
     ;; awaiting multiple threads, assumes all are threads ...
     (where [true [t & ts]] (M.task? t))
@@ -60,7 +54,7 @@
       (table.insert task.events [:suspended])
       (table.insert ts 1 t) ;; reform
       (tset task :awaiting ts)
-      (values :cont ts))
+      (values :wait ts))
 
     ;; result.ok signals that the task has terminated
     (where [true ok] (R.ok? ok))
@@ -97,6 +91,14 @@
           (values :halt err))))
 
 (fn M.exec [task]
+  (fn still-awaiting? [tasks]
+    (->> (E.map (fn [_ task-or-thread]
+                  (if (M.task? task-or-thread)
+                    task-or-thread.thread
+                    task-or-thread))
+                tasks)
+         (E.any? #(not= :dead (coroutine.status $2)))))
+
   (match task
     ;; Never run before
     (where task (= nil task.timer))
@@ -106,12 +108,11 @@
 
     ;; task is paused by some threads, so just return to scheduler for continuation later
     (where {: awaiting} (still-awaiting? awaiting))
-    (values :cont awaiting)
+    (values :wait awaiting)
 
     ;; has some threads but the the threads are finished, clear awaiting and resume.
     (where {: awaiting} (not (still-awaiting? awaiting)))
     (let [vals (E.map #(if (M.task? $2) $2.value) awaiting)] ;; TODO this should be packed via reduce and unpacked
-      (print "awaited..." (inspect vals))
       (tset task :awaiting nil)
       (resume task (E.unpack vals)))
 
@@ -160,7 +161,7 @@
                 task
                 (?. opts :resolved)
                 (?. opts :rejected)
-                (?. opts :message))
+                (?. opts :messaged))
     task))
 
 (fn* M.new
