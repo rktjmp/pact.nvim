@@ -32,6 +32,11 @@
 (fn Constraint.constraint? [c]
   (match? [:git any-1 any-2] c))
 
+(fn Constraint.equal? [ca cb]
+  (match [ca cb]
+    [[kind how what] [kind how what]] true
+    _ false))
+
 (fn Constraint.commit? [c]
   (match? [:git :commit any] c))
 

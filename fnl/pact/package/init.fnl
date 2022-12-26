@@ -19,30 +19,11 @@
      E :pact.lib.ruin.enum
      FS :pact.workflow.exec.fs
      Log :pact.log
+     Action :pact.package.action
+     Health :pact.package.health
      {:format fmt} string)
 
-
-(local Health {})
-(local Package {:Action {}
-                :Health Health})
-
-(fn Health.healthy [] [:healthy])
-(fn Health.healthy? [h] (match? [:healthy] h))
-
-(fn Health.degraded [msg] [:degraded msg])
-(fn Health.degraded? [h] (match? [:degraded] h))
-
-(fn Health.failing [msg] [:failing msg])
-(fn Health.failing? [h] (match? [:failing] h))
-
-(fn Health.update [old new]
-  (let [[old-kind & rest-old] old
-        [new-kind & rest-new] new
-        msgs #(E.concat$ [] rest-new rest-old)
-        score #(. {:healthy 0 :degraded 1 :failing 2} $1)]
-    (if (< (score old-kind) (score new-kind))
-      [new-kind (E.unpack (msgs))]
-      [old-kind (E.unpack (msgs))])))
+(local Package {:Health Health})
 
 (var *last-id* 0)
 (fn gen-uid []
@@ -58,23 +39,21 @@
                          (string.gsub spec.name "/" "-")) ;; TODO this will smell
         rtp-path (FS.join-path (if spec.opt? :opt :start) package-name)]
     (-> {:type :plugin
+         :uid (gen-uid) ;; globally unique between all packages, even those
+                        ;; with the same c-id
          :canonical-id spec.canonical-id ;; shared between packages with same origin
-         :uid (gen-uid) ;; globally unique between all packages
-         :spec spec
          :name spec.name
          :source spec.source
          :constraint spec.constraint
          :depended-by nil
          :depends-on (or spec.dependencies []) ;; placeholder
-         ;; these are kept relative as they will be different for every transaction
-         :path {:root root ;; github-user-repo-nvim/ ;; TODO deprecate
-                :rtp rtp-path ;; start|opt/package.nvim ;; TODO deprecate
-                :head (FS.join-path root :HEAD)} ;; TODO deprecate
-         :order 0 ;(E.reduce #(+ $1 1) 1 runtime.packages)
          :events []
          :workflows []
+         :tasks 0
          :action [:hold]
          :health (Health.healthy)
+         ;; all paths are kept relative as they will be different for every
+         ;; transaction
          :install {:path rtp-path} ;; start|opt/<name>
          :git {:remote {:origin (. spec.source 2)}
                :repo {:path (FS.join-path root :HEAD)} ;; github-user-repo-nvim/HEAD
@@ -91,15 +70,6 @@
                                     (where f (function? f)) f
                                     _ nil))}))))
 
-(λ Package.update-target-logs [package logs]
-  (set package.git.target.logs logs)
-  (set package.git.target.breaking? (E.any? #$2.breaking? logs))
-  package)
-
-(λ Package.update-target-direction [package direction]
-  (set package.git.target.direction direction)
-  package)
-
 (λ Package.worktree-path [package commit]
   (FS.join-path (string.match package.git.repo.path "(.+)HEAD$")
                 commit.short-sha))
@@ -115,20 +85,51 @@
               (Health.degraded? health)
               (Health.failing? health))
           "update-health given non-health value")
-  ;; health changes should propagate down and up?
   (set package.health (Health.update package.health health))
   (if (and package.depended-by (or (Health.degraded? health) (Health.failing? health)))
     (Package.update-health package.depended-by
                            (Health.degraded "degraded by subpackage")))
   package)
 
+(λ Package.degrade-health [package message]
+  (Package.update-health package (Package.Health.degraded message)))
+
+(λ Package.fail-health [package message]
+  (Package.update-health package (Package.Health.failing message)))
+
+(fn Package.healthy? [package]
+  (Package.Health.healthy? package.health))
+
+(fn Package.degraded? [package]
+  (Package.Health.degraded? package.health))
+
+(fn Package.failing? [package]
+  (Package.Health.failing? package.health))
+
+(λ Package.update-target-logs [package logs]
+  (set package.git.target.logs logs)
+  (set package.git.target.breaking? (E.any? #$2.breaking? logs))
+  package)
+
+(λ Package.update-target-direction [package direction]
+  (set package.git.target.direction direction)
+  package)
+
 (fn Package.update-commits [package commits]
   (set package.git.commits commits)
   package)
 
-(fn Package.set-head [package commit]
+(fn Package.set-checkout-commit [package commit]
   (set package.git.checkout.commit commit)
   (set package.git.checkout.path (Package.worktree-path package commit))
+  package)
+
+(fn Package.set-target-commit [package commit]
+  (set package.git.target.commit commit)
+  package)
+
+(fn Package.set-latest-commit [package version]
+  (set package.git.latest.commit version)
   package)
 
 (fn Package.track-workflow [package wf]
@@ -140,30 +141,6 @@
 (fn Package.untrack-workflow [package wf]
   (tset package :workflows wf nil)
   package)
-
-(fn Package.update-latest [package version]
-  (set package.git.latest.commit version)
-  package)
-
-(fn Package.healthy? [package]
-  (Package.Health.healthy? package.health))
-
-(fn Package.degraded? [package]
-  (Package.Health.degraded? package.health))
-
-(fn Package.failing? [package]
-  (Package.Health.failing? package.health))
-
-(fn Package.stageable? [package]
-  (and (Package.healthy? package)
-       (Package.solved? package)
-       (not (Package.in-sync? package))))
-
-(fn Package.staged? [package]
-  (= (?. package :action 1) :stage))
-
-(fn Package.held? [package]
-  (= (?. package :action 1) :hold))
 
 (fn Package.in-sync? [package]
   "Is the given package in sync with its remote?"
@@ -182,23 +159,44 @@
 (λ Package.loading? [package]
   (and (nil? package.git.target.commit)))
 
-;; TODO dumb name
-(fn Package.solve [package commit]
-  (set package.git.target.commit commit)
-  package)
+(fn* Package.align-to-target
+  "checkout constraint target in transaction")
 
-(fn Package.stage [package]
-  ;; See runtime stage command for rules around staging (for now)
+(fn+ Package.align-to-target (where [package] package.git)
   (match-let [true (Package.healthy? package)
               commit package.git.target.commit]
-    (values (E.set$ package :action [:stage commit])
-            (R.ok))
+    (set package.action [:sync :git commit])
+    (R.ok package)
     (else
-      false (values package (R.err "cannot stage unhealthy package"))
-      nil (values package (R.err "cannot stage package, no target commit set")))))
+      false (R.err "cannot stage unhealthy package")
+      nil (R.err "unable to stage package, no target commit to checkout!"))))
 
-(fn Package.unstage [package]
-  (values (E.set$ package :action [:hold]) (R.ok)))
+(fn* Package.align-to-checkout
+  "checkout constraint target in transaction")
+
+(fn+ Package.align-to-checkout (where [package] package.git)
+  (match-let [commit package.git.checkout.commit]
+    (set package.action [:retain :git commit])
+    (R.ok package)
+    (else
+      nil (R.err "unable to stage package, no checkout commit to checkout!"))))
+
+(fn* Package.discard
+  "do not bring package ahead in transaction")
+
+(fn+ Package.discard [package]
+    (set package.action [:discard])
+    (R.ok package))
+
+(λ Package.staged? [package]
+  (= :sync (E.first package.action)))
+
+;; TODO: note this only checks the given package, and not all assocated canonicals
+;; so perhaps this does not really belong here.
+(fn Package.stageable? [package]
+  (and (Package.healthy? package)
+       (Package.solved? package)
+       (not (Package.in-sync? package))))
 
 ;; TODO probably Package.walk-down package + Package.walk-up package and detect
 ;; if packages or package?

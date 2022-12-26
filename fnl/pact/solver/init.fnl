@@ -1,20 +1,13 @@
 (import-macros {: ruin!} :pact.lib.ruin)
 (ruin!)
 
-(use R :pact.lib.ruin.result
-     {: 'result->> : 'result-> : 'result-let
-      : ok : err} :pact.lib.ruin.result
-     {: inspect!} :pact.lib.ruin.debug
+(use {: 'result-let} :pact.lib.ruin.result
+     R :pact.lib.ruin.result
+     {: trace : async : await} (require :pact.task)
      E :pact.lib.ruin.enum
-     T :pact.task
-     FS :pact.workflow.exec.fs
-     PubSub :pact.pubsub
-     Package :pact.package
      Commit :pact.git.commit
      Constraint :pact.plugin.constraint
-     Git :pact.workflow.exec.git
-     {:format fmt} string
-     {:new new-workflow : yield : log} :pact.workflow)
+     {:format fmt} string)
 
 (local Solver {})
 
@@ -24,13 +17,13 @@
   ;; back out as associated pairs.
 
   ;; Note we don't solve here, we use satisfies so we can retain "passes but
-  ;; not newest" commits to x-resovle with any other constraint.
+  ;; not newest" commits to cross-solve with any other constraint.
   (where [constraint commits _] (Constraint.version? constraint))
   (->> (E.filter (fn [_ commit] (Constraint.satisfies? constraint commit)) commits)
        (#(if (E.empty? $1)
-           (err {: constraint
+           (R.err {: constraint
                  :msg (fmt "no version satisfied %s" (Constraint.value constraint))})
-           (ok {: constraint
+           (R.ok {: constraint
                 :commits $1}))))
 
   ;; Commits does not include *every* commit in the repo, just ref'd commits
@@ -40,27 +33,24 @@
   ;; commit exists.
   (where [constraint commits verify-sha] (Constraint.commit? constraint))
   (result-let [sha (Constraint.value constraint)
-               full-sha (verify-sha sha)]
+               full-sha (await (async #(verify-sha sha)))]
     (if full-sha
-      (ok {: constraint :commits [(Commit.new full-sha)]})
-      (err {: constraint :msg  (fmt "commit does not exist: %s" sha)})))
+      (R.ok {: constraint :commits [(Commit.new full-sha)]})
+      (R.err {: constraint :msg  (fmt "commit does not exist: %s" sha)})))
 
   ;; head, branch and tags just fall through to Constraint.solve
   (where [constraint commits _] (or (Constraint.branch? constraint)
                                     (Constraint.tag? constraint)
                                     (Constraint.head? constraint)))
   (match (Constraint.solve constraint commits)
-    commit (ok {: constraint
+    commit (R.ok {: constraint
                 :commits [commit]})
-    nil (err {: constraint
+    nil (R.err {: constraint
               :msg (fmt "%s does not exist: %s"
                         (Constraint.type constraint)
                         (Constraint.value constraint))})))
 
-(fn err-x-solved [constraints-commits]
-  (err constraints-commits))
-
-(fn ok-with-latest-in-set [constraints-commits]
+(fn latest-in-set [constraints-commits]
   (let [all-version? (E.all? #(Constraint.version? $2.constraint)
                              constraints-commits)]
     (if all-version?
@@ -68,17 +58,9 @@
       ;; the latest that satisfies all constraints.
       (->> (E.map #$2.commit constraints-commits)
            ;; solve will solve n-commits to 1-commit
-           (Constraint.solve (Constraint.git :version "> 0.0.0"))
-           (ok))
-      ;; We might have a mix of concrete (from the repo) and optimistic
-      ;; (commit constraints with sub-40-char sha's), ideally we'll return a
-      ;; concrete commit. All commits in the same category *should* be the same
-      ;; so we'll just grab the first one.
-      (let [{true optimistic false concrete} (E.group-by #(not-nil? $2.optimisic?)
-                                                         constraints-commits)]
-        (if concrete
-          (ok (. (E.hd concrete) :commit))
-          (ok (. (E.hd optimistic) :commit)))))))
+           (Constraint.solve (Constraint.git :version "> 0.0.0")))
+      (-> (E.hd constraints-commits)
+          (. :commit)))))
 
 (fn* best-commit-or-error
   "Find best commit (latest and passes all constraints) in a set. Is given a table
@@ -111,14 +93,14 @@
                       (E.map #$2)
                       (E.flatten))]
     (if (E.empty? x-solved)
-      (err-x-solved good)
-      (ok-with-latest-in-set x-solved))))
+      (R.err good)
+      (R.ok (latest-in-set x-solved)))))
 
 (fn+ best-commit-or-error [{true good false bad}]
-  (err (E.concat$ [] good bad)))
+  (R.err (E.concat$ [] good bad)))
 
 (fn+ best-commit-or-error [{true nil false bad}]
-  (err bad))
+  (R.err bad))
 
 ;; TODO: need some guard on no constraints and no commits
 (λ Solver.solve-constraints [constraints commits verify-sha]
@@ -136,12 +118,10 @@
   ;;
   ;; We then need to see if the same sha exists in all valid commits and
   ;; return OK-solved or ERR-unsolvable.
-  (let [f (fn [{: await : log}]
-            (log "solving %s-way package constraint" (length constraints))
-            (->> constraints
-                        (E.map #(solve-constraint $2 commits verify-sha))
-                        (E.group-by #(R.ok? $2))
-                        (best-commit-or-error)))]
-    (T.new :solver-solve f)))
+  (trace "solving %s-way package constraint" (length constraints))
+  (->> constraints
+       (E.map #(solve-constraint $2 commits verify-sha))
+       (E.group-by #(R.ok? $2))
+       (best-commit-or-error)))
 
 Solver
