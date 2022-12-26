@@ -8,7 +8,7 @@
 (import-macros {: ruin!} :pact.lib.ruin)
 (ruin!)
 
-(use enum :pact.lib.ruin.enum
+(use E :pact.lib.ruin.enum
      inspect :pact.inspect
      {: spawn
       : fs_open : fs_close
@@ -24,7 +24,7 @@
       (table.insert t data))))
 
 (fn stream->lines [bytes]
-  (enum.map #$1 #(string.gmatch (table.concat bytes) "[^\r\n]+")))
+  (E.map #$1 #(string.gmatch (table.concat bytes) "[^\r\n]+")))
 
 (fn exec [cmd args cwd env on-exit]
   "spawns a new process"
@@ -58,21 +58,21 @@
         (values pid)))))
 
 (fn string->spawn-args [cmd-str opts]
-  (let [parts (->> (enum.map #$1 #(string.gmatch cmd-str "(%S+)"))
-                   (enum.map #(match (string.match $2 "^(%$+)([%w-]+)$")
-                                (prefix name) (match [prefix (. opts name)]
-                                                [:$ val] val
-                                                [:$ nil] (error (fmt "Could not construct command `%s`, `%s` not in substitution table" cmd-str name))
-                                                _ (.. (string.sub prefix 1 -2) name))
-                                _ $2)))]
-    [(enum.hd parts) (enum.tl parts) (or opts.cwd ".") (or opts.env {})]))
+  (let [parts (->> (E.map #$1 #(string.gmatch cmd-str "(%S+)"))
+                   (E.map #(match (string.match $2 "^(%$+)([%w-]+)$")
+                             (prefix name) (match [prefix (. opts name)]
+                                             [:$ val] val
+                                             [:$ nil] (error (fmt "Could not construct command `%s`, `%s` not in substitution table" cmd-str name))
+                                             _ (.. (string.sub prefix 1 -2) name))
+                             _ $2)))]
+    [(E.hd parts) (E.tl parts) (or opts.cwd ".") (or opts.env {})]))
 
 (fn run [cmd opts on-exit]
   (assert (string? cmd) "must provide command string")
   (assert (table? opts) "must provide opts table")
   (assert (function? on-exit) "must provide on-exit function")
   (let [args (-> (string->spawn-args cmd opts)
-                 (enum.append$ on-exit))]
-    (exec (enum.unpack args))))
+                 (E.append$ on-exit))]
+    (exec (E.unpack args))))
 
 {: run}

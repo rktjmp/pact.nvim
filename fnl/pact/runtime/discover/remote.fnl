@@ -65,7 +65,7 @@
         update-siblings #(E.each (fn [_ p] ($1 p)) canonical-set)
         wf (new package.canonical-id
                 package.git.remote.origin
-                (FS.join-path path-prefix package.path.head))]
+                (FS.join-path path-prefix package.git.repo.path))]
     (update-siblings (fn [package]
                        (Package.track-workflow package wf)))
     (wf:attach-handler

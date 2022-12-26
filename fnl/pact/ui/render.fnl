@@ -82,8 +82,9 @@
                                       :breaking? (?. $ :git :target :breaking?)
                                       :direction (?. $ :git :target :direction)}
                              :latest {:commit (?. $ :git :latest :commit)}}
-                       :working? (E.any? #$1.timer $1.workflows)
-                       :waiting? (E.any? #$1 $1.workflows)
+                       :working? (< 0 $1.tasks)
+                       ;(E.any? #$1.timer $1.workflows)
+                       :waiting? false;(E.any? #$1 $1.workflows)
                        :constraint $1.constraint
                        :last-event (do
                                (-> (inspect (?. $ :events 1 2) true)
@@ -182,10 +183,10 @@
                         ;; staged but parent unstaged and need to show the
                         ;; differences. Could be only shown (or shown as
                         ;; virt-lines?) in that case but for its as is.
-                        :stage {:text "⍙"
-                                :highlight :DiagnosticOk}
-                        :hold {:text "⍑"
-                               :highlight :PactComment})
+                        :sync {:text "⍙"
+                               :highlight :DiagnosticOk}
+                        :retain {:text "⍑"
+                                 :highlight :PactComment})
               :health (match package.health
                          [:healthy] nil
                          [:degraded msg] {:text (.. "" msg) :highlight :DiagnosticWarn}

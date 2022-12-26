@@ -7,12 +7,9 @@
      Runtime :pact.runtime
      Log :pact.log
      inspect :pact.inspect
-     scheduler :pact.workflow.scheduler
      {: subscribe : unsubscribe} :pact.pubsub
-     {: ok? : err?} :pact.lib.ruin.result
      R :pact.lib.ruin.result
-     api vim.api
-     FS :pact.workflow.exec.fs
+     {: api} vim
      {:format fmt} string
      {: abbrev-sha} :pact.git.commit)
 
@@ -112,8 +109,6 @@
     ;; TODO unsub all on win close
     (E.each #(subscribe $1 #(schedule-redraw ui))
             #(Package.iter ui.runtime.packages))
-    (subscribe ui.runtime.scheduler.local #(schedule-redraw ui))
-    (subscribe ui.runtime.scheduler.remote #(schedule-redraw ui))
     (->> (Runtime.Command.discover-status)
          (Runtime.dispatch runtime))
     (schedule-redraw ui)))

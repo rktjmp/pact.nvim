@@ -171,6 +171,13 @@
   (where [id repo-path constraints commits])
   (new-workflow id #(solve-constraints repo-path constraints commits)))
 
+;; -> problem
+;; The workflow is abstracted from the modifications done to package
+;; otherwise you could actually pipe through.
+;;
+;; This is probably a philosophical question about whether tasks directly alter
+;; their target or act as they do now and "fetch something" which is later used.
+
 (fn Solve.solve [runtime package]
   (fn rel-path->abs-path [in path]
     (FS.join-path (. runtime :path in) path))
@@ -181,10 +188,11 @@
     ;; Pair each constraint with its package so any targetable errors can be
     ;; propagated back to the correct package.
     (let [constraints (E.map #[$2.uid $2.constraint] siblings)
-          s-way-cons (fmt "%s-way constraint%s" (length constraints) (if (= 1 (length constraints))
-                                                                       "" "s"))
+          s-way-cons (fmt "%s-way constraint%s"
+                          (length constraints)
+                          (if (= 1 (length constraints)) "" "s"))
           commits package.git.commits
-          repo (rel-path->abs-path :repos package.path.head) ;; TODO into module
+          repo (rel-path->abs-path :repos package.git.repo.path) ;; TODO into module
           wf (new package.canonical-id repo constraints commits)]
       (update-siblings #(Package.track-workflow $ wf))
       (wf:attach-handler
@@ -192,7 +200,7 @@
           (update-siblings #(-> $
                                 (Package.untrack-workflow wf)
                                 (Package.add-event wf ok-commit)
-                                (Package.solve (R.unwrap ok-commit))
+                                (Package.set-target-commit (R.unwrap ok-commit))
                                 (PubSub.broadcast :solved)))
           (use DiscoverLogs :pact.runtime.discover.logs
                Scheduler :pact.workflow.scheduler)
@@ -223,13 +231,13 @@
                                       ;; shared commit between them, so technically
                                       ;; they fail as a collection.
                                       ;; TODO: E.hd may give "non-latest" for versions
-                                      (Package.solve (E.hd (. (R.unwrap relevant-result) :commits)))
+                                      (Package.set-target-commit (E.hd (. (R.unwrap relevant-result) :commits)))
                                       (Package.update-health (Package.Health.failing (fmt "no single commit satisfied %s"
                                                                                           s-way-cons))))
                                   [_ true]
                                   (-> p
                                       ;; sibling constraint was actually ok
-                                      (Package.solve (R.unwrap relevant-result))
+                                      (Package.set-target-commit (R.unwrap relevant-result))
                                       (Package.update-health (Package.Health.degraded
                                                                (fmt "could not solve %s due to error in canonical sibling"
                                                                     s-way-cons))))

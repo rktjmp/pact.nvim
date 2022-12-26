@@ -1,9 +1,8 @@
 (import-macros {: ruin!} :pact.lib.ruin)
 (ruin!)
 
-(use enum :pact.lib.ruin.enum
-     inspect :pact.inspect
-     {: run} :pact.workflow.exec.process
+(use inspect :pact.inspect
+     {: run} :pact.exec.process
      {:loop uv} vim
      {:format fmt} string
      {: 'await} :pact.async-await)

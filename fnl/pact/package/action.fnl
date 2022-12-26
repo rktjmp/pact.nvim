@@ -3,7 +3,6 @@
 
 (use R :pact.lib.ruin.result
      E :pact.lib.ruin.enum
-     FS :pact.workflow.exec.fs
      Log :pact.log
      {:format fmt} string)
 

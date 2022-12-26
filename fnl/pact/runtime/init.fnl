@@ -2,15 +2,175 @@
 (ruin!)
 
 (use R :pact.lib.ruin.result
-     {: 'result-let} :pact.lib.ruin.result
+     {: 'result-> : 'result-let} :pact.lib.ruin.result
      E :pact.lib.ruin.enum
-     FS :pact.workflow.exec.fs
+     inspect :pact.inspect
+     FS :pact.fs
+     Datastore :pact.datastore
+     Solver :pact.solver
      PubSub :pact.pubsub
      Package :pact.package
+     Constraint :pact.plugin.constraint
      Transaction :pact.runtime.transaction
      {:format fmt} string)
 
 (local Runtime {})
+
+;; TODO (fn Runtime.exec-discover-orphans [runtime])
+
+(fn smoke-test-first-run [runtime]
+  "Look at current disk state, possibly prepare it to a known good state, then
+  set some information on runtime"
+  (->> [runtime.path.root runtime.path.data runtime.path.repos]
+       (E.each #(FS.make-path $2)))
+  (match (vim.loop.fs_lstat runtime.path.head)
+    (nil _ :ENOENT) (let [t (Transaction.new runtime.path.data
+                                             runtime.path.repos
+                                             runtime.path.head)]
+                      (FS.make-path t.path.root)
+                      (FS.make-path (FS.join-path t.path.root :start))
+                      (FS.make-path (FS.join-path t.path.root :opt))
+                      (FS.symlink t.path.root runtime.path.head)))
+
+  ;; look for current HEAD transaction symlink otherwise create one to a
+  ;; default checkout
+  ;; TODO this could be stronger
+  (match (vim.loop.fs_lstat (FS.join-path runtime.path.root :start))
+    (nil _ :ENOENT) (FS.symlink (FS.join-path runtime.path.head :start)
+                                (FS.join-path runtime.path.root :start)))
+
+  (match (vim.loop.fs_lstat (FS.join-path runtime.path.root :opt))
+    (nil _ :ENOENT) (FS.symlink (FS.join-path runtime.path.head :opt)
+                                (FS.join-path runtime.path.root :opt)))
+
+  runtime)
+
+(fn parse-disk-layout [runtime]
+  "Look at current disk state, possibly prepare it to a known good state, then
+  set some information on runtime"
+  (let [current-head  (vim.loop.fs_readlink runtime.path.head) ;; TODO: re-add error checks
+        transaction-id (string.match current-head ".+/([^/]-)$")]
+    (set runtime.transaction.head.id transaction-id)
+    (set runtime.path.transaction current-head)) ;; TODO: put somewhere else? better name?
+
+  runtime)
+
+(λ ingest-first [rt]
+  (local {:new task/new
+          :run async
+          :await await
+          :trace trace} (require :pact.task))
+
+  (λ ingest-package [canonical-id packages]
+    (result-let [canonical-package (. packages 1)
+                 _ (trace "ingesting package %s" canonical-id)
+                 _ (-> (async #(Datastore.ingest-package rt.datastore
+                                                         :git
+                                                         canonical-id
+                                                         canonical-package.git.remote.origin
+                                                         canonical-package.install.path))
+                       (await)
+                       (R.map-err (fn [e]
+                                    (-> canonical-package
+                                        (Package.update-health (Package.Health.failing (tostring e)))
+                                        (PubSub.broadcast :changed))
+                                    (R.err e))))]
+      (R.ok)))
+
+  (λ find-package-by-constraint [packages constraint]
+    (E.find-value #(Constraint.equal? $2.constraint constraint)
+                  packages))
+
+  (λ set-error-for-unsolved [package relevant-result all-ok? n-packages]
+    (match [all-ok? (R.ok? relevant-result)]
+      [true _]
+      (-> package
+          ;; This is a funny edge case where all
+          ;; constraints were solved but there was no
+          ;; shared commit between them, so technically
+          ;; they fail as a collection.
+          ;; TODO: E.hd may give "non-latest" for versions
+          (Package.set-target-commit (E.hd (. (R.unwrap relevant-result) :commits)))
+          (Package.fail-health (fmt "no single commit satisfied %s-way constraint"
+                                    n-packages)))
+      [_ true]
+      (-> package
+          ;; sibling constraint was actually ok
+          (Package.set-target-commit (R.unwrap relevant-result))
+          (Package.degrade-health (fmt "could not solve %s-way constraint due to error in canonical sibling"
+                                       n-packages)))
+      [_ false]
+      (-> package
+          ;; sibling constraint failed, so we have specific error
+          (Package.fail-health (. (R.unwrap relevant-result) :msg)))))
+
+
+  (λ solve-package [canonical-id packages]
+    ;; This is all pretty gross, we get ok<commit> when solved or
+    ;; err<[ok<constraint, commit>, err<constraint, msg>]> when unsolved.
+    ;; The nested array is so we can pair solve-fails to packages that *failed*
+    ;; and attach warning to other packages that *did* solve, but because of a
+    ;; sibling failure are actually not usable.
+    (result-let [_ (trace "solving package %s" canonical-id)
+                 ;; need to define this here for access to await for now at least. TODO
+                 verify-sha #(Datastore.verify-sha rt.datastore canonical-id $)
+                 set-target-commit (fn [c]
+                                     (E.each #(-> $2
+                                                  (Package.set-target-commit c)
+                                                  (PubSub.broadcast :changed))
+                                             packages))
+                 set-errors (fn [results]
+                              ;; This may be called with a mixture of ok-commit for constraints
+                              ;; that were solved and err-constraints for constraints that could
+                              ;; not be solved.
+                              ;; The workflow is considered a "failure", but we do want to show
+                              ;; which packages were vaguely ok, and which packages are actually
+                              ;; borked.
+                              (let [all-ok? (E.all? #(R.ok? $2) results)]
+                                  (E.each (fn [_ result]
+                                            (let [package (find-package-by-constraint packages
+                                                                                      (-> (R.unwrap result)
+                                                                                          (. :constraint)))]
+                                              (set-error-for-unsolved package result all-ok? (length packages))))
+                                          results))
+                              ;; we don't consider the task failed because it didn't solve
+                              (R.ok))
+                 commits (Datastore.commits-by-canonical-id rt.datastore canonical-id)
+                 constraints (E.map #$2.constraint packages)
+                 solved (-> (async #(Solver.solve-constraints constraints commits verify-sha))
+                            (await)
+                            (R.map set-target-commit
+                                   set-errors))
+                  latest (-> (async #(Solver.solve-constraints [(Constraint.git :version "> 0.0.0")]
+                                                               commits
+                                                               verify-sha))
+                             (await)
+                             (R.map (fn [c]
+                                      (E.map #(Package.set-latest-commit $2 c)
+                                             packages)
+                                      (R.ok))
+                                    #(R.ok)))]
+      ;; solve errors are not hard errors and are handled
+      ;; separately above, so if no other step failed,
+      ;; we're actually "ok" regardless.
+      (R.ok)))
+
+  (->> (E.group-by #(values $1.canonical-id $1)
+                   #(Package.iter rt.packages))
+       (E.map (fn [canonical-id packages]
+                (async (fn []
+                         (E.each #(set $2.tasks (+ $2.tasks 1)) packages)
+                         (await (async #(ingest-package canonical-id packages)))
+                         (await (async #(solve-package canonical-id packages)))
+                         (E.each #(set $2.tasks (- $2.tasks 1)) packages)
+                         (R.ok))
+                       {:traced (fn [msg]
+                             (E.each #(-> $2
+                                          (Package.add-event :some-task msg)
+                                          (PubSub.broadcast :changed))
+                                     packages))}))))
+  rt)
+
 
 (fn Runtime.add-proxied-plugins [runtime proxies]
   ;; TODO rewrite doc
@@ -67,48 +227,8 @@
   ;; TODO: does a loop even matter? we install all things independently anyway,
   ;; so if a depends on b depends on a, we end up with flat a + b, and we can
   ;; just install them? 
-  (E.set$ runtime :packages (unproxy-spec-graph proxies)))
-
-;; TODO
-(fn Runtime.exec-discover-orphans [runtime])
-
-(fn smoke-test-first-run [runtime]
-  "Look at current disk state, possibly prepare it to a known good state, then
-  set some information on runtime"
-  ;; must have some directories created
-  (E.each #(FS.make-path $2)
-          [runtime.path.root runtime.path.data runtime.path.repos])
-
-  (match (vim.loop.fs_lstat runtime.path.head)
-    (nil _ :ENOENT) (let [t (Transaction.new runtime.path.data
-                                             runtime.path.repos
-                                             runtime.path.head)]
-                      (FS.make-path t.path.root)
-                      (FS.make-path (FS.join-path t.path.root :start))
-                      (FS.make-path (FS.join-path t.path.root :opt))
-                      (FS.symlink t.path.root runtime.path.head)))
-
-  ;; look for current HEAD transaction symlink otherwise create one to a
-  ;; default checkout
-  ;; TODO this could be stronger
-  (match (vim.loop.fs_lstat (FS.join-path runtime.path.root :start))
-    (nil _ :ENOENT) (FS.symlink (FS.join-path runtime.path.head :start)
-                                (FS.join-path runtime.path.root :start)))
-
-  (match (vim.loop.fs_lstat (FS.join-path runtime.path.root :opt))
-    (nil _ :ENOENT) (FS.symlink (FS.join-path runtime.path.head :opt)
-                                (FS.join-path runtime.path.root :opt)))
-
-  runtime)
-
-(fn parse-disk-layout [runtime]
-  "Look at current disk state, possibly prepare it to a known good state, then
-  set some information on runtime"
-  (let [current-head  (vim.loop.fs_readlink runtime.path.head) ;; TODO: re-add error checks
-        transaction-id (string.match current-head ".+/([^/]-)$")]
-    (set runtime.transaction.head.id transaction-id)
-    (set runtime.path.transaction current-head)) ;; TODO: put somewhere else? better name?
-
+  (E.set$ runtime :packages (unproxy-spec-graph proxies))
+  (ingest-first runtime)
   runtime)
 
 (fn Runtime.workflow-stats [runtime]
@@ -118,58 +238,109 @@
               (length runtime.scheduler.remote.queue))})
 
 (fn Runtime.new [opts]
-  (let [Scheduler (require :pact.workflow.scheduler)
-        FS (require :pact.workflow.exec.fs)
+  (let [FS (require :pact.fs)
+        Datastore (require :pact.datastore)
         data-path (FS.join-path (vim.fn.stdpath :data) :pact)
-        repos-path (FS.join-path data-path :repos)]
-    (-> {:path {:root (FS.join-path (vim.fn.stdpath :data) :site/pack/pact)
+        repos-path (FS.join-path data-path :repos)
+        head-path (FS.join-path data-path :HEAD)
+        root-path (FS.join-path (vim.fn.stdpath :data) :site/pack/pact)]
+    (-> {:path {:root root-path
                 :data data-path
-                :head (FS.join-path data-path :HEAD)
+                :head head-path
                 :repos repos-path}
          :transaction {:head {:id nil}
-                       :staged (Transaction.new data-path repos-path)
+                       :staged (Transaction.new data-path repos-path head-path)
                        :historic []}
-         :packages {}
-         :scheduler {:remote (Scheduler.new {:concurrency-limit opts.concurrency-limit})
-                     :local (Scheduler.new {:concurrency-limit opts.concurrency-limit})}}
+         :datastore (Datastore.new repos-path root-path)
+         :packages {}}
         (smoke-test-first-run)
         (parse-disk-layout))))
 
 (set Runtime.Command {})
 
+(fn Runtime.Command.discover-status [])
+  ; (fn [runtime]
+  ;   (use DiscoverRemote :pact.runtime.discover.remote
+  ;        DiscoverLocal :pact.runtime.discover.local
+  ;        Scheduler :pact.workflow.scheduler)
+  ;   (let [packages (E.map #$ #(Package.iter runtime.packages))]
+  ;     (->> (E.group-by #(. $2 :canonical-id) packages)
+  ;          (E.map (fn [_ canonical-set]
+  ;                   [(DiscoverLocal.workflow canonical-set
+  ;                                            runtime.path.transaction)
+  ;                    (DiscoverRemote.workflow canonical-set
+  ;                                             runtime.path.repos)
+  ;                    ;; remember a package for triggering solve workflow
+  ;                    (. canonical-set 1)]))
+  ;          (E.each (fn [_ [local-wf remote-wf canonical-package]]
+  ;                    (let [set-id (Scheduler.add-workflow-set runtime.scheduler.remote
+  ;                                                             [local-wf remote-wf])]
+  ;                      (PubSub.subscribe set-id
+  ;                                        (fn []
+  ;                                          (E.each #(Runtime.dispatch runtime $2)
+  ;                                                  [(Runtime.Command.solve-package canonical-package)
+  ;                                                   (Runtime.Command.solve-latest canonical-package)]))))))))))
+(fn Runtime.Command.discover-status [])
+  ; (fn [runtime]
+  ;   (use DiscoverRemote :pact.runtime.discover.remote
+  ;        DiscoverLocal :pact.runtime.discover.local
+  ;        Workflow :pact.workflow
+  ;        Scheduler :pact.workflow.scheduler)
+  ;   (let [packages (E.map #$ #(Package.iter runtime.packages))
+  ;         task/run #(Scheduler.add-workflow runtime.scheduler.remote $)]
+  ;     ;; we can run local and remote discovery just once per-canonical
+  ;     (->> (E.group-by #(. $2 :canonical-id) packages)
+  ;          (E.map #(let [canonical-set $2
+  ;                        rtp-path (->> (E.hd canonical-set)
+  ;                                     (#(. $ :install :path))
+  ;                                     (FS.join-path runtime.path.transaction))
+  ;                        local-task (DiscoverLocal.task :local-task-id rtp-path)
+  ;                        remote-wf (DiscoverRemote.workflow canonical-set
+  ;                                                           runtime.path.repos)
+  ;                        ; (Runtime.Command.solve-package (. canonical-set 1))
+  ;                        ; (Runtime.Command.solve-latest (. canonical-set 1))
+  ;                        update-siblings #(E.each (fn [_ p] ($1 p)) canonical-set)]
+  ;                    [local-task remote-wf update-siblings]))
+  ;          (E.each (fn [_ [local-task remote-task update-siblings]]
+  ;                    (fn checkout-commit-ok [commit]
+  ;                      (update-siblings #(do
+  ;                                          ;; TODO should actually be fine to set nil now
+  ;                                          (match commit
+  ;                                            any-commit (Package.set-checkout-commit $ any-commit))
+  ;                                          (-> $
+  ;                                              (Package.untrack-workflow local-task)
+  ;                                              (Package.add-event local-task (R.ok commit))
+  ;                                              (PubSub.broadcast (R.ok :head-updated))))))
+  ;                    (fn checkout-commit-err [err]
+  ;                      (update-siblings #(-> $
+  ;                                            (Package.untrack-workflow local-task)
+  ;                                            (Package.add-event local-task (R.err err))
+  ;                                            ;; TODO
+  ;                                            (Package.update-health
+  ;                                              (Package.Health.failing (fmt "E-9999")))
+  ;                                            (PubSub.broadcast (R.err :head-updated)))))))))))
 
-(fn Runtime.Command.discover-status []
-  (fn [runtime]
-    (use DiscoverRemote :pact.runtime.discover.remote
-         DiscoverLocal :pact.runtime.discover.local
-         Scheduler :pact.workflow.scheduler)
-    (let [packages (E.map #$ #(Package.iter runtime.packages))]
-      (->> (E.group-by #(. $2 :canonical-id) packages)
-           (E.map (fn [_ canonical-set]
-                    [(DiscoverLocal.workflow canonical-set
-                                             runtime.path.transaction)
-                     (DiscoverRemote.workflow canonical-set
-                                              runtime.path.repos)
-                     ;; remember a package for triggering solve workflow
-                     (. canonical-set 1)]))
-           (E.each (fn [_ [local-wf remote-wf canonical-package]]
-                     (let [set-id (Scheduler.add-workflow-set runtime.scheduler.remote
-                                                              [local-wf remote-wf])]
-                       (PubSub.subscribe set-id
-                                         (fn []
-                                           (E.each #(Runtime.dispatch runtime $2)
-                                                   [(Runtime.Command.solve-package canonical-package)
-                                                    (Runtime.Command.solve-latest canonical-package)]))))))))))
+(fn Runtime.Command.solve-package [package])
+  ; (fn [runtime]
+  ;   ;; TODO why is this even a command
+  ;   (use Solve :pact.runtime.solve)
+  ;   (Solve.solve runtime package)))
 
-(fn Runtime.Command.solve-package [package]
-  (fn [runtime]
-    (use Solve :pact.runtime.solve)
-    (Solve.solve runtime package)))
+(fn Runtime.Command.solve-latest [package])
+  ; (fn [runtime]
+  ;   ;; TODO why is this even a command
+  ;   (use SolveLatest :pact.runtime.solve.latest)
+  ;   (SolveLatest.solve runtime package)))
 
-(fn Runtime.Command.solve-latest [package]
-  (fn [runtime]
-    (use SolveLatest :pact.runtime.solve.latest)
-    (SolveLatest.solve runtime package)))
+; (fn Runtime.Command.x [package transaction]
+;   (Package.has-upgrade? package)
+
+;   (result-let [true (Package.with-action package [:sync package.git.target.commit])
+
+;   (result-> (Package.
+;   (-> transaction
+;       (Transaction.set-package-action package :sync package.git.target.commit)
+;       (Transaction.add-after package.after))
 
 (fn Runtime.Command.stage-package-tree [package]
   "Set package state to staged, this will also propagate *down* its
@@ -202,7 +373,7 @@
                    ;; stage any children, if they are stageable.
                    ;; TODO: staging in-sync is effectively a no-op and we could just allow it for simpler code path
                    (if (Package.stageable? $)
-                     (Package.stage $))
+                     (Package.align-to-target $))
                    (PubSub.broadcast $ :changed))
                    #(Package.iter [package]))
         (R.ok))
@@ -218,10 +389,60 @@
     ;; package for chaning and would be out of step with other functions.
     ;; Either find a way to disambuguate the behaviour.
     (E.each #(do
-               (Package.unstage $)
+               (Package.align-to-checkout $)
                (PubSub.broadcast $ :changed))
             #(Package.iter [package]))
     (R.ok)))
+
+(fn* Runtime.Command.align-to-target)
+
+; (fn+ Runtime.Command.align-to-target (where [package] (?. package :git :target :commit))
+;      (result-> (E.reduce (fn [acc package]
+;                            (R.join acc (if (Package.healthy? package)
+;                                          (R.ok [package.cid
+;                                                 package.git.target.commit
+;                                                 package.install.path])
+;                                          (R.err [package.cid :unhealthy]))))
+;                          (R.ok))
+;                (R.map #(do
+;                          (E.each #(let [[cid commit path] $2]
+;                                     (Transaction.set-target t cid commit path))
+;                                  [$...])
+;                          (R.ok "staged tree")))))
+
+;   (fn [runtime]
+;     (fn all-parents-ok? [package acc]
+;       (match [acc package.depended-by]
+;         [false _ ] false
+;         ;; Important note: If A -> B, and A is in-sync - and therefore "not
+;         ;; stageable" we must still allow B to be staged!
+;         [true parent] (all-parents-ok? parent (and acc (or (Package.stageable? package)
+;                                                            (Package.in-sync? package))))
+;         [true nil] (and acc (or (Package.stageable? package)
+;                                 (Package.in-sync? package)))))
+;     (if (and ;; the direct package must be stagable
+;              (Package.stageable? package)
+;              ;; and all children must be in-sync or stagable
+;              (E.all? #(or (Package.stageable? $1)
+;                           (Package.in-sync? $1))
+;                      #(Package.iter (or package.depends-on [])))
+;              ;; and any parent must be in-sync or stageable
+;              (all-parents-ok? package true))
+;       (do
+;         (E.each #(do
+;                    ;; We know the main package was allowed, and we do want to
+;                    ;; stage any children, if they are stageable.
+;                    ;; TODO: staging in-sync is effectively a no-op and we could just allow it for simpler code path
+;                    (if (Package.stageable? $)
+;                      (Package.align-to-target $))
+;                    (PubSub.broadcast $ :changed))
+;                 #(Package.iter [package]))
+;         (R.ok))
+;       (do
+;         (R.err "unable to stage tree, some packages unstagable"))))
+
+(fn Runtime.Command.retain-as-is [package])
+(fn Runtime.Command.discard [package])
 
 (fn Runtime.Command.run-transaction []
   ;; todo check any staged to commit ...
@@ -230,8 +451,7 @@
           stage-wfs (->> (E.group-by #(values $1.canonical-id $1)
                                      #(Package.iter runtime.packages))
                          (E.map (fn [c-id [package & _]]
-                                  (if (Package.staged? package)
-                                    [package (Transaction.stage-package t package)]))))
+                                  [package (Transaction.stage-package t package)])))
           {:setup setup-wf :commit commit-wf :rollback rollback-wf} (Transaction.workflows t)]
       (E.each (fn [_ [canonical-package wf]]
                 (->> (E.map #(if (= $1.canonical-id canonical-package.canonical-id) $1)
@@ -277,8 +497,9 @@
       (runtime.scheduler.local:add-workflow setup-wf))))
 
 (fn Runtime.dispatch [runtime command]
-  (match (command runtime)
-    (where x (R.err? x)) (vim.notify (R.unwrap x) vim.log.levels.ERROR))
+  (if command
+    (match (command runtime)
+      (where x (R.err? x)) (vim.notify (R.unwrap x) vim.log.levels.ERROR)))
   runtime)
 
 (values Runtime)

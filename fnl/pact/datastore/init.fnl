@@ -5,8 +5,8 @@
      R :pact.lib.ruin.result
      inspect :pact.inspect
      E :pact.lib.ruin.enum
-     FS :pact.workflow.exec.fs
-     Git :pact.workflow.exec.git
+     FS :pact.fs
+     Git :pact.git
      Commit :pact.git.commit
      {: trace : async : await} (require :pact.task)
      Log :pact.log

@@ -1,9 +1,7 @@
 (import-macros {: ruin!} :pact.lib.ruin)
 (ruin!)
 
-(use E :pact.lib.ruin.enum
-     uv vim.loop
-     api vim.api
+(use {:loop uv : api} vim
      {:format fmt} string)
 
 (local Log {})

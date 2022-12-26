@@ -58,8 +58,7 @@
               (Package.untrack-workflow wf)
               (Package.add-event wf err)
               ;; TODO
-              (Package.update-health
-                (Package.Health.failing (fmt "E-9999")))
+              (Package.fail-health (fmt "E-9999"))
               (PubSub.broadcast package (R.err :head-updated))))
         (fn [msg]
           (-> package

@@ -1,7 +1,7 @@
-(import-macros {: use} :pact.lib.ruin.use)
-(use {: 'fn* : 'fn+} :pact.lib.ruin.fn
-     {: string? : table? : not-nil?} :pact.lib.ruin.type
-     enum :pact.lib.ruin.enum
+(import-macros {: ruin!} :pact.lib.ruin)
+(ruin!)
+
+(use E :pact.lib.ruin.enum
      {:format fmt} string
      {:loop uv} vim)
 
@@ -15,14 +15,16 @@
 
 (fn make-path [path]
   (match (what-is-at path)
-    :nothing (match (enum.reduce #(let [target (.. $1 :/ $2)]
-                                    (match (what-is-at target)
-                                      :nothing (and (uv.fs_mkdir target 493) target)
-                                      :directory target
-                                      other (enum.reduced [nil (fmt "could not create directory %q exists, already %q"
-                                                                    target other)])
-                                      (nil err) (enum.reduced [nil err])))
-                                 "/" #(string.gmatch path "/([^/]+)"))
+    :nothing (match (E.reduce #(let [target (.. $1 :/ $2)]
+                                 (match (what-is-at target)
+                                   :nothing (and (uv.fs_mkdir target 493) target)
+                                   :directory target
+                                   other (E.reduced [nil
+                                                     (fmt "could not create directory %q exists, already %q"
+                                                          target
+                                                          other)])
+                                   (nil err) (E.reduced [nil err])))
+                              "/" #(string.gmatch path "/([^/]+)"))
                [nil err] (values nil err))
     :directory (values path)
     (nil err) (values nil (fmt "could not ensure %q exists, %q" path err))
@@ -33,15 +35,15 @@
   (let [iter (fn [path]
                (let [fs (uv.fs_scandir path)]
                  (values #(uv.fs_scandir_next fs) path 0)))]
-  (enum.map #{:kind $2 :name $1} #(iter path))))
+    (E.map #{:kind $2 :name $1} #(iter path))))
 
 (fn remove-path [path]
   (let [contents (ls-path path)]
-    (enum.each #(let [full-path (.. path :/ $2.name)]
-                  (match $2
-                    {:kind :directory} (remove-path full-path)
-                    _ (uv.fs_unlink full-path)))
-               contents)
+    (E.each #(let [full-path (.. path :/ $2.name)]
+               (match $2
+                 {:kind :directory} (remove-path full-path)
+                 _ (uv.fs_unlink full-path)))
+            contents)
     (uv.fs_rmdir path)))
 
 (fn absolute-path? [path]
@@ -60,7 +62,7 @@
   (uv.fs_symlink target link-name))
 
 (fn join-path [...]
-  (pick-values 1 (-> (enum.reduce #(.. $1 "/" $3) [...])
+  (pick-values 1 (-> (E.reduce #(.. $1 "/" $3) [...])
                      (string.gsub ://+ :/))))
 
 {: what-is-at

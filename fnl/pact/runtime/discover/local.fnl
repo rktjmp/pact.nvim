@@ -39,6 +39,9 @@
   (where [id repo-path])
   (new-workflow (fmt "discover-head-commit:%s" id) #(detect-kind repo-path)))
 
+(fn DiscoverLocal.task [id repo-path]
+  (new id repo-path))
+
 (fn DiscoverLocal.workflow [canonical-set path-prefix]
   (let [;; we only need one packge to work on
         package (E.hd canonical-set)
@@ -52,7 +55,7 @@
         (update-siblings #(do
                            ;; may be nil, for no local checkout, maybe change? TODO
                            (match (R.unwrap commit)
-                             c (Package.set-head $ c))
+                             c (Package.set-checkout-commit $ c))
                            (-> $
                                (Package.untrack-workflow wf)
                                (Package.add-event wf commit)

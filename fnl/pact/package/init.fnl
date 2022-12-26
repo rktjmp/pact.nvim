@@ -17,9 +17,8 @@
 
 (use R :pact.lib.ruin.result
      E :pact.lib.ruin.enum
-     FS :pact.workflow.exec.fs
+     FS :pact.fs
      Log :pact.log
-     Action :pact.package.action
      Health :pact.package.health
      {:format fmt} string)
 

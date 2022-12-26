@@ -3,26 +3,26 @@
 (import-macros {: ruin!} :pact.lib.ruin)
 (ruin!)
 (use {: ok : err : map-err : 'result-let} :pact.lib.ruin.result
-     enum :pact.lib.ruin.enum
+     E :pact.lib.ruin.enum
      git-source :pact.plugin.source.git
      constraints :pact.plugin.constraint
      inspect (or vim.inspect print)
      {: valid-sha? : valid-version-spec?} :pact.valid
-     {: join-path} :pact.workflow.exec.fs
+     {: join-path} :pact.fs
      {:format fmt} string)
 
 (fn set-tostring [plugin]
   (setmetatable plugin {:__tostring #(fmt "%s@%s" plugin.source plugin.constraint)}))
 
 (fn opts->constraint [opts]
-  (match-let [keys (enum.keys opts)
+  (match-let [keys (E.keys opts)
               ;; TODO this has better support in Constraint now
-              true (-> (enum.filter #(or (= :head $1)
+              true (-> (E.filter #(or (= :head $1)
                                          (= :branch $1)
                                          (= :tag $1)
                                          (= :commit $1)
                                          (= :version $1)) opts)
-                       (enum.table->pairs)
+                       (E.table->pairs)
                        (length)
                        (#(match $1
                            1 true
