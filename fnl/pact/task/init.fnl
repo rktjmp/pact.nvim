@@ -104,7 +104,8 @@
     (where task (= nil task.timer))
     (do
       (start-timer task)
-      (resume task {:await M.await :log #(M.log task $...)}))
+      (resume task {:await M.await
+                    :log #(M.log task $...)}))
 
     ;; task is paused by some threads, so just return to scheduler for continuation later
     (where {: awaiting} (still-awaiting? awaiting))
@@ -179,5 +180,9 @@
                             (set t.value (f ...))
                             t.value)))]
     t))
+
+;; alias
+(set M.task M.new)
+(set M.async M.run)
 
 M
