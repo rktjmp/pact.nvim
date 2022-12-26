@@ -22,29 +22,25 @@
     ;; A task function may yield the following values:
     ;; [false error] <- not technically yielded, thrown by any internal errors
     ;; [true thread] <- task is waiting on another coroutine
-    ;; [true [task ...]] <- task is waiting on a subtask
-    ;; [true :cont info...] <- infomation message (we pass this up)
-    ;; [true :halt value...] <- inform scheduler to unschedule us, value is stored
-    ;;                          as task result.
+    ;; [true [task ...]] <- task is waiting on a subtask(s)
+    ;; [true [f msg]] <- infomation message and message handler
+    ;; [true :halt value] <- final result, do not contuine to schedule the task
+    ;;
     ;; We return the following values:
-    ;; [:cont value] <- keep us scheduled
-    ;; [:wait] <- we're waiting (lets us run other co's while respecting concurrency-limit)
+    ;; [:trace [f msg]] <- dispatch message via f
+    ;; [:wait thread|[tasks]] <- we're waiting for sub tasks, suspend us
     ;; [:halt value] <- unschedule us, we no longer want to progress
-
-    ;; Coroutines can yield a string up to pass information messages to the
-    ;; scheduler. These should always request contiunation.
-    (where [true msg] (string? msg))
+    (where [true [msg-f msg]] (and (function? msg-f msg)))
     (do
       (table.insert task.events [:message msg])
-      (values :cont msg))
+      (values :trace [msg-f msg]))
 
     ;; "Awaited" portions of a task should yield the future/thread.
     ;; We instruct the scheduler to return to us later.
-    ;; Legacy await for single thread, used by git/spawn
+    ;; Legacy await for single thread, used by git/spawn TODO rewrite git?
     (where [true thread] (thread? thread))
     (do
       (table.insert task.events [:suspended])
-      ; (print :awaiting-thread task.id task.thread (inspect thread))
       (tset task :awaiting [thread])
       (values :wait thread))
 
@@ -76,10 +72,11 @@
     ;; This is an actual *crash* inside the coroutine, so we're matching on
     ;; pcall return.
     [false err]
-    (let [err (R.err err)]
+    (let [err (R.err (debug.traceback task.thread err))]
       (stop-timer task)
       (tset task :value err)
-      (values :halt err))
+      (table.insert task.events [:crash err])
+      (values :crash err))
 
     ;; Shouldn't get here ... perhaps the task forgot to wrap the return
     ;; value.
@@ -104,8 +101,7 @@
     (where task (= nil task.timer))
     (do
       (start-timer task)
-      (resume task {:await M.await
-                    :log #(M.log task $...)}))
+      (resume task))
 
     ;; task is paused by some threads, so just return to scheduler for continuation later
     (where {: awaiting} (still-awaiting? awaiting))
@@ -113,9 +109,13 @@
 
     ;; has some threads but the the threads are finished, clear awaiting and resume.
     (where {: awaiting} (not (still-awaiting? awaiting)))
-    (let [vals (E.map #(if (M.task? $2) $2.value) awaiting)] ;; TODO this should be packed via reduce and unpacked
+    (let [vals (E.reduce (fn [vals i t]
+                           (when (M.task? t)
+                             (tset vals i t.value))
+                           vals)
+                         [] awaiting)]
       (tset task :awaiting nil)
-      (resume task (E.unpack vals)))
+      (resume task (E.unpack vals 1 (length awaiting))))
 
     ;; otherwise just resume the task
     (where task)
@@ -128,28 +128,23 @@
 (fn M.await [...]
   (coroutine.yield (E.pack ...)))
 
-(fn M.log [task msg ...]
-  ;; We may be awaiting on sub task and logs from those tasks *should* be
-  ;; able to end up at the same handler as the originating task. This is
-  ;; simplest done by passing a task `log` function to sub-task runs.
-  ;;
-  ;; However, we will be suspended when those sub tasks are running and
-  ;; we wont be able to yield anything, instead we'll queue the messages
-  ;; into the task and rely on the scheduler to pull them off and
-  ;; dispatch them.
-  ;;
-  ;; The other option, passing the dispatcher directly into the task
-  ;; would work but too tightly binds the task function to the caller,
-  ;; where as I think it makes more sense that a task exists alone and
-  ;; when run, resolve/reject/message handlers are attached in that context.
-  (let [msg (fmt msg ...)]
-    (if (coroutine.running)
-      (coroutine.yield msg)
-      (table.insert task.sub-task-messages msg))))
+(fn M.trace [msg ...]
+  "Output a 'trace message'. When called from a task, the message is dispatched
+  to the first found `traced` handler. When called from outside a task the
+  message is printed.
+
+  Assumes task is running on default scheduler."
+  (let [{: default-scheduler : trace} (require :pact.task.scheduler)
+        msg (fmt msg ...)]
+    (match (coroutine.running)
+      thread (trace default-scheduler thread msg)
+      _ (print :default-trace msg))))
 
 (fn* M.run
-  "Run given task on the default scheduler, optionally table with :resolved
-  :rejected and :message callbacks."
+  "Run given task on the default scheduler. As a convenience, passing a
+  function instead of a task creates an anonymous task and runs it.
+
+  Accepts an option table to pass to `scheduler.queue-task`."
   (where [f] (function? f))
   (-> f (M.new) (M.run))
   (where [f opts] (and (function? f) (table? opts)))
@@ -158,11 +153,7 @@
   (M.run task {})
   (where [task opts] (and (M.task? task) (table? opts)))
   (let [{: queue-task : default-scheduler} (require :pact.task.scheduler)]
-    (queue-task default-scheduler
-                task
-                (?. opts :resolved)
-                (?. opts :rejected)
-                (?. opts :messaged))
+    (queue-task default-scheduler task opts)
     task))
 
 (fn* M.new
@@ -171,14 +162,13 @@
   (where [id f] (and (function? f) (string? id)))
   (let [t {:id (gen-id (.. id :-task))
            :thread nil
-           :sub-task-messages []
+           :value nil
            :events []
            :timer nil
-           :awaiting nil}
-        _ (set t.thread (coroutine.create
-                          (fn [...]
-                            (set t.value (f ...))
-                            t.value)))]
+           :awaiting nil}]
+    (set t.thread (coroutine.create (fn [...]
+                                      (set t.value (f ...))
+                                      t.value)))
     t))
 
 ;; alias
