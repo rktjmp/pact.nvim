@@ -55,123 +55,6 @@
 
   runtime)
 
-(λ ingest-first [rt]
-  (local {:new task/new
-          :run async
-          :await await
-          :trace trace} (require :pact.task))
-
-  (λ ingest-package [canonical-id packages]
-    (result-let [canonical-package (. packages 1)
-                 _ (trace "ingesting package %s" canonical-id)
-                 _ (-> (async #(Datastore.ingest-package rt.datastore
-                                                         :git
-                                                         canonical-id
-                                                         canonical-package.git.remote.origin
-                                                         canonical-package.install.path))
-                       (await)
-                       (R.map-err (fn [e]
-                                    (-> canonical-package
-                                        (Package.update-health (Package.Health.failing (tostring e)))
-                                        (PubSub.broadcast :changed))
-                                    (R.err e))))]
-      (R.ok)))
-
-  (λ find-package-by-constraint [packages constraint]
-    (E.find-value #(Constraint.equal? $2.constraint constraint)
-                  packages))
-
-  (λ set-error-for-unsolved [package relevant-result all-ok? n-packages]
-    (match [all-ok? (R.ok? relevant-result)]
-      [true _]
-      (-> package
-          ;; This is a funny edge case where all
-          ;; constraints were solved but there was no
-          ;; shared commit between them, so technically
-          ;; they fail as a collection.
-          ;; TODO: E.hd may give "non-latest" for versions
-          (Package.set-target-commit (E.hd (. (R.unwrap relevant-result) :commits)))
-          (Package.fail-health (fmt "no single commit satisfied %s-way constraint"
-                                    n-packages)))
-      [_ true]
-      (-> package
-          ;; sibling constraint was actually ok
-          (Package.set-target-commit (R.unwrap relevant-result))
-          (Package.degrade-health (fmt "could not solve %s-way constraint due to error in canonical sibling"
-                                       n-packages)))
-      [_ false]
-      (-> package
-          ;; sibling constraint failed, so we have specific error
-          (Package.fail-health (. (R.unwrap relevant-result) :msg)))))
-
-
-  (λ solve-package [canonical-id packages]
-    ;; This is all pretty gross, we get ok<commit> when solved or
-    ;; err<[ok<constraint, commit>, err<constraint, msg>]> when unsolved.
-    ;; The nested array is so we can pair solve-fails to packages that *failed*
-    ;; and attach warning to other packages that *did* solve, but because of a
-    ;; sibling failure are actually not usable.
-    (result-let [_ (trace "solving package %s" canonical-id)
-                 ;; need to define this here for access to await for now at least. TODO
-                 verify-sha #(Datastore.verify-sha rt.datastore canonical-id $)
-                 set-target-commit (fn [c]
-                                     (E.each #(-> $2
-                                                  (Package.set-target-commit c)
-                                                  (PubSub.broadcast :changed))
-                                             packages))
-                 set-errors (fn [results]
-                              ;; This may be called with a mixture of ok-commit for constraints
-                              ;; that were solved and err-constraints for constraints that could
-                              ;; not be solved.
-                              ;; The workflow is considered a "failure", but we do want to show
-                              ;; which packages were vaguely ok, and which packages are actually
-                              ;; borked.
-                              (let [all-ok? (E.all? #(R.ok? $2) results)]
-                                  (E.each (fn [_ result]
-                                            (let [package (find-package-by-constraint packages
-                                                                                      (-> (R.unwrap result)
-                                                                                          (. :constraint)))]
-                                              (set-error-for-unsolved package result all-ok? (length packages))))
-                                          results))
-                              ;; we don't consider the task failed because it didn't solve
-                              (R.ok))
-                 commits (Datastore.commits-by-canonical-id rt.datastore canonical-id)
-                 constraints (E.map #$2.constraint packages)
-                 solved (-> (async #(Solver.solve-constraints constraints commits verify-sha))
-                            (await)
-                            (R.map set-target-commit
-                                   set-errors))
-                  latest (-> (async #(Solver.solve-constraints [(Constraint.git :version "> 0.0.0")]
-                                                               commits
-                                                               verify-sha))
-                             (await)
-                             (R.map (fn [c]
-                                      (E.map #(Package.set-latest-commit $2 c)
-                                             packages)
-                                      (R.ok))
-                                    #(R.ok)))]
-      ;; solve errors are not hard errors and are handled
-      ;; separately above, so if no other step failed,
-      ;; we're actually "ok" regardless.
-      (R.ok)))
-
-  (->> (E.group-by #(values $1.canonical-id $1)
-                   #(Package.iter rt.packages))
-       (E.map (fn [canonical-id packages]
-                (async (fn []
-                         (E.each #(set $2.tasks (+ $2.tasks 1)) packages)
-                         (await (async #(ingest-package canonical-id packages)))
-                         (await (async #(solve-package canonical-id packages)))
-                         (E.each #(set $2.tasks (- $2.tasks 1)) packages)
-                         (R.ok))
-                       {:traced (fn [msg]
-                             (E.each #(-> $2
-                                          (Package.add-event :some-task msg)
-                                          (PubSub.broadcast :changed))
-                                     packages))}))))
-  rt)
-
-
 (fn Runtime.add-proxied-plugins [runtime proxies]
   ;; TODO rewrite doc
   "User defined plugins are wrapped in a thin proxy function so nothing else
@@ -227,15 +110,7 @@
   ;; TODO: does a loop even matter? we install all things independently anyway,
   ;; so if a depends on b depends on a, we end up with flat a + b, and we can
   ;; just install them? 
-  (E.set$ runtime :packages (unproxy-spec-graph proxies))
-  (ingest-first runtime)
-  runtime)
-
-(fn Runtime.workflow-stats [runtime]
-  {:active (+ (length runtime.scheduler.local.active)
-              (length runtime.scheduler.remote.active))
-   :queued (+ (length runtime.scheduler.local.queue)
-              (length runtime.scheduler.remote.queue))})
+  (E.set$ runtime :packages (unproxy-spec-graph proxies)))
 
 (fn Runtime.new [opts]
   (let [FS (require :pact.fs)
@@ -258,188 +133,193 @@
 
 (set Runtime.Command {})
 
+(fn Runtime.Command.initial-load [runtime]
+  (local ingest-first (require :pact.runtime.command.initial-load))
+  (ingest-first runtime.datastore runtime.packages)
+  runtime)
+
 (fn Runtime.Command.discover-status [])
-  ; (fn [runtime]
-  ;   (use DiscoverRemote :pact.runtime.discover.remote
-  ;        DiscoverLocal :pact.runtime.discover.local
-  ;        Scheduler :pact.workflow.scheduler)
-  ;   (let [packages (E.map #$ #(Package.iter runtime.packages))]
-  ;     (->> (E.group-by #(. $2 :canonical-id) packages)
-  ;          (E.map (fn [_ canonical-set]
-  ;                   [(DiscoverLocal.workflow canonical-set
-  ;                                            runtime.path.transaction)
-  ;                    (DiscoverRemote.workflow canonical-set
-  ;                                             runtime.path.repos)
-  ;                    ;; remember a package for triggering solve workflow
-  ;                    (. canonical-set 1)]))
-  ;          (E.each (fn [_ [local-wf remote-wf canonical-package]]
-  ;                    (let [set-id (Scheduler.add-workflow-set runtime.scheduler.remote
-  ;                                                             [local-wf remote-wf])]
-  ;                      (PubSub.subscribe set-id
-  ;                                        (fn []
-  ;                                          (E.each #(Runtime.dispatch runtime $2)
-  ;                                                  [(Runtime.Command.solve-package canonical-package)
-  ;                                                   (Runtime.Command.solve-latest canonical-package)]))))))))))
+; (fn [runtime]
+    ;   (use DiscoverRemote :pact.runtime.discover.remote
+             ;        DiscoverLocal :pact.runtime.discover.local
+             ;        Scheduler :pact.workflow.scheduler)
+    ;   (let [packages (E.map #$ #(Package.iter runtime.packages))]
+          ;     (->> (E.group-by #(. $2 :canonical-id) packages)
+                     ;          (E.map (fn [_ canonical-set]
+                                         ;                   [(DiscoverLocal.workflow canonical-set
+                                                                                      ;                                            runtime.path.transaction)
+                                                              ;                    (DiscoverRemote.workflow canonical-set
+                                                                                                            ;                                             runtime.path.repos)
+                                                              ;                    ;; remember a package for triggering solve workflow
+                                                              ;                    (. canonical-set 1)]))
+                     ;          (E.each (fn [_ [local-wf remote-wf canonical-package]]
+                                          ;                    (let [set-id (Scheduler.add-workflow-set runtime.scheduler.remote
+                                                                                                        ;                                                             [local-wf remote-wf])]
+                                                                 ;                      (PubSub.subscribe set-id
+                                                                                                          ;                                        (fn []
+                                                                                                                                                                                                                                                                 ;                                          (E.each #(Runtime.dispatch runtime $2)
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              ;                                                  [(Runtime.Command.solve-package canonical-package)
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              ;                                                   (Runtime.Command.solve-latest canonical-package)]))))))))))
 (fn Runtime.Command.discover-status [])
-  ; (fn [runtime]
-  ;   (use DiscoverRemote :pact.runtime.discover.remote
-  ;        DiscoverLocal :pact.runtime.discover.local
-  ;        Workflow :pact.workflow
-  ;        Scheduler :pact.workflow.scheduler)
-  ;   (let [packages (E.map #$ #(Package.iter runtime.packages))
-  ;         task/run #(Scheduler.add-workflow runtime.scheduler.remote $)]
-  ;     ;; we can run local and remote discovery just once per-canonical
-  ;     (->> (E.group-by #(. $2 :canonical-id) packages)
-  ;          (E.map #(let [canonical-set $2
-  ;                        rtp-path (->> (E.hd canonical-set)
-  ;                                     (#(. $ :install :path))
-  ;                                     (FS.join-path runtime.path.transaction))
-  ;                        local-task (DiscoverLocal.task :local-task-id rtp-path)
-  ;                        remote-wf (DiscoverRemote.workflow canonical-set
-  ;                                                           runtime.path.repos)
-  ;                        ; (Runtime.Command.solve-package (. canonical-set 1))
-  ;                        ; (Runtime.Command.solve-latest (. canonical-set 1))
-  ;                        update-siblings #(E.each (fn [_ p] ($1 p)) canonical-set)]
-  ;                    [local-task remote-wf update-siblings]))
-  ;          (E.each (fn [_ [local-task remote-task update-siblings]]
-  ;                    (fn checkout-commit-ok [commit]
-  ;                      (update-siblings #(do
-  ;                                          ;; TODO should actually be fine to set nil now
-  ;                                          (match commit
-  ;                                            any-commit (Package.set-checkout-commit $ any-commit))
-  ;                                          (-> $
-  ;                                              (Package.untrack-workflow local-task)
-  ;                                              (Package.add-event local-task (R.ok commit))
-  ;                                              (PubSub.broadcast (R.ok :head-updated))))))
-  ;                    (fn checkout-commit-err [err]
-  ;                      (update-siblings #(-> $
-  ;                                            (Package.untrack-workflow local-task)
-  ;                                            (Package.add-event local-task (R.err err))
-  ;                                            ;; TODO
-  ;                                            (Package.update-health
-  ;                                              (Package.Health.failing (fmt "E-9999")))
-  ;                                            (PubSub.broadcast (R.err :head-updated)))))))))))
+; (fn [runtime]
+    ;   (use DiscoverRemote :pact.runtime.discover.remote
+             ;        DiscoverLocal :pact.runtime.discover.local
+             ;        Workflow :pact.workflow
+             ;        Scheduler :pact.workflow.scheduler)
+    ;   (let [packages (E.map #$ #(Package.iter runtime.packages))
+              ;         task/run #(Scheduler.add-workflow runtime.scheduler.remote $)]
+          ;     ;; we can run local and remote discovery just once per-canonical
+          ;     (->> (E.group-by #(. $2 :canonical-id) packages)
+                     ;          (E.map #(let [canonical-set $2
+                                              ;                        rtp-path (->> (E.hd canonical-set)
+                                                                                     ;                                     (#(. $ :install :path))
+                                                                                     ;                                     (FS.join-path runtime.path.transaction))
+                                              ;                        local-task (DiscoverLocal.task :local-task-id rtp-path)
+                                              ;                        remote-wf (DiscoverRemote.workflow canonical-set
+                                                                                                          ;                                                           runtime.path.repos)
+                                              ;                        ; (Runtime.Command.solve-package (. canonical-set 1))
+                                              ;                        ; (Runtime.Command.solve-latest (. canonical-set 1))
+                                              ;                        update-siblings #(E.each (fn [_ p] ($1 p)) canonical-set)]
+                                          ;                    [local-task remote-wf update-siblings]))
+                     ;          (E.each (fn [_ [local-task remote-task update-siblings]]
+                                          ;                    (fn checkout-commit-ok [commit]
+                                                                 ;                      (update-siblings #(do
+                                                                                                            ;                                          ;; TODO should actually be fine to set nil now
+                                                                                                            ;                                          (match commit
+                                                                                                                                                                                                                                                                                                                                                                                     ;                                            any-commit (Package.set-checkout-commit $ any-commit))
+                                                                                                            ;                                          (-> $
+                                                                                                                                                                                                                                                                                                                                                                                       ;                                              (Package.untrack-workflow local-task)
+                                                                                                                                                                                                                                                                                                                                                                                       ;                                              (Package.add-event local-task (R.ok commit))
+                                                                                                                                                                                                                                                                                                                                                                                       ;                                              (PubSub.broadcast (R.ok :head-updated))))))
+                                          ;                    (fn checkout-commit-err [err]
+                                                                 ;                      (update-siblings #(-> $
+                                                                                                              ;                                            (Package.untrack-workflow local-task)
+                                                                                                              ;                                            (Package.add-event local-task (R.err err))
+                                                                                                              ;                                            ;; TODO
+                                                                                                              ;                                            (Package.update-health
+                                                                                                                                                                                                                                                                                                                                                                                             ;                                              (Package.Health.failing (fmt "E-9999")))
+                                                                                                              ;                                            (PubSub.broadcast (R.err :head-updated)))))))))))
 
 (fn Runtime.Command.solve-package [package])
-  ; (fn [runtime]
-  ;   ;; TODO why is this even a command
-  ;   (use Solve :pact.runtime.solve)
-  ;   (Solve.solve runtime package)))
+; (fn [runtime]
+    ;   ;; TODO why is this even a command
+    ;   (use Solve :pact.runtime.solve)
+    ;   (Solve.solve runtime package)))
 
 (fn Runtime.Command.solve-latest [package])
-  ; (fn [runtime]
-  ;   ;; TODO why is this even a command
-  ;   (use SolveLatest :pact.runtime.solve.latest)
-  ;   (SolveLatest.solve runtime package)))
+; (fn [runtime]
+    ;   ;; TODO why is this even a command
+    ;   (use SolveLatest :pact.runtime.solve.latest)
+    ;   (SolveLatest.solve runtime package)))
 
 ; (fn Runtime.Command.x [package transaction]
-;   (Package.has-upgrade? package)
+    ;   (Package.has-upgrade? package)
 
-;   (result-let [true (Package.with-action package [:sync package.git.target.commit])
+    ;   (result-let [true (Package.with-action package [:sync package.git.target.commit])
 
-;   (result-> (Package.
-;   (-> transaction
-;       (Transaction.set-package-action package :sync package.git.target.commit)
-;       (Transaction.add-after package.after))
+                     ;   (result-> (Package.
+                                     ;   (-> transaction
+                                             ;       (Transaction.set-package-action package :sync package.git.target.commit)
+                                             ;       (Transaction.add-after package.after))
 
-(fn Runtime.Command.stage-package-tree [package]
-  "Set package state to staged, this will also propagate *down* its
-  dependency tree. If any package in the tree is unhealthy, the stage command
-  will fail. If any parent of the package is unhealthy, the stage command will
-  fail.
+                                     (fn Runtime.Command.stage-package-tree [package]
+                                       "Set package state to staged, this will also propagate *down* its
+                                       dependency tree. If any package in the tree is unhealthy, the stage command
+                                       will fail. If any parent of the package is unhealthy, the stage command will
+                                       fail.
 
-  Note that staging propagates *down* but checks *up and down*."
-  (fn [runtime]
-    (fn all-parents-ok? [package acc]
-      (match [acc package.depended-by]
-        [false _ ] false
-        ;; Important note: If A -> B, and A is in-sync - and therefore "not
-        ;; stageable" we must still allow B to be staged!
-        [true parent] (all-parents-ok? parent (and acc (or (Package.stageable? package)
-                                                           (Package.in-sync? package))))
-        [true nil] (and acc (or (Package.stageable? package)
-                                (Package.in-sync? package)))))
-    (if (and ;; the direct package must be stagable
-             (Package.stageable? package)
-             ;; and all children must be in-sync or stagable
-             (E.all? #(or (Package.stageable? $1)
-                          (Package.in-sync? $1))
-                     #(Package.iter (or package.depends-on [])))
-             ;; and any parent must be in-sync or stageable
-             (all-parents-ok? package true))
-      (do
-        (E.each #(do
-                   ;; We know the main package was allowed, and we do want to
-                   ;; stage any children, if they are stageable.
-                   ;; TODO: staging in-sync is effectively a no-op and we could just allow it for simpler code path
-                   (if (Package.stageable? $)
-                     (Package.align-to-target $))
-                   (PubSub.broadcast $ :changed))
-                   #(Package.iter [package]))
-        (R.ok))
-      (do
-        (R.err "unable to stage tree, some packages unstagable")))))
+                                       Note that staging propagates *down* but checks *up and down*."
+                                       (fn [runtime]
+                                         (fn all-parents-ok? [package acc]
+                                           (match [acc package.depended-by]
+                                             [false _ ] false
+                                             ;; Important note: If A -> B, and A is in-sync - and therefore "not
+                                             ;; stageable" we must still allow B to be staged!
+                                             [true parent] (all-parents-ok? parent (and acc (or (Package.stageable? package)
+                                                                                                (Package.in-sync? package))))
+                                             [true nil] (and acc (or (Package.stageable? package)
+                                                                     (Package.in-sync? package)))))
+                                         (if (and ;; the direct package must be stagable
+                                                  (Package.stageable? package)
+                                                  ;; and all children must be in-sync or stagable
+                                                  (E.all? #(or (Package.stageable? $1)
+                                                               (Package.in-sync? $1))
+                                                          #(Package.iter (or package.depends-on [])))
+                                                  ;; and any parent must be in-sync or stageable
+                                                  (all-parents-ok? package true))
+                                           (do
+                                             (E.each #(do
+                                                        ;; We know the main package was allowed, and we do want to
+                                                        ;; stage any children, if they are stageable.
+                                                        ;; TODO: staging in-sync is effectively a no-op and we could just allow it for simpler code path
+                                                        (if (Package.stageable? $)
+                                                          (Package.align-to-target $))
+                                                        (PubSub.broadcast $ :changed))
+                                                     #(Package.iter [package]))
+                                             (R.ok))
+                                           (do
+                                             (R.err "unable to stage tree, some packages unstagable")))))
 
-(fn Runtime.Command.unstage-package-tree [package]
-  "Set package state to unstaged, this will also propagate *down* its
-  dependency tree. Any unhealthy packages in the tree are ignored."
-  (fn [runtime]
-    ;; TODO decide on propagation rules
-    ;; TODO: perhaps nicer if stage returned ok-err, but then it can't return
-    ;; package for chaning and would be out of step with other functions.
-    ;; Either find a way to disambuguate the behaviour.
-    (E.each #(do
-               (Package.align-to-checkout $)
-               (PubSub.broadcast $ :changed))
-            #(Package.iter [package]))
-    (R.ok)))
+                                     (fn Runtime.Command.unstage-package-tree [package]
+                                       "Set package state to unstaged, this will also propagate *down* its
+                                       dependency tree. Any unhealthy packages in the tree are ignored."
+                                       (fn [runtime]
+                                         ;; TODO decide on propagation rules
+                                         ;; TODO: perhaps nicer if stage returned ok-err, but then it can't return
+                                         ;; package for chaning and would be out of step with other functions.
+                                         ;; Either find a way to disambuguate the behaviour.
+                                         (E.each #(do
+                                                    (Package.align-to-checkout $)
+                                                    (PubSub.broadcast $ :changed))
+                                                 #(Package.iter [package]))
+                                         (R.ok)))
 
-(fn* Runtime.Command.align-to-target)
+                                     (fn* Runtime.Command.align-to-target)
 
-; (fn+ Runtime.Command.align-to-target (where [package] (?. package :git :target :commit))
-;      (result-> (E.reduce (fn [acc package]
-;                            (R.join acc (if (Package.healthy? package)
-;                                          (R.ok [package.cid
-;                                                 package.git.target.commit
-;                                                 package.install.path])
-;                                          (R.err [package.cid :unhealthy]))))
-;                          (R.ok))
-;                (R.map #(do
-;                          (E.each #(let [[cid commit path] $2]
-;                                     (Transaction.set-target t cid commit path))
-;                                  [$...])
-;                          (R.ok "staged tree")))))
+                                     ; (fn+ Runtime.Command.align-to-target (where [package] (?. package :git :target :commit))
+                                         ;      (result-> (E.reduce (fn [acc package]
+                                                                      ;                            (R.join acc (if (Package.healthy? package)
+                                                                                                                 ;                                          (R.ok [package.cid
+                                                                                                                                                                                                                                                                                                                                                                                                     ;                                                 package.git.target.commit
+                                                                                                                                                                                                                                                                                                                                                                                                     ;                                                 package.install.path])
+                                                                                                                 ;                                          (R.err [package.cid :unhealthy]))))
+                                                                    ;                          (R.ok))
+                                                          ;                (R.map #(do
+                                                                                     ;                          (E.each #(let [[cid commit path] $2]
+                                                                                                                           ;                                     (Transaction.set-target t cid commit path))
+                                                                                                                        ;                                  [$...])
+                                                                                     ;                          (R.ok "staged tree")))))
 
-;   (fn [runtime]
-;     (fn all-parents-ok? [package acc]
-;       (match [acc package.depended-by]
-;         [false _ ] false
-;         ;; Important note: If A -> B, and A is in-sync - and therefore "not
-;         ;; stageable" we must still allow B to be staged!
-;         [true parent] (all-parents-ok? parent (and acc (or (Package.stageable? package)
-;                                                            (Package.in-sync? package))))
-;         [true nil] (and acc (or (Package.stageable? package)
-;                                 (Package.in-sync? package)))))
-;     (if (and ;; the direct package must be stagable
-;              (Package.stageable? package)
-;              ;; and all children must be in-sync or stagable
-;              (E.all? #(or (Package.stageable? $1)
-;                           (Package.in-sync? $1))
-;                      #(Package.iter (or package.depends-on [])))
-;              ;; and any parent must be in-sync or stageable
-;              (all-parents-ok? package true))
-;       (do
-;         (E.each #(do
-;                    ;; We know the main package was allowed, and we do want to
-;                    ;; stage any children, if they are stageable.
-;                    ;; TODO: staging in-sync is effectively a no-op and we could just allow it for simpler code path
-;                    (if (Package.stageable? $)
-;                      (Package.align-to-target $))
-;                    (PubSub.broadcast $ :changed))
-;                 #(Package.iter [package]))
-;         (R.ok))
-;       (do
-;         (R.err "unable to stage tree, some packages unstagable"))))
+                                     ;   (fn [runtime]
+                                           ;     (fn all-parents-ok? [package acc]
+                                                   ;       (match [acc package.depended-by]
+                                                             ;         [false _ ] false
+                                                             ;         ;; Important note: If A -> B, and A is in-sync - and therefore "not
+                                                             ;         ;; stageable" we must still allow B to be staged!
+                                                             ;         [true parent] (all-parents-ok? parent (and acc (or (Package.stageable? package)
+                                                                                                                          ;                                                            (Package.in-sync? package))))
+                                                             ;         [true nil] (and acc (or (Package.stageable? package)
+                                                                                               ;                                 (Package.in-sync? package)))))
+                                           ;     (if (and ;; the direct package must be stagable
+                                                          ;              (Package.stageable? package)
+                                                          ;              ;; and all children must be in-sync or stagable
+                                                          ;              (E.all? #(or (Package.stageable? $1)
+                                                                                      ;                           (Package.in-sync? $1))
+                                                                                 ;                      #(Package.iter (or package.depends-on [])))
+                                                          ;              ;; and any parent must be in-sync or stageable
+                                                          ;              (all-parents-ok? package true))
+                                                   ;       (do
+                                                             ;         (E.each #(do
+                                                                                  ;                    ;; We know the main package was allowed, and we do want to
+                                                                                  ;                    ;; stage any children, if they are stageable.
+                                                                                  ;                    ;; TODO: staging in-sync is effectively a no-op and we could just allow it for simpler code path
+                                                                                  ;                    (if (Package.stageable? $)
+                                                                                                         ;                      (Package.align-to-target $))
+                                                                                  ;                    (PubSub.broadcast $ :changed))
+                                                                               ;                 #(Package.iter [package]))
+                                                             ;         (R.ok))
+                                                   ;       (do
+                                                             ;         (R.err "unable to stage tree, some packages unstagable"))))
 
 (fn Runtime.Command.retain-as-is [package])
 (fn Runtime.Command.discard [package])
@@ -483,9 +363,9 @@
                            (runtime.scheduler.remote:add-workflow-set))]
             (PubSub.subscribe set-id (fn [x]
                                        (commit-wf:attach-handler
-                                        (fn [e] (vim.pretty_print :commit-wf-ok e))
-                                        (fn [e] (vim.pretty_print :commit-wf-err e))
-                                        (fn [e] (vim.pretty_print :commit-wf-msg e)))
+                                         (fn [e] (vim.pretty_print :commit-wf-ok e))
+                                         (fn [e] (vim.pretty_print :commit-wf-err e))
+                                         (fn [e] (vim.pretty_print :commit-wf-msg e)))
                                        (runtime.scheduler.local:add-workflow commit-wf)
                                        ;; commit
                                        ;; this needs ... check packages for

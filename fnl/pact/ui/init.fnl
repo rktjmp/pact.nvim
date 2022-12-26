@@ -109,8 +109,7 @@
     ;; TODO unsub all on win close
     (E.each #(subscribe $1 #(schedule-redraw ui))
             #(Package.iter ui.runtime.packages))
-    (->> (Runtime.Command.discover-status)
-         (Runtime.dispatch runtime))
+    (Runtime.Command.initial-load runtime)
     (schedule-redraw ui)))
 
 (values M)
