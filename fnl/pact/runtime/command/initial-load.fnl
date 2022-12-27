@@ -93,7 +93,9 @@
                                  set-errors))
                latest (-> (async #(Solver.solve-constraints [(Constraint.git :version "> 0.0.0")]
                                                             commits
-                                                            verify-sha))
+                                                            verify-sha)
+                                 ;; capture trace messages as we don't actually care
+                                 {:traced #nil})
                           (await)
                           (R.map (fn [c]
                                    (E.map #(Package.set-latest-commit $2 c)
