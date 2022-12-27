@@ -63,7 +63,7 @@
                        (R.result (Git.create-stub-clone repo-origin repo-path))))]
     (R.ok repo-path)))
 
-(λ update-refs-task [repo-path]
+(λ update-refs [repo-path]
   (result-let [_ (trace "git update refs %s" repo-path)
                _ (validate-git-dir repo-path)
                _ (Git.update-refs repo-path)]
@@ -105,10 +105,8 @@
                  :commits []
                  :tasks {:register nil}}]
           (result-let [_ (trace "registering package %s" canonical-id)
-                       _ (-> (async #(clone-if-missing p.remote.origin p.repo.path))
-                             (await))
-                       refs (-> (async #(update-refs-task p.repo.path))
-                                (await))
+                       _ (clone-if-missing p.remote.origin p.repo.path)
+                       refs (update-refs p.repo.path)
                        cc-task (async #(current-commit-for-path p.runtime.path))
                        commits-task (async #(fetch-commits p.repo.path))
                        (local-head commits) (R.join (await cc-task) (await commits-task))]
@@ -120,7 +118,7 @@
 
 (λ Datastore.verify-sha [ds canonical-id sha]
   (result-let [p (Datastore.package-by-canonical-id ds canonical-id)
-                        sha (Git.verify-commit p.repo.path sha)]
+               sha (Git.verify-commit p.repo.path sha)]
     (R.ok sha)))
 
 (λ Datastore.package-by-canonical-id [ds canonical-id]

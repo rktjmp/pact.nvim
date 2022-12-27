@@ -15,16 +15,15 @@
 (λ ingest-package [datastore canonical-id packages]
   (result-let [canonical-package (. packages 1)
                _ (trace "ingesting package %s" canonical-id)
-               _ (-> (async #(Datastore.ingest-package datastore
-                                                       :git
-                                                       canonical-id
-                                                       canonical-package.git.remote.origin
-                                                       canonical-package.install.path))
-                     (await)
+               _ (-> (Datastore.ingest-package datastore
+                                               :git
+                                               canonical-id
+                                               canonical-package.git.remote.origin
+                                               canonical-package.install.path)
                      (R.map-err (fn [e]
                                   (E.map #(-> $2
-                                             (Package.update-health (Package.Health.failing (tostring e)))
-                                             (PubSub.broadcast :changed))
+                                              (Package.fail-health (tostring e))
+                                              (PubSub.broadcast :changed))
                                          packages)
                                   (R.err e))))]
     (R.ok)))
@@ -87,8 +86,7 @@
                             (R.ok))
                commits (Datastore.commits-by-canonical-id datastore canonical-id)
                constraints (E.map #$2.constraint packages)
-               solved (-> (async #(Solver.solve-constraints constraints commits verify-sha))
-                          (await)
+               solved (-> (Solver.solve-constraints constraints commits verify-sha)
                           (R.map set-target-commit
                                  set-errors))
                latest (-> (async #(Solver.solve-constraints [(Constraint.git :version "> 0.0.0")]
@@ -113,8 +111,9 @@
        (E.map (fn [canonical-id sibling-packages]
                 (async (fn []
                          (E.each #(set $2.tasks (+ $2.tasks 1)) sibling-packages)
-                         (await (async #(ingest-package datastore canonical-id sibling-packages)))
-                         (await (async #(solve-package datastore canonical-id sibling-packages)))
+                         (result-let [_ (ingest-package datastore canonical-id sibling-packages)
+                                      _ (solve-package datastore canonical-id sibling-packages)]
+                           nil)
                          (E.each #(set $2.tasks (- $2.tasks 1)) sibling-packages)
                          (R.ok))
                        {:traced (fn [msg]
