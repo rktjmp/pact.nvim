@@ -37,7 +37,7 @@
 (fn match-relaxed-version? [str]
   ;; match vM.m.p M.m.p vM.m M.m vM and expand to full version
   (let [patterns ["^v?(%d+%.%d+%.%d+)$" "^v?(%d+%.%d+)$" "^v(%d+)$"]]
-    (E.reduce #(match (string.match str $3)
+    (E.reduce #(match (string.match str $2)
                  any (E.reduced any))
               nil patterns)))
 
@@ -45,15 +45,15 @@
   (let [join (fn [prefix list]
                (if (not (E.empty? list))
                  (fmt "(%s)"
-                      (-> (E.map (fn [_  name] (fmt "%s%s" prefix name)) list)
+                      (-> (E.map #(fmt "%s%s" prefix $) list)
                           (table.concat " ")
                           ))
                  ""))]
-    (E.reduce #(.. $1 (join (match $3
+    (E.reduce #(.. $1 (join (match $2
                               :versions :v
                               :branches ""
                               :tags :#)
-                            (. c $3)))
+                            (. c $2)))
               (fmt "%s@" (if c.HEAD? "HEAD" c.short-sha))
               [:versions :branches :tags])))
 
@@ -67,7 +67,7 @@
   (Commit.new sha [])
   (where [sha data] (full-sha? sha))
   (->> data
-       (E.map #(match $2
+       (E.map #(match $
                  [:tag t] [:tags t]
                  [:branch b] [:branches b]
                  [:version v] [:versions (expand-version v)]
@@ -82,11 +82,11 @@
                  ;; todo: reimplement validation of version numbers?
                  ; (where [:version v] (not (match-relaxed-version? v)))
                  ; (error (fmt "invalid version specification %s" v))
-                 _ (error (fmt "unknown commit data: %s" (vim.inspect $2)))))
-       (E.reduce #(match $3
+                 _ (error (fmt "unknown commit data: %s" (vim.inspect $)))))
+       (E.reduce #(match $2
                     [:HEAD true] (E.set$ $1 :HEAD? true)
                     [where what] (do (E.append$ (. $1 where) what) $1)
-                    _ (error (fmt "unsuported data %s" $3)))
+                    _ (error (fmt "unsuported data %s" $2)))
                  {:sha sha :short-sha (Commit.abbrev-sha sha)
                   :tags []
                   :branches []
@@ -117,9 +117,9 @@
   ;; Parse *expects* the input to be from `ls-remote <origin|http> tags/* heads* HEAD`.
   (->> refs
        ;; group by sha -> [refs] (sha may point to n-refs)
-       (E.group-by #(string.match $2 "(%x+)%s+(.+)"))
+       (E.group-by #(string.match $ "(%x+)%s+(.+)"))
        ;; flip to [:branch|tag|ver ..] -> sha
-       (E.reduce (fn [acc sha refs]
+       (E.reduce (fn [acc refs sha]
                    ;; Change type name to type@name for simpler searching since
                    ;; we will need to lookup on (.. name "^{}").
                    ;; This gives us
@@ -128,15 +128,15 @@
                    ;; tag@t-1^{}  sha2
                    ;; We can then easily lookfor / resolve ^{} tag pairs by
                    ;; just looking for the tag + ^{}.
-                   (->> (E.map #(fmt "%s@%s" (unpack (ref->types $2))) refs)
-                        (E.reduce #(E.set$ $1 $3 sha) acc)))
+                   (->> (E.map #(fmt "%s@%s" (unpack (ref->types $))) refs)
+                        (E.reduce #(E.set$ $1 $2 sha) acc)))
                  {})
        ;; Now drop any tags that have a deref'd name as we dont need them.
        ;; When checking out a tag git will automatically dereference it, so
        ;; later when we ask about the checkout state we will get the deref'd
        ;; version back anyway.
        ((fn [data]
-          (E.reduce (fn [acc ref sha]
+          (E.reduce (fn [acc sha ref]
                       (match ref
                         ;; only need to touch tags
                         (where name (string.match name "^tag@"))
@@ -147,20 +147,21 @@
                         _ (E.set$ acc ref sha)))
                     {} data)))
        ;; strip off ^{} deref marker as we're done looking at it
-       (E.reduce #(E.set$ $1 (string.gsub $2 "%^{}$" "") $3) {})
+       (E.reduce #(E.set$ $1 (string.gsub $3 "%^{}$" "") $2) {})
        ;; now un-munge the types ...
-       (E.reduce #(E.set$ $1 [(string.match $2 "(.+)@(.+)")] $3) {})
+       (E.reduce #(E.set$ $1 [(string.match $3 "(.+)@(.+)")] $2) {})
        ;; and duplicate any tags that look like versions
        (E.reduce #(do
-                    (match $2
+                    (match $3
                       [:tag t] (match (match-relaxed-version? t)
-                                 ver (E.set$ $1 [:version (expand-version ver)] $3)))
-                    (E.set$ $1 $2 $3))
+                                 ver (E.set$ $1 [:version (expand-version ver)] $2)))
+                    (E.set$ $1 $3 $2))
                  {})
        ;; now collate refs under shas
-       (E.group-by #(values $2 $1))
+       ;; ref -> sha => sha -> ref
+       (E.group-by #(values $1 $2))
        ;; and construct actual commits
-       (E.map (fn [sha data] (Commit.new sha data)))))
+       (E.map (fn [data sha] (Commit.new sha data)))))
 
 (fn Commit.local-refs->commits [refs]
   ;; git show-ref wont collate local and remote branches, but generally we only
@@ -169,11 +170,11 @@
   ;; strip out any local heads
   (->> refs
        ;; drop any local heads, they should not matter
-       (E.filter #(not (string.match $2 "%srefs/heads.+$")))
+       (E.filter #(not (string.match $ "%srefs/heads.+$")))
        ;; rename remote heads to local, which is actually what ls-remote views remotes as
-       (E.map #(string.gsub $2 "%srefs/remotes/origin" " refs/heads"))
+       (E.map #(string.gsub $ "%srefs/remotes/origin" " refs/heads"))
        ;; also rename refs/heads/HEAD to HEAD
-       (E.map #(string.gsub $2 "%srefs/heads/HEAD$" " HEAD"))
+       (E.map #(string.gsub $ "%srefs/heads/HEAD$" " HEAD"))
        ;; now just act as remotes
        (Commit.remote-refs->commits)))
 

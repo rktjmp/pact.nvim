@@ -15,45 +15,48 @@
 (λ ingest-package [datastore canonical-id packages]
   (result-let [canonical-package (. packages 1)
                _ (trace "ingesting package %s" canonical-id)
-               _ (-> (Datastore.ingest-package datastore
-                                               :git
-                                               canonical-id
-                                               canonical-package.git.remote.origin
-                                               canonical-package.install.path)
-                     (R.map-err (fn [e]
-                                  (E.map #(-> $2
-                                              (Package.fail-health (tostring e))
-                                              (PubSub.broadcast :changed))
-                                         packages)
-                                  (R.err e))))]
+               data (-> (Datastore.ingest-package datastore
+                                                  :git
+                                                  canonical-id
+                                                  canonical-package.git.remote.origin
+                                                  canonical-package.install.path)
+                        (R.map-err (fn [e]
+                                     (E.map #(-> $
+                                                 (Package.fail-health (tostring e))
+                                                 (PubSub.broadcast :changed))
+                                            packages)
+                                     (R.err e))))
+               _ (E.each #(if data.current.commit
+                            (Package.set-checkout-commit $ data.current.commit))
+                         packages)]
     (R.ok)))
 
 (λ find-package-by-constraint [packages constraint]
-  (E.find-value #(Constraint.equal? $2.constraint constraint)
+  (E.find-value #(Constraint.equal? $.constraint constraint)
                 packages))
 
 (λ set-error-for-unsolved [package relevant-result all-ok? n-packages]
-  (match [all-ok? (R.ok? relevant-result)]
-    [true _]
+  (match [all-ok? (R.ok? relevant-result) (R.unwrap relevant-result)]
+    [true _ {:commits [a-commit & _other]}]
     (-> package
         ;; This is a funny edge case where all
         ;; constraints were solved but there was no
         ;; shared commit between them, so technically
         ;; they fail as a collection.
         ;; TODO: E.hd may give "non-latest" for versions
-        (Package.set-target-commit (E.hd (. (R.unwrap relevant-result) :commits)))
+        (Package.set-target-commit a-commit)
         (Package.fail-health (fmt "no single commit satisfied %s-way constraint"
                                   n-packages)))
-    [_ true]
+    [_ true commit]
     (-> package
         ;; sibling constraint was actually ok
-        (Package.set-target-commit (R.unwrap relevant-result))
+        (Package.set-target-commit commit)
         (Package.degrade-health (fmt "could not solve %s-way constraint due to error in canonical sibling"
                                      n-packages)))
-    [_ false]
+    [_ false {: msg}]
     (-> package
         ;; sibling constraint failed, so we have specific error
-        (Package.fail-health (. (R.unwrap relevant-result) :msg)))))
+        (Package.fail-health msg))))
 
 (λ solve-package [datastore canonical-id packages]
   ;; This is all pretty gross, we get ok<commit> when solved or
@@ -65,7 +68,7 @@
                ;; need to define this here for access to await for now at least. TODO
                verify-sha #(Datastore.verify-sha datastore canonical-id $)
                set-target-commit (fn [c]
-                                   (E.each #(-> $2
+                                   (E.each #(-> $
                                                 (Package.set-target-commit c)
                                                 (PubSub.broadcast :changed))
                                            packages))
@@ -76,8 +79,8 @@
                             ;; The workflow is considered a "failure", but we do want to show
                             ;; which packages were vaguely ok, and which packages are actually
                             ;; borked.
-                            (let [all-ok? (E.all? #(R.ok? $2) results)]
-                              (E.each (fn [_ result]
+                            (let [all-ok? (E.all? #(R.ok? $) results)]
+                              (E.each (fn [result]
                                         (let [{: constraint} (R.unwrap result)
                                               package (find-package-by-constraint packages constraint)]
                                           (set-error-for-unsolved package result all-ok? (length packages))))
@@ -85,7 +88,7 @@
                             ;; we don't consider the task failed because it didn't solve
                             (R.ok))
                commits (Datastore.commits-by-canonical-id datastore canonical-id)
-               constraints (E.map #$2.constraint packages)
+               constraints (E.map #$.constraint packages)
                solved (-> (Solver.solve-constraints constraints commits verify-sha)
                           (R.map set-target-commit
                                  set-errors))
@@ -96,7 +99,7 @@
                                  {:traced #nil})
                           (await)
                           (R.map (fn [c]
-                                   (E.map #(Package.set-latest-commit $2 c)
+                                   (E.map #(Package.set-latest-commit $ c)
                                           packages)
                                    (R.ok))
                                  #(R.ok)))]
@@ -106,18 +109,21 @@
     (R.ok)))
 
 (λ initial-load [datastore all-packages]
-  (->> (E.group-by #(values $1.canonical-id $1)
+  (->> (E.group-by #(values $.canonical-id $)
                    #(Package.iter all-packages))
-       (E.map (fn [canonical-id sibling-packages]
+       (E.map (fn [sibling-packages canonical-id]
                 (async (fn []
-                         (E.each #(set $2.tasks (+ $2.tasks 1)) sibling-packages)
+                         (E.each #(set $.tasks (+ $.tasks 1)) sibling-packages)
                          (result-let [_ (ingest-package datastore canonical-id sibling-packages)
                                       _ (solve-package datastore canonical-id sibling-packages)]
                            nil)
-                         (E.each #(set $2.tasks (- $2.tasks 1)) sibling-packages)
+                         (E.each #(do
+                                    (set $.tasks (- $.tasks 1))
+                                    (PubSub.broadcast $ :changed))
+                                    sibling-packages)
                          (R.ok))
                        {:traced (fn [msg]
-                                  (E.each #(-> $2
+                                  (E.each #(-> $
                                                (Package.add-event :some-task msg)
                                                (PubSub.broadcast :changed))
                                           sibling-packages))})))))

@@ -9,7 +9,7 @@
 (local Constraint {})
 
 (fn one-of? [coll test]
-  (E.any? #(= $2 test) coll))
+  (E.any? #(= $ test) coll))
 
 (fn set-tostring [t]
   (setmetatable t {:__tostring
@@ -104,12 +104,12 @@
   (where [[:git :commit sha] commit])
   (not-nil? (string.match commit.sha (fmt "^%s" sha)))
   (where [[:git :tag tag] commit])
-  (E.any? #(= tag $2) commit.tags)
+  (E.any? #(= tag $) commit.tags)
   (where [[:git :branch branch] commit])
-  (E.any? #(= branch $2) commit.branches)
+  (E.any? #(= branch $) commit.branches)
   (where [[:git :version version-spec] commit])
   (let [{: satisfies?} (require :pact.plugin.constraint.version)]
-    (E.any? #(satisfies? version-spec $2) commit.versions))
+    (E.any? #(satisfies? version-spec $) commit.versions))
   (where [[:git :head _] commit])
   (= true commit.HEAD?)
   (where [[:git _ _] {: sha}])
@@ -126,7 +126,7 @@
   (let [{: solve} (require :pact.plugin.constraint.version)
         spec (Constraint.value constraint)
         ;; version solve can already take n-versions
-        possible-versions (-> (E.map #$2.versions commits)
+        possible-versions (-> (E.map #$.versions commits)
                               (E.flatten))
         best-version (-> (solve spec possible-versions)
                          (E.first))]
@@ -134,13 +134,13 @@
       ;; this **should** only give us one commit, as you cant give the same
       ;; tag (so version) to multiple commits - not without trying very hard.
       ;; so the "best version" should only exist on one commit
-      (E.reduce (fn [?commit _ commit]
-                  (if (E.any? #(= best-version $2) commit.versions)
+      (E.reduce (fn [?commit commit]
+                  (if (E.any? #(= best-version $) commit.versions)
                     (E.reduced commit)))
                 nil commits))))
 
 (fn+ Constraint.solve
   (where [constraint commits] (and (Constraint.constraint? constraint) (seq? commits)))
-  (E.find-value #(Constraint.satisfies? constraint $2) commits))
+  (E.find-value #(Constraint.satisfies? constraint $) commits))
 
 (values Constraint)

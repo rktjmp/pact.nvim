@@ -49,7 +49,7 @@
          :events []
          :workflows []
          :tasks 0
-         :action [:hold]
+         :action :hold
          :health (Health.healthy)
          ;; all paths are kept relative as they will be different for every
          ;; transaction
@@ -68,10 +68,6 @@
                                   (match (. Package k)
                                     (where f (function? f)) f
                                     _ nil))}))))
-
-(λ Package.worktree-path [package commit]
-  (FS.join-path (string.match package.git.repo.path "(.+)HEAD$")
-                commit.short-sha))
 
 (fn Package.add-event [package workflow event]
   (Log.log [workflow.id event])
@@ -107,7 +103,7 @@
 
 (λ Package.update-target-logs [package logs]
   (set package.git.target.logs logs)
-  (set package.git.target.breaking? (E.any? #$2.breaking? logs))
+  (set package.git.target.breaking? (E.any? #$.breaking? logs))
   package)
 
 (λ Package.update-target-direction [package direction]
@@ -188,7 +184,7 @@
     (R.ok package))
 
 (λ Package.staged? [package]
-  (= :sync (E.first package.action)))
+  (= :sync package.action))
 
 ;; TODO: note this only checks the given package, and not all assocated canonicals
 ;; so perhaps this does not really belong here.
@@ -212,10 +208,8 @@
             (E.each #(E.depth-walk (fn [package history]
                                      (if (or (not (R.err? package)) opts.include-err?)
                                        (coroutine.yield package history)))
-                                   $2 next-id)
-                    packages)
-            ;; nil to termitate iter
-            nil)
+                                   $ next-id)
+                    packages))
         iter (fn [coro]
                (let [r (E.pack (coroutine.resume coro))]
                  (match r

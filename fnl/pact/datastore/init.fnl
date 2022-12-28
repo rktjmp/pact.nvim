@@ -7,6 +7,7 @@
      E :pact.lib.ruin.enum
      FS :pact.fs
      Git :pact.git
+     PubSub :pact.pubsub
      Commit :pact.git.commit
      {: trace : async : await} (require :pact.task)
      Log :pact.log
@@ -63,6 +64,18 @@
                        (R.result (Git.create-stub-clone repo-origin repo-path))))]
     (R.ok repo-path)))
 
+(λ create-worktree [repo-path sha worktree-path]
+  ;; TODO need consistent check-repo-path fn
+  (result-let [_ (if (not (FS.absolute-path? worktree-path))
+                   (R.err (fmt "repo path must be absolute, got %s" worktree-path)))
+               _ (match [(FS.dir-exists? worktree-path) (FS.git-dir? worktree-path)]
+                   [true true] (R.ok worktree-path)
+                   [true false] (R.err (fmt "%s exists already but is not a git dir" repo-path))
+                   _ (do
+                       (trace "git add-worktree %s %s -> %s" repo-path sha worktree-path)
+                       (Git.add-worktree repo-path worktree-path sha)))]
+    (R.ok worktree-path)))
+
 (λ update-refs [repo-path]
   (result-let [_ (trace "git update refs %s" repo-path)
                _ (validate-git-dir repo-path)
@@ -92,6 +105,7 @@
     p (R.ok p)
     nil (let [{: trace : async : await} (require :pact.task)
               p {:type :git
+                 :id canonical-id
                  :remote {:origin origin}
                  :repo {:path (FS.join-path ds.path.repos canonical-id :HEAD)} ;; user-repo/HEAD
                  :runtime {:path (FS.join-path ds.path.runtime rtp-path)}
@@ -104,6 +118,7 @@
                  :latest {:commit nil}
                  :commits []
                  :tasks {:register nil}}]
+          (tset ds.packages canonical-id p)
           (result-let [_ (trace "registering package %s" canonical-id)
                        _ (clone-if-missing p.remote.origin p.repo.path)
                        refs (update-refs p.repo.path)
@@ -113,18 +128,35 @@
             (trace "setting commits and target commit")
             (set p.commits commits)
             (set p.target.commit local-head)
-            (tset ds.packages canonical-id p)
+            (PubSub.broadcast ds [:package p])
             (R.ok p)))))
 
-(λ Datastore.verify-sha [ds canonical-id sha]
-  (result-let [p (Datastore.package-by-canonical-id ds canonical-id)
-               sha (Git.verify-commit p.repo.path sha)]
-    (R.ok sha)))
+(λ Datastore.path-for-package [ds canonical-id commit]
+  ;; get checkout path for package x commit, if it does not exist, create it
+  (local {: trace : async : await} (require :pact.task))
+  (result-let [package (match (Datastore.package-by-canonical-id ds canonical-id)
+                         p p
+                         nil (R.err "no package for canonical-id"))
+               path (FS.join-path (string.match package.repo.path "(.+)HEAD$")
+                                  commit.short-sha)
+               _ (trace "create worktree %s %s" canonical-id path)
+               _ (create-worktree package.repo.path commit.sha path)
+               _ (trace "checkout %s" commit.sha)
+               _ (Git.checkout-sha path commit.sha)
+               _ (trace "update submodules")
+               _ (Git.update-submodules path)]
+    (R.ok path)))
 
 (λ Datastore.package-by-canonical-id [ds canonical-id]
   (. ds :packages canonical-id))
 
 (λ Datastore.commits-by-canonical-id [ds canonical-id]
   (?. (Datastore.package-by-canonical-id ds canonical-id) :commits))
+
+(λ Datastore.target-by-canonical-id [ds canonical-id]
+  (?. (Datastore.package-by-canonical-id ds canonical-id) :target))
+
+(λ Datastore.current-by-canonical-id [ds canonical-id]
+  (?. (Datastore.package-by-canonical-id ds canonical-id) :current))
 
 Datastore

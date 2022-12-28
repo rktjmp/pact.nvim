@@ -3,81 +3,46 @@
 
 (use E :pact.lib.ruin.enum
      R :pact.lib.ruin.result
+     {: 'result-let} :pact.lib.ruin.result
      FS :pact.fs
      Package :pact.package
+     Datastore :pact.datastore
+     {: trace} :pact.task
      {:format fmt} string)
 
 (local Transaction {})
 
-(λ Transaction.new [data-prefix repos-prefix head-prefix]
+(λ Transaction.new [datastore transactions-prefix rtp-prefix]
   "Creates a new transaction. Creating a transaction has no disk effects until
   committed."
   (let [id (vim.loop.gettimeofday)]
     {: id
-     :orphans {}
-     :packages {
-                ; :cid-1 {:action :sync
-                ;         :target commit 
-                ;         :path :start/some-path.nvim
-                ;         :depends-on []}
-                ; :cid-2 {:action :sync
-                ;         :target commit-2
-                ;         :path :starg/some-other.nvim
-                ;         :depends-on {:
-                }
-     :afters {}
-     :path {:root (FS.join-path data-prefix id)
-            :repos repos-prefix
-            :head head-prefix}}))
+     : datastore
+     :path {:root (FS.join-path transactions-prefix id) ;; eg data/pact/transactions/1234
+            :runtime rtp-prefix}})) ;; eg nvim/rtp/
 
-; (λ Transaction.set-initial-packages [t packages]
-;   "bootstrap the initial transaction tree with some packages"
-;   (tset t :packages packages)
-;   t)
+(λ Transaction.prepare [t]
+  (result-let [_ (FS.make-path t.path.root)
+               _ (FS.make-path (FS.join-path t.path.root "start"))
+               _ (FS.make-path (FS.join-path t.path.root "opt"))]
+    (trace "created transaction %s paths: %s/start|opt" t.id t.path.root)
+    (R.ok t)))
 
-; (λ Transaction.set-package-action [t canonical-id action]
-  
+(λ use-package [t package commit]
+  (result-let [canonical-id package.canonical-id
+               files-path (Datastore.path-for-package t.datastore canonical-id commit)
+               link-path (FS.join-path t.path.root package.install.path)
+               _ (FS.symlink files-path link-path)]
+    (R.ok)))
 
+(λ Transaction.retain-package [t package]
+  (if package.git.current.commit
+    (use-package t package package.git.current.commit)
+    (R.err (fmt "package %s had no current commit to retain" package.canonical-id))))
 
-; (fn* Transaction.set-package-action
-;   (where [t package :sync nil] package.git)
-;   (R.err "cannot set package action to %s, no commit target")
-;   (where [t package :sync commit] package.git)
-;   (if (Package.healthy? package)
-;     (do
-;       (set t.packages package.canonical-id [:sync commit package.install.path])
-;       (R.ok))
-;     (R.err "cannot set package action to sync, package is unhealthy"))
-
-
-
-; (λ Transaction.set-package-action [t canonical-id action]
-;   (tset t canonical-id action)
-;   (R.ok))
-
-; (λ Transaction.package-action [t canonical-id]
-;   (. t canonical-id))
-
-(fn Transaction.stage-package [transaction package]
-  (use StageWorkflow :pact.runtime.transaction.workflow.stage
-       Package :pact.package)
-  (let [repo-path (FS.join-path transaction.path.repos package.git.repo.path)
-        worktree-path (FS.join-path transaction.path.repos
-                                    (Package.worktree-path package package.git.target.commit))
-        rtp-path (FS.join-path transaction.path.root package.install.path)
-        repo-url package.git.remote.origin
-        sha package.git.target.commit.short-sha]
-    (E.append$ transaction.packages package)
-    (StageWorkflow.new package.uid repo-url repo-path worktree-path sha rtp-path)))
-
-(fn Transaction.workflows [transaction]
-  (use SetupWorkflow :pact.runtime.transaction.workflow.setup
-       CommitWorkflow :pact.runtime.transaction.workflow.commit
-       RollbackWorkflow :pact.runtime.transaction.workflow.rollback)
-  (let [setup (SetupWorkflow.new transaction.id transaction.path.root)
-        commit (CommitWorkflow.new transaction.id transaction.path.root transaction.path.head)
-        rollback (RollbackWorkflow.new transaction.id)]
-    {: setup : commit : rollback}))
-
+(λ Transaction.sync-package [t package]
+  (if package.git.target.commit
+    (use-package t package package.git.target.commit)
+    (R.err (fmt "package %s had no target commit to sync" package.canonical-id))))
 
 Transaction

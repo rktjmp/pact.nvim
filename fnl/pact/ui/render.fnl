@@ -13,12 +13,6 @@
 
 (local Render {})
 
-(fn highlight-for [section-name field]
-  ;; my-section,  -> PactMySectionTitle
-  (let [joined (table.concat  [:pact section-name field] "-")]
-    (E.reduce #(.. $1 (string.upper $2) $3)
-                 "" #(string.gmatch joined "(%w)([%w]+)"))))
-
 ;; TODO use a proper delta timer
 (var last-time 0)
 (var spinner-frame 0)
@@ -93,7 +87,7 @@
                                    (table.concat " ")))
                        :distance (length (or (?. $ :git :target :logs) []))
                        :indent (length $2)
-                       :action (?. $ :action 1)
+                       :action $.action
                        :events $1.events
                        :error (match (E.last $1.events)
                                 (where e (R.err? e)) (R.unwrap e)
@@ -133,7 +127,7 @@
                                         nil ""
                                         l (length l))
                                 name (match (Constraint.type constraint)
-                                       :version (-> (E.map #$2
+                                       :version (-> (E.map #$
                                                            (or (?. package.git.target :commit :versions) []))
                                                     (table.concat ","))
                                        :head :HEAD
@@ -158,12 +152,15 @@
                                (highlight-for-health package.health)))
           constraint-col (mk-col
                            (mk-chunk (tostring constraint)))
+          action-col (mk-col
+                       (mk-chunk package.action))
           latest-col (mk-col
                        (match (?. package :git :latest :commit)
                          c (mk-chunk (fmt "(%s)" (table.concat c.versions ",")))
                          _ (mk-chunk "")))]
       {:content (mk-content
                   name-col
+                  action-col
                   constraint-col
                   commits-col
                   latest-col)
@@ -185,30 +182,30 @@
                         ;; virt-lines?) in that case but for its as is.
                         :sync {:text "⍙"
                                :highlight :DiagnosticOk}
-                        :retain {:text "⍑"
-                                 :highlight :PactComment})
+                        :hold {:text "⍑"
+                               :highlight :PactComment})
               :health (match package.health
                          [:healthy] nil
                          [:degraded msg] {:text (.. "" msg) :highlight :DiagnosticWarn}
                          [:failing msg] {:text (.. "" msg) :highlight :DiagnosticError})}}))
 
   ;; convert each package into a collection of columns, into a collection of lines
-  (E.map #(package->columns $2) ui-data))
+  (E.map #(package->columns $) ui-data))
 
 (fn rows->lines [rows]
   (fn decomp-line [line-chunks]
     ;; combine column chunks into columns into lines
-    (-> (E.map #(-> (E.map (fn [_ {: text}] text) $2)
+    (-> (E.map #(-> (E.map (fn [{: text}] text) $)
                     (table.concat ""))
                line-chunks)
         (table.concat "")))
-  (E.map #(decomp-line $2.content) rows))
+  (E.map #(decomp-line $.content) rows))
 
 (fn rows->extmarks [rows]
   (var cursor 0)
   (fn decomp-column [column]
     ;; combine column chunks into [{: hl : start : stop} ...]
-    (-> (E.reduce (fn [data _ {: text : highlight}]
+    (-> (E.reduce (fn [data {: text : highlight}]
                     (let [start cursor
                           ;; note: extmarks are byte-offsets, so no need to use length prop
                           stop (+ cursor (length (or text "")))]
@@ -220,11 +217,11 @@
   (fn decomp-line [line]
     ;; combine columns with column separators
     (set cursor 0) ;; ugly...
-    (-> (E.map #(decomp-column $2) line.content)
+    (-> (E.map decomp-column line.content)
         (E.flatten)
         (E.append$ (E.merge$ line.meta
                             {:meta true}))))
-  (E.map #(decomp-line $2) rows))
+  (E.map decomp-line rows))
 
 (fn inject-padding-chunks [rows widths]
   ;; Each row has columns, but they are not intrinsically aligned in the data
@@ -233,7 +230,7 @@
   ;; It must be added as a new chunk so we can avoid over-highlight backgrounds
   ;; when we apply the extmarks.
   (let [sum-col-chunk-widths #(E.reduce
-                                #(let [{: text :length len} $3]
+                                #(let [{: text :length len} $2]
                                    (match [text len]
                                      [nil nil] $1
                                      [any nil] (+ $1 (length text))
@@ -241,9 +238,9 @@
                                      _ $1))
                                 0 $1)]
     ;; now we can re-iterate the columns and inject a padding chunk
-    (E.map (fn [_ row]
+    (E.map (fn [row]
              {:meta row.meta
-              :content (E.map (fn [col-n column]
+              :content (E.map (fn [column col-n]
                                 (let [cur-width (sum-col-chunk-widths column)
                                       padding (- (or (. widths col-n) 0) cur-width)]
                                   ;; TODO performance if needed, drop copy for each
@@ -256,29 +253,29 @@
 
 (λ intersperse-column-breaks [rows]
   "Add gaps between columns"
-  (E.map #{:meta $2.meta
-           :content (E.intersperse $2.content [{:text " " :highlight "@comment"}])}
+  (E.map #{:meta $.meta
+           :content (E.intersperse $.content [{:text " " :highlight "@comment"}])}
          rows))
 
 (fn row->column-widths [row]
   (fn width-of-column [column]
-    (E.reduce #(let [{: text :length len} $3]
+    (E.reduce #(let [{: text :length len} $2]
                  (match [text len]
                    [nil nil] $1
                    [any nil] (+ $1 (length text))
                    [_ any] (+ $1 len)
                    _ $1))
               0 column))
-  (E.map #(width-of-column $2) row.content))
+  (E.map width-of-column row.content))
 
 (fn rows->column-widths [rows]
-  (E.map #(row->column-widths $2) rows))
+  (E.map row->column-widths rows))
 
 (fn widths->maximum-widths [widths]
-  (E.reduce (fn [col-max _ col-widths]
+  (E.reduce (fn [col-max col-widths]
               ;; note we use each as some cols may not contain all (or any)
               ;; values and we want to retain any seen.
-              (E.each (fn [col-n width]
+              (E.each (fn [width col-n]
                         (E.set$ col-max col-n (math.max (or (. col-max col-n) 0)
                                                         width)))
                       col-widths)
@@ -287,7 +284,7 @@
 (fn find-maximum-column-widths [rows]
   (->> rows
        ;; get width of each column of each row
-       (E.map #(row->column-widths $2))
+       (E.map row->column-widths)
        ;; find max width of each column
        (widths->maximum-widths)))
 
@@ -324,10 +321,10 @@
                            #(Package.iter [package])))
         ;; we intentionally only iterate the "top" packages so sub-packages
         ;; are nested inside the correct parent && section.
-        {true error false rest} (E.group-by #(error? $2) packages)
-        {true waiting false rest} (E.group-by #(waiting? $2) packages)
-        {true in-sync false rest} (E.group-by #(in-sync? $2) (or rest []))
-        {true staged false unstaged} (E.group-by #(staged? $2) (or rest []))]
+        {true error false rest} (E.group-by error? packages)
+        {true waiting false rest} (E.group-by waiting? packages)
+        {true in-sync false rest} (E.group-by in-sync? (or rest []))
+        {true staged false unstaged} (E.group-by staged? (or rest []))]
     {:error (or error [])
      :waiting (or waiting [])
      :in-sync (or in-sync [])
@@ -374,13 +371,13 @@
         [staged-rows
          unstaged-rows
          in-sync-rows
-         waiting-rows] (E.map #(-> $2
+         waiting-rows] (E.map #(-> $
                                    (package-tree->ui-data)
                                    (ui-data->rows))
                               [staged unstaged in-sync waiting])
         ;; get the max widths of every section, then the max width between sections
         ;; which will then dictate the padding needed across all lines.
-        column-widths (->> (E.map #(->> (E.map #(row->column-widths $2) $2)
+        column-widths (->> (E.map #(->> (E.map row->column-widths $)
                                         (widths->maximum-widths))
                                   [waiting-rows in-sync-rows unstaged-rows staged-rows])
                            (widths->maximum-widths))
@@ -389,7 +386,7 @@
         [staged-rows
          unstaged-rows
          in-sync-rows
-         waiting-rows] (E.map #(-> $2
+         waiting-rows] (E.map #(-> $
                                    (inject-padding-chunks column-widths)
                                    (intersperse-column-breaks))
                               [staged-rows unstaged-rows in-sync-rows waiting-rows])
@@ -403,7 +400,7 @@
         [staged-title
          unstaged-title
          in-sync-title
-         waiting-title] (E.map (fn [_ [section count]]
+         waiting-title] (E.map (fn [[section count]]
                                  [(mk-row
                                     (mk-content
                                       (mk-col (mk-chunk (. title-map section :t)
@@ -426,8 +423,8 @@
           (api.nvim_buf_set_lines ui.buf cursor-line (+ cursor-line len) false lines)
           (set cursor-line (+ cursor-line len))))
       (fn draw-extmarks [lines offset]
-        (E.each (fn [line marks]
-                  (E.each (fn [_ mark]
+        (E.each (fn [marks line]
+                  (E.each (fn [mark]
                             (let [line (- (+ offset line) 1)]
                               ;; extmark -> package lookup for keymaps
                               (if mark.uid
@@ -480,7 +477,7 @@
 
     (write-rows const.lede)
 
-    (if (E.all? #(= 0 (length $2))
+    (if (E.all? #(= 0 (length $))
                 [staged-rows unstaged-rows waiting-rows in-sync-rows])
       (write-rows const.no-plugins))
     ;; TODO: put waiting at head to any that fail while discovering facts remain in view

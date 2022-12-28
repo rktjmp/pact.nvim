@@ -32,12 +32,12 @@
 
 (fn exec-keymap-cc [ui]
   ;; TODO dont try if no staged
-  (->> (Runtime.Command.run-transaction)
-      (Runtime.dispatch ui.runtime)))
+  (-> (Runtime.Command.run-transaction ui.runtime)
+      (R.map-err #(vim.notify $ vim.log.levels.ERROR))))
 
 (fn exec-keymap-<cr> [ui]
   (let [[line _] (api.nvim_win_get_cursor ui.win)
-        meta (E.find-value #(= line $2.on-line) ui.plugins-meta)]
+        meta (E.find #(= line $.on-line) ui.plugins-meta)]
     (match [meta (?. meta :plugin :path :package)]
       [any path] (do
                    (print path)
@@ -47,19 +47,27 @@
 
 (fn exec-keymap-s [ui]
   (match (cursor->package ui)
-    package (->> (Runtime.Command.stage-package-tree package)
-                 (Runtime.dispatch ui.runtime))
-    nil (print :no-package-under-cursor)))
+    package (do
+              (-> (Runtime.Command.sync-package-tree ui.runtime package)
+                  (R.map-err #(vim.notify $ vim.log.levels.ERROR)))
+              (print package.canonical-id package.action)
+              (schedule-redraw ui))
+    nil (vim.notify "No package under cursor"
+                    vim.log.levels.INFO)))
 
 (fn exec-keymap-u [ui]
   (match (cursor->package ui)
-    package (->> (Runtime.Command.unstage-package-tree package)
-                 (Runtime.dispatch ui.runtime))
-    nil (print :no-package-under-cursor)))
+    package (do
+              (-> (Runtime.Command.hold-package-tree ui.runtime package)
+                  (R.map-err #(vim.notify $ vim.log.levels.ERROR)))
+              (print package.canonical-id package.action)
+              (schedule-redraw ui))
+    nil (vim.notify "No package under cursor"
+                    vim.log.levels.INFO)))
 
 (fn exec-keymap-= [ui]
   (let [[line _] (api.nvim_win_get_cursor ui.win)
-        meta (E.find-value #(= line $2.on-line) ui.plugins-meta)]
+        meta (E.find #(= line $.on-line) ui.plugins-meta)]
     (if (and meta
              (or (= :staged meta.state) (= :unstaged meta.state))
              (= :sync (. meta.action 1)))

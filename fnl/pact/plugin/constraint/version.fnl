@@ -5,10 +5,10 @@
 ;; version-commits against a spec, you need to manually repair the
 ;; version number back to commit shas.
 
-(import-macros {: use} :pact.lib.ruin.use)
-(use {: 'fn* : 'fn+} :pact.lib.ruin.fn
-     {: string? : table?} :pact.lib.ruin.type
-     enum :pact.lib.ruin.enum
+(import-macros {: ruin!} :pact.lib.ruin)
+(ruin!)
+
+(use E :pact.lib.ruin.enum
      {:format fmt} string
      {: valid-version? : valid-version-spec?} :pact.valid)
 
@@ -72,15 +72,15 @@
 
 (fn str->ver [str]
   (let [(v-maj v-min v-patch) (string.match str "^([%d]+)%.([%d]+)%.([%d]+)$")]
-    (enum.reduce #(enum.set$ $1 $2 (tonumber $3))
-                 {} {:major v-maj :minor v-min :patch v-patch})))
+    (E.reduce #(E.set$ $1 $3 (tonumber $2))
+              {} {:major v-maj :minor v-min :patch v-patch})))
 
 (fn str->spec [str]
   (let [pat "([%^~><=]+)%s?([%d]+)%.([%d]+)%.([%d]+)"
         (s-op s-maj s-min s-patch) (string.match str pat)]
-    (-> (enum.reduce #(enum.set$ $1 $2 (tonumber $3))
-                     {} {:major s-maj :minor s-min :patch s-patch})
-        (enum.set$ :operator s-op))))
+    (-> (E.reduce #(E.set$ $1 $3 (tonumber $2))
+                  {} {:major s-maj :minor s-min :patch s-patch})
+        (E.set$ :operator s-op))))
 
 (fn* satisfies?
   (where [spec ver] (and (valid-version-spec? spec) (valid-version? ver)))
@@ -105,23 +105,23 @@
   ;; 1-spec n-versions
   (where [spec versions] (and (valid-version-spec? spec)
                               (table? versions)))
-  (->> (enum.filter #(satisfies? spec $2) versions)
-       (enum.sort #(let [a (str->ver $1)
-                         b (str->ver $2)]
-                     (gt? a b))))
+  (->> (E.filter #(satisfies? spec $) versions)
+       (E.sort #(let [a (str->ver $1)
+                      b (str->ver $2)]
+                  (gt? a b))))
   ;; n-specs n-versions
   (where [specs versions] (and (table? specs)
                                (table? versions)))
-  (->> (enum.map #(solve $2 versions) specs)
-       (enum.flatten)
+  (->> (E.map #(solve $ versions) specs)
+       (E.flatten)
        ;; count number of times a version passed a spec
-       (enum.reduce #(enum.set$ $1 $3 (+ 1 (or (. $1 $3) 0))) {})
+       (E.reduce #(E.set$ $1 $2 (+ 1 (or (. $1 $2) 0))) {})
        ;; drop any versions that didn't pass all specs
-       (enum.filter #(= (length specs) $2))
+       (E.filter #(= (length specs) $))
        ;; resort the versions
-       (enum.keys)
-       (enum.sort #(let [a (str->ver $1)
-                         b (str->ver $2)]
-                     (gt? a b)))))
+       (E.keys)
+       (E.sort #(let [a (str->ver $1)
+                      b (str->ver $2)]
+                  (gt? a b)))))
 
 {: satisfies? : solve}

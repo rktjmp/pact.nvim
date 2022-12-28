@@ -19,7 +19,7 @@
   ;; Note we don't solve here, we use satisfies so we can retain "passes but
   ;; not newest" commits to cross-solve with any other constraint.
   (where [constraint commits _] (Constraint.version? constraint))
-  (->> (E.filter (fn [_ commit] (Constraint.satisfies? constraint commit)) commits)
+  (->> (E.filter #(Constraint.satisfies? constraint $) commits)
        (#(if (E.empty? $1)
            (R.err {: constraint
                  :msg (fmt "no version satisfied %s" (Constraint.value constraint))})
@@ -51,12 +51,12 @@
                         (Constraint.value constraint))})))
 
 (fn latest-in-set [constraints-commits]
-  (let [all-version? (E.all? #(Constraint.version? $2.constraint)
+  (let [all-version? (E.all? #(Constraint.version? $.constraint)
                              constraints-commits)]
     (if all-version?
       ;; All the constraints are versions, so we have a chance to return
       ;; the latest that satisfies all constraints.
-      (->> (E.map #$2.commit constraints-commits)
+      (->> (E.map #$.commit constraints-commits)
            ;; solve will solve n-commits to 1-commit
            (Constraint.solve (Constraint.git :version "> 0.0.0")))
       (-> (E.hd constraints-commits)
@@ -73,11 +73,11 @@
   ;; all of them and possibly find the latest version if all constraints are
   ;; versions.
   (let [x-solved (->> good
-                      (E.map #(R.unwrap $2))
+                      (E.map #(R.unwrap $))
                       ;; unroll commits
-                      (E.map (fn [_ solved-constraint]
+                      (E.map (fn [solved-constraint]
                                (E.map #{:constraint solved-constraint.constraint
-                                        :commit $2}
+                                        :commit $}
                                       solved-constraint.commits)))
                       (E.flatten)
                       ;; now group all commit-constraint pairs by sha
@@ -85,12 +85,12 @@
                       ;; "filled" sha's (see above) for constraints that
                       ;; gave a short sha. This may collide in some
                       ;; *extremely* rare cases ...
-                      (E.group-by #(values $2.commit.short-sha))
+                      (E.group-by #(values $.commit.short-sha))
                       ;; now we can consider every sha that does not contain every constraint
                       ;; is actually not usable.
-                      (E.filter (fn [_sha ccs] (= (length good) (length ccs))))
+                      (E.filter (fn [ccs _sha] (= (length good) (length ccs))))
                       ;; now un-key as it's a bit simpler to parse out later
-                      (E.map #$2)
+                      (E.map #$)
                       (E.flatten))]
     (if (E.empty? x-solved)
       (R.err good)
@@ -120,8 +120,8 @@
   ;; return OK-solved or ERR-unsolvable.
   (trace "solving %s-way package constraint" (length constraints))
   (->> constraints
-       (E.map #(solve-constraint $2 commits verify-sha))
-       (E.group-by #(R.ok? $2))
+       (E.map #(solve-constraint $ commits verify-sha))
+       (E.group-by #(R.ok? $))
        (best-commit-or-error)))
 
 Solver

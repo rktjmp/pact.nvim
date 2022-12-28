@@ -58,13 +58,13 @@
         (values pid)))))
 
 (fn string->spawn-args [cmd-str opts]
-  (let [parts (->> (E.map #$1 #(string.gmatch cmd-str "(%S+)"))
-                   (E.map #(match (string.match $2 "^(%$+)([%w-]+)$")
+  (let [parts (->> (E.map #$ #(string.gmatch cmd-str "(%S+)"))
+                   (E.map #(match (string.match $ "^(%$+)([%w-]+)$")
                              (prefix name) (match [prefix (. opts name)]
                                              [:$ val] val
                                              [:$ nil] (error (fmt "Could not construct command `%s`, `%s` not in substitution table" cmd-str name))
                                              _ (.. (string.sub prefix 1 -2) name))
-                             _ $2)))]
+                             _ $)))]
     [(E.hd parts) (E.tl parts) (or opts.cwd ".") (or opts.env {})]))
 
 (fn run [cmd opts on-exit]

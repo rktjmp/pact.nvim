@@ -89,12 +89,12 @@
 
 (fn M.exec [task]
   (fn still-awaiting? [tasks]
-    (->> (E.map (fn [_ task-or-thread]
+    (->> (E.map (fn [task-or-thread]
                   (if (M.task? task-or-thread)
                     task-or-thread.thread
                     task-or-thread))
                 tasks)
-         (E.any? #(not= :dead (coroutine.status $2)))))
+         (E.any? #(not= :dead (coroutine.status $)))))
 
   (match task
     ;; Never run before
@@ -109,7 +109,7 @@
 
     ;; has some threads but the the threads are finished, clear awaiting and resume.
     (where {: awaiting} (not (still-awaiting? awaiting)))
-    (let [vals (E.reduce (fn [vals i t]
+    (let [vals (E.reduce (fn [vals t i]
                            (when (M.task? t)
                              (tset vals i t.value))
                            vals)
@@ -125,7 +125,13 @@
   ;; *very* loose definition...
   (match? {: thread} t))
 
-(fn M.await [...]
+(fn* M.await
+     ;; TODO this can we check if we called await without run?
+  ;; TODO: [tasks] should return [values], but right now it would expand to (values ...)
+  ; "Await an async tasks completion. Accepts 1 task, n-tasks or [task ...]"
+  ; (where [tasks] (seq? tasks))
+  ; (coroutine.yield tasks)
+  (where [...])
   (coroutine.yield (E.pack ...)))
 
 (fn M.trace [msg ...]
@@ -159,7 +165,7 @@
 (fn* M.new
   (where [f] (function? f))
   (M.new :anonymous f)
-  (where [id f] (and (function? f) (string? id)))
+  (where [id f] (and (string? id) (function? f)))
   (let [t {:id (gen-id (.. id :-task))
            :thread nil
            :value nil

@@ -35,12 +35,12 @@
   (let [iter (fn [path]
                (let [fs (uv.fs_scandir path)]
                  (values #(uv.fs_scandir_next fs) path 0)))]
-    (E.map #{:kind $2 :name $1} #(iter path))))
+    (E.map #{:kind $1 :name $2} #(iter path))))
 
 (fn remove-path [path]
   (let [contents (ls-path path)]
-    (E.each #(let [full-path (.. path :/ $2.name)]
-               (match $2
+    (E.each #(let [full-path (.. path :/ $.name)]
+               (match $
                  {:kind :directory} (remove-path full-path)
                  _ (uv.fs_unlink full-path)))
             contents)
@@ -62,7 +62,7 @@
   (uv.fs_symlink target link-name))
 
 (fn join-path [...]
-  (pick-values 1 (-> (E.reduce #(.. $1 "/" $3) [...])
+  (pick-values 1 (-> (E.reduce #(.. $1 "/" $2) [...])
                      (string.gsub ://+ :/))))
 
 {: what-is-at

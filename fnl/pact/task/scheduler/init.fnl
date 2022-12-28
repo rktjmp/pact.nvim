@@ -13,7 +13,7 @@
         iter (fn []
                (E.each #(E.depth-walk (fn [task parents]
                                         (coroutine.yield task parents))
-                                      $2 next-id)
+                                      $ next-id)
                        tasks))]
     (values (coroutine.wrap iter) 0 0)))
 
@@ -22,7 +22,7 @@
   (set child-context.parent parent-context))
 
 (fn remove-child-task [task-context child-context]
-  (set task-context.tasks (E.reject #(= $2.id child-context.id)
+  (set task-context.tasks (E.reject #(= $.id child-context.id)
                                        task-context.tasks)))
 
 (fn make-timer-cb [scheduler]
@@ -36,14 +36,14 @@
                             [] #(tasks-iter scheduler.tasks))
          ;; run tasks we found
          {:exec task/exec} (require :pact.task)
-         results (E.map (fn [_ task-context]
+         results (E.map (fn [task-context]
                           (let [_ (set scheduler.current-task task-context)
                                 (action value) (task/exec task-context.task)
                                 _ (set scheduler.current-task nil)]
                             [task-context action value]))
                         runnable)
          ;; remove any finished tasks
-         _ (E.each (fn [_ [task-context action _value]]
+         _ (E.each (fn [[task-context action _value]]
                      (match action
                        :halt (remove-child-task (or task-context.parent scheduler)
                                                 task-context)
@@ -51,7 +51,7 @@
                                                  task-context)))
                    results)
          ;; handle any results
-         _ (E.each (fn [_ [task-context action value]]
+         _ (E.each (fn [[task-context action value]]
                      (match [action value]
                        [:trace [f msg]]
                        (match (pcall f msg)
@@ -88,7 +88,7 @@
                                              #(tasks-iter scheduler.tasks))
               (_index {: traced}) (if task-context.traced
                                     (values 0 task-context)
-                                    (E.find #(match? {: traced} $2)
+                                    (E.find #(match? {: traced} $)
                                             #(bward parents)))]
     (coroutine.yield [traced message])
     (else

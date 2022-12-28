@@ -13,9 +13,9 @@
   ;; copy queue so any bcasts cant effect the current queue
   (let [current-queue bcast-queue
         _ (set bcast-queue [])]
-    (E.each #(let [{: topic : payload} $2
+    (E.each #(let [{: topic : payload} $1
                    targets (or (. registry topic) [])]
-               (E.each #($1 (E.unpack payload))
+               (E.each #($2 (E.unpack payload))
                        targets))
             current-queue)))
 
