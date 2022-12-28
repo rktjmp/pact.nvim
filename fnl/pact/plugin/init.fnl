@@ -18,10 +18,10 @@
   (match-let [keys (E.keys opts)
               ;; TODO this has better support in Constraint now
               true (-> (E.filter #(or (= :head $1)
-                                         (= :branch $1)
-                                         (= :tag $1)
-                                         (= :commit $1)
-                                         (= :version $1)) opts)
+                                      (= :branch $1)
+                                      (= :tag $1)
+                                      (= :commit $1)
+                                      (= :version $1)) opts)
                        (E.table->pairs)
                        (length)
                        (#(match $1

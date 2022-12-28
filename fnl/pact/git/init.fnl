@@ -74,9 +74,9 @@
     (where-ok? [_ [line] _]) (values line)
     (where-err? [code out err]) (values false)))
 
-(fn M.verify-commit [repo-path commit]
+(fn M.verify-commit [repo-path sha]
   "Verify a given commit sha exists"
-  (verify-ref repo-path commit))
+  (verify-ref repo-path sha))
 
 (fn M.verify-branch [repo-path branch]
   "Verify a given branch exists remotely. Local branches are ignored."

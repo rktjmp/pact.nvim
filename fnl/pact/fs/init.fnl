@@ -5,9 +5,20 @@
      {:format fmt} string
      {:loop uv} vim)
 
+(fn join-path [...]
+  (pick-values 1 (-> (E.reduce #(.. $1 "/" $2) [...])
+                     (string.gsub ://+ :/))))
+
 (fn what-is-at [path]
   "file, directory, link, nothing or (nil err)"
   (match (uv.fs_stat path)
+    ({: type}) (values type)
+    (nil _ :ENOENT) (values :nothing)
+    (nil err _) (values nil (fmt "uv.fs_stat error %s" err))
+    (nil err) (values nil err)))
+
+(fn lstat [path]
+  (match (uv.fs_lstat path)
     ({: type}) (values type)
     (nil _ :ENOENT) (values :nothing)
     (nil err _) (values nil (fmt "uv.fs_stat error %s" err))
@@ -35,11 +46,12 @@
   (let [iter (fn [path]
                (let [fs (uv.fs_scandir path)]
                  (values #(uv.fs_scandir_next fs) path 0)))]
-    (E.map #{:kind $1 :name $2} #(iter path))))
+    (E.map #{:kind $2 :name $1} #(iter path))))
 
 (fn remove-path [path]
   (let [contents (ls-path path)]
-    (E.each #(let [full-path (.. path :/ $.name)]
+    (E.each #(let [full-path (join-path path $.name)]
+               (print :rm full-path)
                (match $
                  {:kind :directory} (remove-path full-path)
                  _ (uv.fs_unlink full-path)))
@@ -61,12 +73,9 @@
 (fn symlink [target link-name]
   (uv.fs_symlink target link-name))
 
-(fn join-path [...]
-  (pick-values 1 (-> (E.reduce #(.. $1 "/" $2) [...])
-                     (string.gsub ://+ :/))))
-
 {: what-is-at
  : ls-path
+ : lstat
  : symlink
  : make-path
  : remove-path

@@ -49,7 +49,7 @@
 
 (fn mk-chunk [text ?hl ?len] {:text text
                               :highlight (or ?hl :PactComment)
-                              :length (or ?len (length text))})
+                              :length (or ?len (length (or text "")))})
 (fn mk-col [...] [...])
 (fn mk-content [...] [...])
 (fn mk-row [content ?meta] {:content content :meta (or ?meta {})})
@@ -70,7 +70,7 @@
         package-data #{:uid $1.uid
                        :name $1.name
                        :health $1.health
-                       :git {:checkout {:commit (?. $ :git :checkout :commit)}
+                       :git {:current {:commit (?. $ :git :current :commit)}
                              :target {:commit (?. $ :git :target :commit)
                                       :logs (?. $ :git :target :logs)
                                       :breaking? (?. $ :git :target :breaking?)
@@ -120,7 +120,7 @@
     (let [{: name : last-event : state : constraint : indent} package
           commits-col (mk-col
                         (if package.git
-                          (let [from (?. package.git.checkout.commit :short-sha)
+                          (let [from (?. package.git.current.commit :short-sha)
                                 to (?. package.git.target.commit :short-sha)
                                 direction (?. package.git.target :direction)
                                 count (match (?. package.git.target.logs)

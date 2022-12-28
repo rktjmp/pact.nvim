@@ -141,6 +141,6 @@
 
 (fn+ Constraint.solve
   (where [constraint commits] (and (Constraint.constraint? constraint) (seq? commits)))
-  (E.find-value #(Constraint.satisfies? constraint $) commits))
+  (E.find #(Constraint.satisfies? constraint $) commits))
 
 (values Constraint)

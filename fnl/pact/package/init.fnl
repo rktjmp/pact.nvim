@@ -54,16 +54,16 @@
          ;; all paths are kept relative as they will be different for every
          ;; transaction
          :install {:path rtp-path} ;; start|opt/<name>
-         :git {:remote {:origin (. spec.source 2)}
+         :git {:origin (. spec.source 2)
                :repo {:path (FS.join-path root :HEAD)} ;; github-user-repo-nvim/HEAD
-               :checkout {:path nil ;; github-user-repo-nvim/sha
-                          :commit nil}
+               :current {:path nil ;; github-user-repo-nvim/sha
+                         :commit nil}
                :target {:commit nil ;; solves to commit
                         :distance nil ;; local..commit
                         :logs [] ;; git log local..commit
                         :breaking? false} ;; any log has breaking in it
                :latest {:commit nil} ;; latest "version" found
-               :commits []}}
+               :named-commits []}}
         (setmetatable {:__index (fn [t k]
                                   (match (. Package k)
                                     (where f (function? f)) f
@@ -110,13 +110,13 @@
   (set package.git.target.direction direction)
   package)
 
-(fn Package.update-commits [package commits]
-  (set package.git.commits commits)
+(fn Package.update-named-commits [package named-commits]
+  (set package.git.named-commits named-commits)
   package)
 
-(fn Package.set-checkout-commit [package commit]
-  (set package.git.checkout.commit commit)
-  (set package.git.checkout.path (Package.worktree-path package commit))
+(fn Package.set-current-commit [package ?commit]
+  (set package.git.current.commit ?commit)
+  ;(set package.git.current.path (Package.worktree-path package commit))
   package)
 
 (fn Package.set-target-commit [package commit]
@@ -141,11 +141,11 @@
   "Is the given package in sync with its remote?"
   (and (Package.on-disk? package)
        (Package.solved? package)
-       (= package.git.checkout.commit.sha package.git.target.commit.sha)))
+       (= package.git.current.commit.sha package.git.target.commit.sha)))
 
 (fn Package.on-disk? [package]
   "Does the package exist on disk?"
-  (not-nil? package.git.checkout.path))
+  (not-nil? package.git.current.path))
 
 (fn Package.solved? [package]
   "Is the package constraint solved?"
@@ -170,7 +170,7 @@
   "checkout constraint target in transaction")
 
 (fn+ Package.align-to-checkout (where [package] package.git)
-  (match-let [commit package.git.checkout.commit]
+  (match-let [commit package.git.current.commit]
     (set package.action [:retain :git commit])
     (R.ok package)
     (else

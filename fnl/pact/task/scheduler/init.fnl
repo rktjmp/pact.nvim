@@ -3,6 +3,7 @@
 
 (use R :pact.lib.ruin.result
      E :pact.lib.ruin.enum
+     PubSub :pact.pubsub
      gen-id :pact.gen-id
      Log :pact.log
      {:format fmt} string
@@ -75,6 +76,7 @@
                                                             (tostring err)))
                                       vim.log.levels.WARN))))
                    results)]
+     (PubSub.broadcast scheduler :tick)
      (when (= 0 (length scheduler.tasks))
        (uv.timer_stop scheduler.timer-handle)
        (uv.close scheduler.timer-handle)

@@ -137,14 +137,13 @@
 (fn M.trace [msg ...]
   "Output a 'trace message'. When called from a task, the message is dispatched
   to the first found `traced` handler. When called from outside a task the
-  message is printed.
+  message is discarded.
 
   Assumes task is running on default scheduler."
   (let [{: default-scheduler : trace} (require :pact.task.scheduler)
         msg (fmt msg ...)]
     (match (coroutine.running)
-      thread (trace default-scheduler thread msg)
-      _ (print :default-trace msg))))
+      thread (trace default-scheduler thread msg))))
 
 (fn* M.run
   "Run given task on the default scheduler. As a convenience, passing a

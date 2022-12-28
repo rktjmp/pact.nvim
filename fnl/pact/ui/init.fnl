@@ -115,8 +115,10 @@
                (prepare-interface))]
     (Log.new-log-file :pact.log) ;; TODO real path
     ;; TODO unsub all on win close
-    (E.each #(subscribe $1 #(schedule-redraw ui))
-            #(Package.iter ui.runtime.packages))
+    (let [{: default-scheduler} (require :pact.task.scheduler)]
+      (subscribe default-scheduler #(schedule-redraw ui)))
+    ; (E.each #(subscribe $1 #(schedule-redraw ui))
+    ;         #(Package.iter ui.runtime.packages))
     (Runtime.Command.initial-load runtime)
     (schedule-redraw ui)))
 

@@ -18,43 +18,6 @@
 
 ;; TODO (fn Runtime.exec-discover-orphans [runtime])
 
-(fn smoke-test-first-run [runtime]
-  "Look at current disk state, possibly prepare it to a known good state, then
-  set some information on runtime"
-  (->> [runtime.path.root runtime.path.data runtime.path.repos]
-       (E.each #(FS.make-path $)))
-  (match (vim.loop.fs_lstat runtime.path.head)
-    (nil _ :ENOENT) (let [t (Transaction.new runtime.path.data
-                                             runtime.path.repos
-                                             runtime.path.head)]
-                      (FS.make-path t.path.root)
-                      (FS.make-path (FS.join-path t.path.root :start))
-                      (FS.make-path (FS.join-path t.path.root :opt))
-                      (FS.symlink t.path.root runtime.path.head)))
-
-  ;; look for current HEAD transaction symlink otherwise create one to a
-  ;; default checkout
-  ;; TODO this could be stronger
-  (match (vim.loop.fs_lstat (FS.join-path runtime.path.root :start))
-    (nil _ :ENOENT) (FS.symlink (FS.join-path runtime.path.head :start)
-                                (FS.join-path runtime.path.root :start)))
-
-  (match (vim.loop.fs_lstat (FS.join-path runtime.path.root :opt))
-    (nil _ :ENOENT) (FS.symlink (FS.join-path runtime.path.head :opt)
-                                (FS.join-path runtime.path.root :opt)))
-
-  runtime)
-
-(fn parse-disk-layout [runtime]
-  "Look at current disk state, possibly prepare it to a known good state, then
-  set some information on runtime"
-  (let [current-head  (vim.loop.fs_readlink runtime.path.head) ;; TODO: re-add error checks
-        transaction-id (string.match current-head ".+/([^/]-)$")]
-    (set runtime.transaction.head.id transaction-id)
-    (set runtime.path.transaction current-head)) ;; TODO: put somewhere else? better name?
-
-  runtime)
-
 (fn Runtime.add-proxied-plugins [runtime proxies]
   ;; TODO rewrite doc
   "User defined plugins are wrapped in a thin proxy function so nothing else
@@ -112,30 +75,56 @@
   ;; just install them?
   (E.set$ runtime :packages (unproxy-spec-graph proxies)))
 
+(λ legacy-check [runtime-path]
+  (->> [:start :opt]
+       (E.map #(FS.join-path runtime-path $))
+       (E.map #(FS.lstat $))
+       (E.all? #(or (= :link $) (= :nothing $)))
+       (#(when (not $)
+           (-> (fmt (.. "Whoops! %s contained unexpected content.\n"
+                        "You may have an existing legacy pact install, "
+                        "please see updated installation instructions and config format.\n"
+                        "You'll have to remove the directory listed above too.\n")
+                    runtime-path)
+               (vim.notify vim.log.levels.ERROR))
+           (error :pact-halt)))))
+
+(λ bootstrap-filesystem [runtime]
+  ;; ensure root dirs exist
+  (E.each FS.make-path [runtime.path.data runtime.path.runtime])
+  (match (Transaction.latest runtime.datastore runtime.path.data)
+    nil (result-let [t (Transaction.new runtime.datastore runtime.path.data)
+                     _ (Transaction.prepare t)
+                     _ (Transaction.commit t)]
+          t))
+  ;; ensure rtp/start|opt link to HEAD
+  (->> [:start :opt]
+       (E.each #(match (FS.lstat (FS.join-path runtime.path.runtime $))
+                  :nothing (FS.symlink (FS.join-path runtime.path.head $)
+                                       (FS.join-path runtime.path.runtime $))))))
+
 (λ Runtime.new [opts]
   (let [FS (require :pact.fs)
         Datastore (require :pact.datastore)
         data-path (FS.join-path (vim.fn.stdpath :data) :pact)
         repos-path (FS.join-path data-path :repos)
         head-path (FS.join-path data-path :HEAD)
-        root-path (FS.join-path (vim.fn.stdpath :data) :site/pack/pact)]
-    (-> {:path {:root root-path
-                :data data-path
-                :head head-path
-                :repos repos-path}
-         :transaction {:head {:id nil}
-                       :staged (Transaction.new data-path repos-path head-path)
-                       :historic []}
-         :datastore (Datastore.new repos-path root-path)
-         :packages {}}
-        (smoke-test-first-run)
-        (parse-disk-layout))))
+        runtime-path (FS.join-path (vim.fn.stdpath :data) :site/pack/pact)
+        runtime {:path {:runtime runtime-path ;; where pact exists in the rtp for loading
+                        :data data-path ;; where pact stores all its data, repos, transactions, etc
+                        :head head-path} ;; link path thats updated to point at current transaction
+                 :datastore (Datastore.new data-path)
+                 :packages {}}]
+    (legacy-check runtime-path)
+    (bootstrap-filesystem runtime)
+    (vim.pretty_print runtime)
+    runtime))
 
 (set Runtime.Command {})
 
 (λ Runtime.Command.initial-load [runtime]
   (let [ingest-first (require :pact.runtime.command.initial-load)]
-    (ingest-first runtime.datastore runtime.packages)
+    (ingest-first runtime.path.runtime runtime.datastore runtime.packages)
     (R.ok)))
 
 (λ Runtime.Command.sync-package-tree [runtime package]
@@ -206,7 +195,7 @@
 (fn Runtime.Command.run-transaction [runtime]
   (local {:new task/new :run task/run :await task/await : trace} (require :pact.task))
   (local inspect (require :pact.inspect))
-  (task/run #(result-let [t (Transaction.new runtime.datastore runtime.path.data runtime.path.root)
+  (task/run #(result-let [t (Transaction.new runtime.datastore runtime.path.data)
                           _ (Transaction.prepare t)
                           ;; TODO topological sort these as a combined graph
                           _ (print (inspect t.id) (inspect t.path))
@@ -221,7 +210,9 @@
                                                       :hold (task/new :hold #(Transaction.retain-package t p))
                                                       :sync (task/new :sync #(Transaction.sync-package t p))
                                                       _ (task/new #(R.err [:unhandled p.action])))
-                                                    (task/run)))
+                                                     (task/run {:traced #(-> p
+                                                                             (Package.add-event :some-task $)
+                                                                             (PubSub.broadcast :changed))})))
                                                flat-packages)
                           _ (trace "made-tasks")
                           _ (print (inspect package-tasks))
@@ -232,13 +223,10 @@
                           ;; TODO check results of each
                           ;; if ok do afters
                           ;; then save transaction
-                          ;_ (Transaction.commit t)
-                          ]
+                          _ (Transaction.commit t)]
                (R.ok :arst)
                )
-            {:traced print}
-            
-            ))
+            {:traced print}))
 
 
 (fn Runtime.dispatch [runtime command]

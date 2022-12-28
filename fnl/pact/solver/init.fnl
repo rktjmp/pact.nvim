@@ -44,11 +44,11 @@
                                     (Constraint.head? constraint)))
   (match (Constraint.solve constraint commits)
     commit (R.ok {: constraint
-                :commits [commit]})
+                  :commits [commit]})
     nil (R.err {: constraint
-              :msg (fmt "%s does not exist: %s"
-                        (Constraint.type constraint)
-                        (Constraint.value constraint))})))
+                :msg (fmt "%s does not exist: %s"
+                          (Constraint.type constraint)
+                          (Constraint.value constraint))})))
 
 (fn latest-in-set [constraints-commits]
   (let [all-version? (E.all? #(Constraint.version? $.constraint)
@@ -59,6 +59,7 @@
       (->> (E.map #$.commit constraints-commits)
            ;; solve will solve n-commits to 1-commit
            (Constraint.solve (Constraint.git :version "> 0.0.0")))
+      ;; otherwise any commit should be as good as any other
       (-> (E.hd constraints-commits)
           (. :commit)))))
 
@@ -103,7 +104,7 @@
   (R.err bad))
 
 ;; TODO: need some guard on no constraints and no commits
-(λ Solver.solve-constraints [constraints commits verify-sha]
+(λ Solver.solve [constraints commits verify-sha]
   ;; We're given a list of constraints and commits to test against, and a
   ;; function that can be used to verify a sha-constraint commit exists.
   ;;
