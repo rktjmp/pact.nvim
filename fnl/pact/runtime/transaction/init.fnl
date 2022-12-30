@@ -43,7 +43,7 @@
 
 (λ use-package [t package commit]
   (result-let [canonical-id package.canonical-id
-               dsp (Datastore.Git.package-by-canonical-id t.datastore canonical-id)
+               dsp (Datastore.package-by-canonical-id t.datastore canonical-id)
                files-path (-> (Datastore.Git.setup-commit dsp commit)
                               (task/run)
                               (task/await))

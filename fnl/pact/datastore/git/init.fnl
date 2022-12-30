@@ -90,10 +90,11 @@
                           sha (Git.verify-commit path commit.sha)]
                (R.ok sha))))
 
-(λ commit-at-path [ds-package]
+(λ commit-at-path [ds-package path]
   "Support for getting current HEAD commit of path"
-  (task/new #(result-let [{: path} ds-package
-                          _ (if (not (FS.absolute-path? path))
+  ;; ds-package technically not needed but kept for interface consistency and
+  ;; probably checking that the path belongs to the correct package eventually.
+  (task/new #(result-let [_ (if (not (FS.absolute-path? path))
                               (R.err (fmt "repo path must be absolute, got %s" path)))
                           ?sha (match [(FS.dir-exists? path) (FS.git-dir? path)]
                                  [true true] (Git.HEAD-sha path)
@@ -109,11 +110,11 @@
   (task/new #(result-let [{: path} ds-package
                           commit-a-ts (tonumber (Git.sha-timestamp path commit-a.sha))
                           commit-b-ts (tonumber (Git.sha-timestamp path commit-b.sha))
-                          [early late] (if (<= commit-a-ts commit-b-ts)
-                                        [commit-a commit-b]
-                                        [commit-b commit-a])
+                          [mod early late] (if (<= commit-a-ts commit-b-ts)
+                                        [1 commit-a commit-b]
+                                        [-1 commit-b commit-a])
                           logs (Git.log-diff path early.sha late.sha)]
-               (length logs))))
+               (* mod (length logs)))))
 
 (λ breaking-between? [ds-package commit-a commit-b]
   (task/new #(result-let [{: path} ds-package

@@ -32,35 +32,38 @@
         package-name (or (string.match spec.name ".+/([^/]-)$")
                          (string.gsub spec.name "/" "-")) ;; TODO this will smell
         rtp-path (FS.join-path (if spec.opt? :opt :start) package-name)]
-    (-> {:type :plugin
+    (-> {;; type data
+         :type :plugin
+
+         ;; package data
          :uid (gen-id :plugin-package) ;; globally unique between all packages, even those
                                        ;; with the same c-id
          :canonical-id spec.canonical-id ;; shared between packages with same origin
-         :ready? false ;; -> true after all other data is collected (target, current, etc)
          :name spec.name ;; generally visible name
-         :source spec.source ;; 
-         :constraint spec.constraint
          :depended-by nil
          :depends-on (or spec.dependencies []) ;; placeholder
-         :events []
-         :workflows []
+         :install {:path rtp-path} ;; start|opt/<name>
+
+         ;; general bookkeeping
+         :health (Health.healthy)
+         :ready? false ;; -> true after all other data is collected (target, current, etc)
          :tasks {:waiting 0
                  :active 0}
+
+         :constraint spec.constraint
+         :events []
+
          :action :hold
-         :health (Health.healthy)
+
          ;; all paths are kept relative as they will be different for every
          ;; transaction
-         :install {:path rtp-path} ;; start|opt/<name>
          :git {:origin (. spec.source 2)
-               :repo {:path (FS.join-path root :HEAD)} ;; github-user-repo-nvim/HEAD
-               :current {:path nil ;; github-user-repo-nvim/sha
-                         :commit nil}
+               :current {:commit nil}
                :target {:commit nil ;; solves to commit
-                        :distance nil ;; local..commit
-                        :logs [] ;; git log local..commit
+                        :distance nil ;;
                         :breaking? false} ;; any log has breaking in it
                :latest {:commit nil} ;; latest "version" found
-               :named-commits []}}
+               }}
         (setmetatable {:__index (fn [t k]
                                   (match (. Package k)
                                     (where f (function? f)) f
@@ -113,19 +116,6 @@
 
 (fn Package.failing? [package]
   (Package.Health.failing? package.health))
-
-(λ Package.update-target-logs [package logs]
-  (set package.git.target.logs logs)
-  (set package.git.target.breaking? (E.any? #$.breaking? logs))
-  package)
-
-(λ Package.update-target-direction [package direction]
-  (set package.git.target.direction direction)
-  package)
-
-(fn Package.update-named-commits [package named-commits]
-  (set package.git.named-commits named-commits)
-  package)
 
 (fn Package.set-current-commit [package ?commit]
   (set package.git.current.commit ?commit)
