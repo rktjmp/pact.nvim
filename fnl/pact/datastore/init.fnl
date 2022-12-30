@@ -23,4 +23,12 @@
           :luarocks (FS.join-path data-path :rocks)}
    :packages {}})
 
+(λ Datastore.package-by-canonical-id [ds canonical-id]
+  ; (match (. ds :packages canonical-id)
+  ;   (where t (task? t)) (task/await t)
+  ;   p p
+  ;   nil nil)
+  (. ds :packages canonical-id))
+
+
 Datastore

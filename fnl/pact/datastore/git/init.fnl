@@ -42,18 +42,12 @@
                _ (Git.update-refs repo-path)]
     (R.ok :updated-refs)))
 
-(λ package-by-canonical-id [ds canonical-id]
-  ; (match (. ds :packages canonical-id)
-  ;   (where t (task? t)) (task/await t)
-  ;   p p
-  ;   nil nil)
-  (. ds :packages canonical-id))
-
 (λ register [ds canonical-id repo-origin]
   "Add git-repo to datastore registry, creates local stub if needed."
   ;; It's simpler to manage git packages via a local clone, so we always create
   ;; a "stub" clone with no data - just commit information when a package is
   ;; registered.
+  (local {: package-by-canonical-id} (require :pact.datastore))
   (match (package-by-canonical-id ds canonical-id)
     p (error (fmt "attempt to re-register known package %s" canonical-id))
     nil (let [f #(-> (result-let [store-path (FS.join-path ds.path.git canonical-id :HEAD)
@@ -132,7 +126,6 @@
                (<= 1 (length breaking-logs)))))
 
 {: register
- : package-by-canonical-id
  : fetch-commits
  : setup-commit
  : verify-commit
