@@ -81,7 +81,9 @@
                               [true false] (R.err (fmt "%s exists already but is not a git dir" worktree-path))
                               _ (do
                                   (trace "git add-worktree %s %s -> %s" repo-path commit.short worktree-path)
-                                  (Git.add-worktree repo-path worktree-path sha)))]
+                                  (Git.add-worktree repo-path worktree-path sha)
+                                  (trace "git checkout %s" commit.short-sha)
+                                  (Git.checkout-sha worktree-path sha)))]
                (R.ok worktree-path))))
 
 (λ verify-commit [ds-package commit]

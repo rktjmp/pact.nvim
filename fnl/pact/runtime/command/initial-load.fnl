@@ -96,8 +96,15 @@
                                                   sibling-packages))
                                       (task/run) ;; TODO not awaiting here will drop the task because parent is not checked for any siblings before removing it from the list.
                                       (task/await)))]
-                   (E.each #(set $.ready? true) sibling-packages)
-                   (E.each Package.decrement-tasks-active sibling-packages)
+                   (E.each (fn [p]
+                             (if p.git.current.commit
+                               ;; exists, so try to keep existing
+                               (set p.action :retain)
+                               ;; new, so require explicit install opt-in
+                               (set p.action :discard))
+                             (set p.ready? true)
+                             (Package.decrement-tasks-active p))
+                           sibling-packages)
                    (R.ok))))
      {:traced (fn [msg]
                 (E.each #(-> $
@@ -106,6 +113,7 @@
                         sibling-packages))}])
   (->> (E.group-by #(values $.canonical-id $)
                    #(Package.iter all-packages))
+       ;; load and process all packages
        (E.map make-process-task)
        (E.map (fn [[task opts]]
                 (task/run task opts)))))

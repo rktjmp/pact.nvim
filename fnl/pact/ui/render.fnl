@@ -1,3 +1,5 @@
+;;; pact.ui.render
+
 (import-macros {: ruin!} :pact.lib.ruin)
 (ruin!)
 
@@ -29,12 +31,7 @@
       value)))
 
 (fn workflow-active-symbol [progress]
-  (let [symbols [:◐ :◓ :◑ :◒]
-        ; symbols [:○ :◯ :◉]
-        ; symbols [:⁐ :‿ :⁀]
-        ; symbols [:⍐ :⍗]
-        ; symbols [:∫ :∬ :∭]
-        ]
+  (let [symbols [:◐ :◓ :◑ :◒]] ; symbols [:○ :◯ :◉] symbols [:⁐ :‿ :⁀] symbols [:⍐ :⍗] symbols [:∫ :∬ :∭]
     (. symbols (+ 1 (% progress (length symbols))))))
 
 (fn workflow-waiting-symbol [] "⧖")
@@ -154,7 +151,7 @@
                          _ (mk-chunk "")))]
       {:content (mk-content
                   name-col
-                  ; action-col
+                  action-col
                   constraint-col
                   commits-col
                   latest-col)
@@ -304,26 +301,31 @@
   ;; Given a list of packages, split then into groups for each UI section
   (let [error? (fn [package]
                  (= package.uid :error))
-        waiting? (fn [package]
-                   (E.any? #(Package.ready? $1)
+        loading? (fn [package]
+                   (E.any? #(not (Package.ready? $1))
                            #(Package.iter [package])))
-        aligned? (fn [package]
-                   (E.all? #(Package.aligned? $1)
+        retaining? (fn [package]
+                   (E.all? #(Package.retaining? $1)
                            #(Package.iter [package])))
-        staged? (fn [package]
-                   (E.any? #(Package.staged? $1)
+        discarding? (fn [package]
+                   (E.all? #(Package.discarding? $1)
                            #(Package.iter [package])))
+        aligning? (fn [package]
+                    (E.all? #(Package.aligning? $1)
+                            #(Package.iter [package])))]
         ;; we intentionally only iterate the "top" packages so sub-packages
         ;; are nested inside the correct parent && section.
-        {true error false rest} (E.group-by error? packages)
-        {true waiting false rest} (E.group-by waiting? packages)
-        {true in-sync false rest} (E.group-by aligned? (or rest []))
-        {true staged false unstaged} (E.group-by staged? (or rest []))]
-    {:error (or error [])
-     :waiting (or waiting [])
-     :in-sync (or in-sync [])
-     :staged (or staged [])
-     :unstaged (or unstaged [])}))
+        (E.reduce (fn [grouped [f key]]
+                    (let [{true g false r} (E.group-by f grouped.rest)]
+                      (doto grouped
+                            (tset key (or g []))
+                            (tset :rest (or r [])))))
+                  {:rest packages}
+                  [[error? :error]
+                   [loading? :loading]
+                   [retaining? :retaining]
+                   [aligning? :aligning]
+                   [discarding? :discarding]])))
 
 (λ ui-data->log-virt-text [])
 
@@ -334,7 +336,7 @@
   ;; We have these sections
   ;;
   ;; waiting: still collecting data for some package in the tree
-  ;; in-sync: collected all data, no update available
+  ;; aligned: collected all data, no update available
   ;; unstaged: collected all data, one or more packages *can* be updated
   ;; staged: collected all data, one or more packages *will* be updated
   ;;
@@ -356,56 +358,39 @@
   (use Runtime :pact.runtime)
   (set spinner-frame (rate-limited-inc spinner-frame))
   (let [;; split packages into sections
-        {: waiting
-         : in-sync
-         : staged
-         : unstaged
-         : error} (packages->sections ui.runtime.packages)
+        sections (packages->sections ui.runtime.packages)
         ;; We must create stub sections first which contains the text content
         ;; but none of it will be aligned.
-        [staged-rows
-         unstaged-rows
-         in-sync-rows
-         waiting-rows] (E.map #(-> $
-                                   (package-tree->ui-data)
-                                   (ui-data->rows))
-                              [staged unstaged in-sync waiting])
+        rows (E.reduce (fn [acc section id]
+                         (E.set$ acc id (-> section
+                                            (package-tree->ui-data)
+                                            (ui-data->rows))))
+                       {} sections)
         ;; get the max widths of every section, then the max width between sections
         ;; which will then dictate the padding needed across all lines.
         column-widths (->> (E.map #(->> (E.map row->column-widths $)
                                         (widths->maximum-widths))
-                                  [waiting-rows in-sync-rows unstaged-rows staged-rows])
+                                  rows)
                            (widths->maximum-widths))
         ;; now that we know column widths we can insert padding chunks into every column
         ;; so they all align.
-        [staged-rows
-         unstaged-rows
-         in-sync-rows
-         waiting-rows] (E.map #(-> $
-                                   (inject-padding-chunks column-widths)
-                                   (intersperse-column-breaks))
-                              [staged-rows unstaged-rows in-sync-rows waiting-rows])
-
+        rows (E.reduce (fn [acc section id]
+                         (E.set$ acc id (-> section
+                                            (inject-padding-chunks column-widths)
+                                            (intersperse-column-breaks))))
+                       {} rows)
         ;; Generate title lines. These dont follow the strict alignment and need us to know
         ;; the row counts before creation.
         title-map {:unstaged {:t "Unstaged" :hl "Unstaged"}
                    :staged {:t "Staged" :hl "Staged"}
-                   :in-sync {:t "In Sync" :hl "InSync"}
+                   :aligned {:t "In Sync" :hl "InSync"}
                    :waiting {:t "Discovering Facts" :hl "Waiting"}}
-        [staged-title
-         unstaged-title
-         in-sync-title
-         waiting-title] (E.map (fn [[section count]]
-                                 [(mk-row
-                                    (mk-content
-                                      (mk-col (mk-chunk (. title-map section :t)
-                                                        (fmt "Pact%sTitle" (. title-map section :hl)))
-                                              (mk-chunk (fmt " (%s)" count)
-                                                        :PactComment))))])
-                               [[:staged (length staged-rows)]
-                                [:unstaged (length unstaged-rows)]
-                                [:in-sync (length in-sync-rows)]
-                                [:waiting (length waiting-rows)]])]
+        titles (E.reduce (fn [acc section id]
+                           (E.set$ acc id [(mk-row
+                                             (mk-content
+                                               (mk-col (mk-chunk id)
+                                                       (mk-chunk (tostring (length section))))))]))
+                      {} rows)]
     ;; Clear extmarks so we don't have them all pile up. We have to re-make
     ;; then each draw as the lines are re-drawn.
     (set ui.extmarks [])
@@ -469,23 +454,23 @@
         (write-rows const.blank)))
 
     (api.nvim_buf_set_option ui.buf :modifiable true)
-    (api.nvim_buf_set_lines ui.buf 0 -1 false [])
 
     (write-rows const.lede)
 
-    (if (E.all? #(= 0 (length $))
-                [staged-rows unstaged-rows waiting-rows in-sync-rows])
+    (if (E.all? #(= 0 (length $)) rows)
       (write-rows const.no-plugins))
-    ;; TODO: put waiting at head to any that fail while discovering facts remain in view
-    (write-section waiting-title waiting-rows)
-    (write-section unstaged-title unstaged-rows)
-    (write-section staged-title staged-rows)
-    (write-section in-sync-title in-sync-rows)
+
+    (write-section titles.error rows.error)
+    (write-section titles.rest rows.rest)
+    (write-section titles.loading rows.loading)
+    (write-section titles.discarding rows.discarding)
+    (write-section titles.aligning rows.aligning)
+    (write-section titles.retaining rows.retaining)
 
     (write-rows const.usage)
 
-
-
+    ;; clear tail
+    (api.nvim_buf_set_lines ui.buf cursor-line -1 false [])
     (api.nvim_buf_set_option ui.buf :modifiable false)))
 
 Render

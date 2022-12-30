@@ -44,11 +44,14 @@
 (λ use-package [t package commit]
   (result-let [canonical-id package.canonical-id
                dsp (Datastore.package-by-canonical-id t.datastore canonical-id)
+               _ (Package.decrement-tasks-waiting package)
+               _ (Package.increment-tasks-active package)
                files-path (-> (Datastore.Git.setup-commit dsp commit)
                               (task/run)
                               (task/await))
                link-path (FS.join-path t.path.root package.install.path)
-               _ (FS.symlink files-path link-path)]
+               _ (FS.symlink files-path link-path)
+               _ (Package.decrement-tasks-active package)]
     (R.ok)))
 
 (λ Transaction.retain-package [t package]
@@ -57,12 +60,13 @@
     (Transaction.discard-package t package)))
     ;; TODO? return to this behaviour? ; (R.err (fmt "package %s had no current commit to retain" package.canonical-id))))
 
-(λ Transaction.sync-package [t package]
+(λ Transaction.align-package [t package]
   (if package.git.target.commit
     (use-package t package package.git.target.commit)
     (R.err (fmt "package %s had no target commit to sync" package.canonical-id))))
 
 (λ Transaction.discard-package [t package]
+  (Package.decrement-tasks-waiting package)
   (R.ok))
 
 (λ Transaction.commit [t]

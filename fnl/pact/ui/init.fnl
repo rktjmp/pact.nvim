@@ -47,13 +47,14 @@
 
 (fn exec-keymap-s [ui]
   (match (cursor->package ui)
-    package (do
-              (-> (Runtime.Command.sync-package-tree ui.runtime package)
-                  (R.map-err #(vim.notify $ vim.log.levels.ERROR)))
-              (print package.canonical-id package.action)
-              (schedule-redraw ui))
+    package (if (Package.aligned? package)
+              (vim.notify (fmt "%s already aligned" package.name)
+                          vim.log.levels.INFO)
+              (-> (Runtime.Command.align-package-tree ui.runtime package)
+                  (R.map-err #(vim.notify $ vim.log.levels.ERROR))))
     nil (vim.notify "No package under cursor"
-                    vim.log.levels.INFO)))
+                    vim.log.levels.INFO))
+  (schedule-redraw ui))
 
 (fn exec-keymap-u [ui]
   (match (cursor->package ui)

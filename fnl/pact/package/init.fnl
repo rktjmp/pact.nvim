@@ -46,14 +46,15 @@
 
          ;; general bookkeeping
          :health (Health.healthy)
-         :ready? false ;; -> true after all other data is collected (target, current, etc)
+         :ready? false ;; TODO loading?
+         :transacting? false
          :tasks {:waiting 0
                  :active 0}
 
          :constraint spec.constraint
          :events []
 
-         :action :hold
+         :action :unknown
 
          ;; all paths are kept relative as they will be different for every
          ;; transaction
@@ -134,27 +135,30 @@
   (set package.git.latest.commit version)
   package)
 
-(λ Package.aligned? [package]
-  (and package.git.target.commit package.git.current.commit
-       (= package.git.target.commit.sha package.git.current.commit.sha)))
-
 (λ Package.ready? [package]
+  "ready for interaction"
   (= true package.ready?))
 
-(fn Package.solved? [package]
-  "Is the package constraint solved?"
-  (not-nil? package.git.target.commit))
+(λ Package.aligned? [package]
+  (and (not-nil? package.git.target.commit)
+       (not-nil? package.git.current.commit)
+       (= package.git.target.commit.sha package.git.current.commit.sha)))
 
-(λ Package.loading? [package]
-  (and (nil? package.git.target.commit)))
+(λ Package.retaining? [package]
+  (match? {:action :retain} package))
+
+(λ Package.discarding? [package]
+  (match? {:action :discard} package))
+
+(λ Package.aligning? [package]
+  (match? {:action :align} package))
 
 (fn* Package.align-to-target
   "checkout constraint target in transaction")
 
 (fn+ Package.align-to-target (where [package] package.git)
-  (match-let [true (Package.healthy? package)
-              commit package.git.target.commit]
-    (set package.action [:sync :git commit])
+  (match-let [true (Package.healthy? package)]
+    (set package.action :align)
     (R.ok package)
     (else
       false (R.err "cannot stage unhealthy package")
@@ -165,7 +169,7 @@
 
 (fn+ Package.align-to-checkout (where [package] package.git)
   (match-let [commit package.git.current.commit]
-    (set package.action [:retain :git commit])
+    (set package.action :retain)
     (R.ok package)
     (else
       nil (R.err "unable to stage package, no checkout commit to checkout!"))))
@@ -174,18 +178,8 @@
   "do not bring package ahead in transaction")
 
 (fn+ Package.discard [package]
-    (set package.action [:discard])
+    (set package.action :discard)
     (R.ok package))
-
-(λ Package.staged? [package]
-  (= :sync package.action))
-
-;; TODO: note this only checks the given package, and not all assocated canonicals
-;; so perhaps this does not really belong here.
-(fn Package.stageable? [package]
-  (and (Package.healthy? package)
-       (Package.solved? package)
-       (not (Package.in-sync? package))))
 
 ;; TODO probably Package.walk-down package + Package.walk-up package and detect
 ;; if packages or package?

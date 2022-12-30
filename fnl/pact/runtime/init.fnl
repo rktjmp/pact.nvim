@@ -126,32 +126,32 @@
     (ingest-first runtime.path.runtime runtime.datastore runtime.packages)
     (R.ok)))
 
-(λ Runtime.Command.sync-package-tree [runtime package]
-  "Set package state to staged, this will also propagate *down* its
+(λ Runtime.Command.align-package-tree [runtime package]
+  "Set package action to align, this will also propagate *down* its
   dependency tree. If any package in the tree is unhealthy, the stage command
   will fail. If any parent of the package is unhealthy, the stage command will
   fail.
 
   Note that staging propagates *down* but checks *up and down*."
-  (fn can-sync? [package]
+  (fn can-align? [package]
     (and (Package.healthy? package)
          package.git.target.commit))
 
-  (fn depends-ons-can-sync? [package]
+  (fn depends-ons-can-align? [package]
     (if (not (E.empty? package.depends-on))
-      (E.all? #(and (can-sync? $1) (depends-ons-can-sync? $1))
+      (E.all? #(and (can-align? $1) (depends-ons-can-align? $1))
               #(Package.iter package.depends-on))
       true))
 
-  (fn depended-bys-can-sync? [package]
+  (fn depended-bys-can-align? [package]
     (if package.depended-by
       (and (Package.healthy? package.depended-by)
-           (depended-bys-can-sync? package.depended-by))
+           (depended-bys-can-align? package.depended-by))
       true))
 
   (fn propagate-between [package]
     (E.each #(when (= $1.canonical-id package.canonical-id)
-               (set $1.action :sync))
+               (set $1.action :align))
             #(Package.iter runtime.packages)))
 
   (fn propagate [package]
@@ -159,9 +159,9 @@
     (E.each propagate
             #(Package.iter package.depends-on)))
 
-  (if (and (can-sync? package)
-           (depends-ons-can-sync? package)
-           (depended-bys-can-sync? package))
+  (if (and (can-align? package)
+           (depends-ons-can-align? package)
+           (depended-bys-can-align? package))
     (do
       (propagate package)
       (R.ok))
@@ -171,7 +171,12 @@
   "Hold package at current state, this may mean keeping a package at the
   current checkout, or not cloning the package at all if it does not exist yet."
   ;; set the direct package to hold
-  (set package.action :hold)
+  (if package.git.current.commit
+    (set package.action :retain)
+    (set package.action :discard))
+
+  ;; TODO need to decide what propagation rules are here
+
   ;; now propagate down the tree, and between canonical siblings, but only if
   ;; that siblings parent is also held.
 
@@ -180,10 +185,10 @@
     ;; or it has no parent, otherwise rely on holding of *its* parent
     ;; to propagate down.
     (E.each #(if (and (= $1.canonical-id package.canonical-id)
-                     (or (= $1.depended-by nil)
-                         (= $1.depended-by.action :hold)))
-              (set $1.action :hold))
-           #(Package.iter runtime.packages)))
+                      (or (= $1.depended-by nil)
+                          (= $1.depended-by.action :discard)))
+               (set $1.action :discard))
+            #(Package.iter runtime.packages)))
   (fn propagate-down [package]
     (E.each propagate-between
             #(Package.iter package.depends-on)))
@@ -197,36 +202,39 @@
   (task/run #(result-let [t (Transaction.new runtime.datastore runtime.path.data)
                           _ (Transaction.prepare t)
                           ;; TODO topological sort these as a combined graph
-                          _ (print (inspect t.id) (inspect t.path))
-                          _ (trace "run t")
-                          flat-packages (E.reduce (fn [acc package]
-                                                    (E.set$ acc package.canonical-id package))
-                                                  [] #(Package.iter runtime.packages))
-                          _ (trace "flat-pack")
-                          package-tasks (E.map (fn [p]
-                                                 (-> (match p.action
-                                                      :discard (task/new :discard #(Transaction.discard-package t p))
-                                                      :hold (task/new :hold #(Transaction.retain-package t p))
-                                                      :sync (task/new :sync #(Transaction.sync-package t p))
-                                                      _ (task/new #(R.err [:unhandled p.action])))
-                                                     (task/run {:traced #(-> p
-                                                                             (Package.add-event :some-task $)
-                                                                             (PubSub.broadcast :changed))})))
-                                               flat-packages)
-                          _ (trace "made-tasks")
-                          _ (print (inspect package-tasks))
+                          ;; TODO run afters, how to do for opt?
+                          canonical-sets (E.group-by #(values $.canonical-id $)
+                                                     #(Package.iter runtime.packages))
+                          _ (E.each Package.increment-tasks-waiting #(Package.iter runtime.packages))
+                          package-tasks (E.map (fn [canonical-set canonical-id]
+                                                 (let [[p] canonical-set
+                                                       f (match p.action
+                                                           :discard #(Transaction.discard-package t p)
+                                                           :retain #(Transaction.retain-package t p)
+                                                           :align #(Transaction.align-package t p)
+                                                           _ #(R.err [:unhandled p.action]))
+                                                       task (task/new (fn []
+                                                                        (E.each (fn [p]
+                                                                                  (Package.decrement-tasks-waiting p)
+                                                                                  (Package.increment-tasks-active p))
+                                                                                canonical-set)
+                                                                        (f)
+                                                                        (E.each Package.decrement-tasks-active
+                                                                                canonical-set)
+                                                                        (R.ok)))]
+                                                   (task/run task {:traced #(-> p
+                                                                                (Package.add-event :some-task $)
+                                                                                (PubSub.broadcast :changed))})))
+                                               canonical-sets)
                           ;; TODO we await each task separately until await can handle a seq of tasks
                           ;;      and return a seq of values.
                           results (E.map #(task/await $) package-tasks)
-                          _ (trace "end-awaited")
                           ;; TODO check results of each
                           ;; if ok do afters
                           ;; then save transaction
                           _ (Transaction.commit t)]
-               (R.ok :arst)
-               )
+               (R.ok))
             {:traced print}))
-
 
 (fn Runtime.dispatch [runtime command]
   (if command
