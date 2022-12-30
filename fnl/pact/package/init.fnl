@@ -130,19 +130,16 @@
   (set package.git.target.breaking? breaking?)
   package)
 
-(fn Package.set-latest-commit [package version]
+(λ Package.set-latest-commit [package version]
   (set package.git.latest.commit version)
   package)
 
-(fn Package.in-sync? [package]
-  "Is the given package in sync with its remote?"
-  (and (Package.on-disk? package)
-       (Package.solved? package)
-       (= package.git.current.commit.sha package.git.target.commit.sha)))
+(λ Package.aligned? [package]
+  (and package.git.target.commit package.git.current.commit
+       (= package.git.target.commit.sha package.git.current.commit.sha)))
 
-(fn Package.on-disk? [package]
-  "Does the package exist on disk?"
-  (not-nil? package.git.current.path))
+(λ Package.ready? [package]
+  (= true package.ready?))
 
 (fn Package.solved? [package]
   "Is the package constraint solved?"

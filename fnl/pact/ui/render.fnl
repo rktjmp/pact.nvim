@@ -53,7 +53,6 @@
 (fn mk-row [content ?meta] {:content content :meta (or ?meta {})})
 (fn mk-basic-row [content] (mk-row (mk-content (mk-col (mk-chunk content :PactComment)))))
 
-
 (fn package-tree->ui-data [packages]
   "Extract and construct UI specific data from packages"
   (use Package :pact.package
@@ -120,11 +119,9 @@
                         (if package.git
                           (let [from (?. package.git.current.commit :short-sha)
                                 to (?. package.git.target.commit :short-sha)
-                                direction (?. package.git.target :direction)
-                                count (match (?. package.git.target.logs)
-                                        nil ""
-                                        l (length l))
-                                count package.distance
+                                distance package.distance
+                                direction (if (and distance (< 0 distance)) "ahead" "behind")
+                                breaking? (?. package.git.target :breaking?)
                                 name (match (Constraint.type constraint)
                                        :version (-> (E.map #$
                                                            (or (?. package.git.target :commit :versions) []))
@@ -132,15 +129,13 @@
                                        :head :HEAD
                                        :commit (Commit.abbrev-sha (Constraint.value constraint))
                                        _ (Constraint.value constraint))
-                                breaking? (?. package.git.target :breaking?)
                                 hl #(if breaking? :DiagnosticWarn :DiagnosticInfo)
-                                ; sym #(if (= :ahead direction) "sync" "sync-back");:↦ :↤)
                                 warn #(if breaking? "⚠ " "")]
-                            (match [from to count]
+                            (match [from to distance]
                               [nil nil _] (mk-chunk (fmt "%s" :working) :PactComment)
-                              [nil to _] (mk-chunk (fmt "clone %s" name) :DiagnosticInfo)
-                              [same same _] (mk-chunk (fmt "hold %s" name) :DiagnosticInfo)
-                              [from to count] (mk-chunk (fmt "%ssync %s (%s %s)" (warn) name count direction)
+                              [nil to _] (mk-chunk (fmt "install %s" name) :DiagnosticInfo)
+                              [same same _] (mk-chunk (fmt "status-quo %s" name) :DiagnosticInfo)
+                              [from to count] (mk-chunk (fmt "%schange %s (%s %s)" (warn) name (math.abs count) direction)
                                                         (hl))))
                           (mk-chunk "")))
           name-col (mk-col
@@ -152,18 +147,14 @@
           constraint-col (mk-col
                            (mk-chunk (tostring constraint)))
           action-col (mk-col
-                       (mk-chunk package.action)
-                       (mk-chunk (.. (tostring package.__data.git.target.distance)
-                                   (tostring package.git.current.commit)
-                                     " "
-                                     (tostring package.git.target.commit))))
+                       (mk-chunk package.action))
           latest-col (mk-col
                        (match (?. package :git :latest :commit)
                          c (mk-chunk (fmt "(%s)" (table.concat c.versions ",")))
                          _ (mk-chunk "")))]
       {:content (mk-content
                   name-col
-                  action-col
+                  ; action-col
                   constraint-col
                   commits-col
                   latest-col)
@@ -314,10 +305,10 @@
   (let [error? (fn [package]
                  (= package.uid :error))
         waiting? (fn [package]
-                   (E.any? #(Package.loading? $1)
+                   (E.any? #(Package.ready? $1)
                            #(Package.iter [package])))
-        in-sync? (fn [package]
-                   (E.all? #(Package.in-sync? $1)
+        aligned? (fn [package]
+                   (E.all? #(Package.aligned? $1)
                            #(Package.iter [package])))
         staged? (fn [package]
                    (E.any? #(Package.staged? $1)
@@ -326,7 +317,7 @@
         ;; are nested inside the correct parent && section.
         {true error false rest} (E.group-by error? packages)
         {true waiting false rest} (E.group-by waiting? packages)
-        {true in-sync false rest} (E.group-by in-sync? (or rest []))
+        {true in-sync false rest} (E.group-by aligned? (or rest []))
         {true staged false unstaged} (E.group-by staged? (or rest []))]
     {:error (or error [])
      :waiting (or waiting [])
@@ -478,6 +469,7 @@
         (write-rows const.blank)))
 
     (api.nvim_buf_set_option ui.buf :modifiable true)
+    (api.nvim_buf_set_lines ui.buf 0 -1 false [])
 
     (write-rows const.lede)
 
@@ -491,6 +483,8 @@
     (write-section in-sync-title in-sync-rows)
 
     (write-rows const.usage)
+
+
 
     (api.nvim_buf_set_option ui.buf :modifiable false)))
 

@@ -30,7 +30,8 @@
                  (E.each Package.decrement-tasks-waiting sibling-packages)
                  (E.each Package.increment-tasks-active sibling-packages)
                  (result-let [;; pull out some information
-                              {:install {:path install-path} :git {: origin}} (E.hd sibling-packages)
+                              {:install {:path install-path}
+                               :git {: origin}} (E.hd sibling-packages)
                               dsp (-> (Datastore.Git.register datastore canonical-id origin)
                                       (task/run)
                                       (task/await))
