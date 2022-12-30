@@ -19,16 +19,12 @@
      E :pact.lib.ruin.enum
      FS :pact.fs
      Log :pact.log
+     gen-id :pact.gen-id
      Health :pact.package.health
      {:format fmt} string)
 
 (local Package {:Health Health})
 
-(var *last-id* 0)
-(fn gen-uid []
-  (set *last-id* (+ 1 *last-id*))
-  ;; string not number so we get kv tables instead of potentially sparse seqs
-  (.. "package-" *last-id*))
 
 (fn Package.userspec->package [spec]
   ;; Warning: some of these properties are place holders and should be
@@ -38,8 +34,8 @@
                          (string.gsub spec.name "/" "-")) ;; TODO this will smell
         rtp-path (FS.join-path (if spec.opt? :opt :start) package-name)]
     (-> {:type :plugin
-         :uid (gen-uid) ;; globally unique between all packages, even those
-                        ;; with the same c-id
+         :uid (gen-id :plugin-package) ;; globally unique between all packages, even those
+                                       ;; with the same c-id
          :canonical-id spec.canonical-id ;; shared between packages with same origin
          :name spec.name
          :source spec.source
@@ -116,25 +112,19 @@
 
 (fn Package.set-current-commit [package ?commit]
   (set package.git.current.commit ?commit)
-  ;(set package.git.current.path (Package.worktree-path package commit))
   package)
 
-(fn Package.set-target-commit [package commit]
+(λ Package.set-target-commit [package commit]
   (set package.git.target.commit commit)
+  package)
+
+(λ Package.set-target-commit-meta [package distance breaking?]
+  (set package.git.target.distance distance)
+  (set package.git.target.breaking? breaking?)
   package)
 
 (fn Package.set-latest-commit [package version]
   (set package.git.latest.commit version)
-  package)
-
-(fn Package.track-workflow [package wf]
-  ;; For UI purposes we want to know what wf's are related to a package and
-  ;; know if they're running or waiting. This is a smell but will do for now TODO
-  (tset package :workflows wf true)
-  package)
-
-(fn Package.untrack-workflow [package wf]
-  (tset package :workflows wf nil)
   package)
 
 (fn Package.in-sync? [package]

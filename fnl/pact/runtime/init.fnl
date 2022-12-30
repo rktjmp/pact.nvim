@@ -117,7 +117,6 @@
                  :packages {}}]
     (legacy-check runtime-path)
     (bootstrap-filesystem runtime)
-    (vim.pretty_print runtime)
     runtime))
 
 (set Runtime.Command {})

@@ -109,6 +109,11 @@
       (where-ok? [_ lines _]) (values lines)
       (where-err? [code out err]) (values nil (dump-err code [out err])))))
 
+(λ M.sha-timestamp [repo-root sha]
+  (match-run ["git show --format=%at -s $sha" {:cwd repo-root :sha sha :env const.ENV}]
+    (where-ok? [0 [ts] _]) (values ts)
+    (where-err? [code out err]) (values nil (dump-err code [out err]))))
+
 (fn M.HEAD-sha [repo-root]
   (assert repo-root "must provide repo root")
   ;; TODO handle case where git repo exists but has no commits and so no HEAD
@@ -124,7 +129,7 @@
     (where-err? [code out err]) (values nil (dump-err code [out err]))))
 
 (fn M.update-submodules [repo-path]
-  (match-try ["git submodule update --init --recursive" {:cwd repo-path :env const.ENV}]
+  (match-run ["git submodule update --init --recursive" {:cwd repo-path :env const.ENV}]
     (where-ok? [_ lines _]) (values lines)
     (where-err? [code out err]) (values nil (dump-err code [out err]))))
 
@@ -137,37 +142,28 @@
 ;     (code _ err) (values nil (dump-err code err))
 ;     (nil err) (values nil err)))
 
-; (fn M.log-diff [repo-path old-sha new-sha]
-;   ;; sha abbrevations are not a consistent width between repos, so send back full and
-;   ;; manually trim
-;   (match (await (run "git log --oneline --no-abbrev-commit --decorate $range"
-;                      {:range (fmt "%s..%s" old-sha new-sha)
-;                       :cwd repo-path
-;                       :env const.ENV}))
-;     (where (0 log _) (= 0 (length log))) (values log)
-;     (0 log _) (values log)
-;     (code _ err) (values nil (dump-err code err))
-;     (nil err) (values nil err)))
+(fn M.log-diff [repo-path old-sha new-sha]
+  ;; sha abbrevations are not a consistent width between repos, so send back full and
+  ;; manually trim
+  (match-run ["git log --oneline --no-abbrev-commit --decorate $range"
+              {:range (fmt "%s..%s" old-sha new-sha)
+               :cwd repo-path
+               :env const.ENV}]
+    (where-ok? [_ log _]) (values log)
+    (where-err? [code out err]) (values nil (dump-err code [out err]))))
 
-
-; (fn M.log-breaking [repo-path old-sha new-sha]
-;   ;; sha abbrevations are not a consistent width between repos, so send back full and
-;   ;; manually trim
-;   (match (await (run "git log --oneline --no-abbrev-commit --format=%H --grep=breaking --regexp-ignore-case $range"
-;                      {:range (fmt "%s..%s" old-sha new-sha)
-;                       :cwd repo-path
-;                       :env const.ENV}))
-;     ; (where (0 log _) (= 0 (length log))) (values nil "git log produced no output, are you moving backwards?")
-;     (0 log _) (values log)
-;     (code _ err) (values nil (dump-err code err))
-;     (nil err) (values nil err)))
+(fn M.log-breaking [repo-path old-sha new-sha]
+  (match-run ["git log --oneline --no-abbrev-commit --format=%H --grep=breaking --regexp-ignore-case $range"
+              {:range (fmt "%s..%s" old-sha new-sha)
+               :cwd repo-path
+               :env const.ENV}]
+    (where-ok? [_ log _]) (values log)
+    (where-err? [code out err]) (values nil (dump-err code [out err]))))
 
 (fn M.clone [url repo-path]
   (match-run ["git clone --no-checkout --filter=tree:0 $url $repo-path"
               {: url : repo-path :env const.ENV}]
     (where-ok? [_ lines e]) (do
-                              (vim.pretty_print lines)
-                              (vim.pretty_print e)
                               (values true))
     (where-err? [code o e]) (do
                               (values nil (dump-err code o e)))))
@@ -178,8 +174,6 @@
   (match-run ["git worktree add --no-checkout --detach $worktree-path $sha"
               {: worktree-path : sha :cwd repo-path :env const.ENV}]
     (where-ok? [_ lines e]) (do
-                              (vim.pretty_print lines)
-                              (vim.pretty_print e)
                               (values true))
     (where-err? [code o e]) (do
                               (values nil (dump-err code [o e])))))

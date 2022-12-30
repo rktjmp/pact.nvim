@@ -108,8 +108,31 @@
                  ;; if no checkout exist, no commit is a valid return value
                  (R.ok nil)))))
 
+;; TODO this and breaking are obviously unoptimised
+(λ distance-between [ds-package commit-a commit-b]
+  (task/new #(result-let [{: path} ds-package
+                          commit-a-ts (tonumber (Git.sha-timestamp path commit-a.sha))
+                          commit-b-ts (tonumber (Git.sha-timestamp path commit-b.sha))
+                          [early late] (if (<= commit-a-ts commit-b-ts)
+                                        [commit-a commit-b]
+                                        [commit-b commit-a])
+                          logs (Git.log-diff path early.sha late.sha)]
+               (length logs))))
+
+(λ breaking-between? [ds-package commit-a commit-b]
+  (task/new #(result-let [{: path} ds-package
+                          commit-a-ts (tonumber (Git.sha-timestamp path commit-a.sha))
+                          commit-b-ts (tonumber (Git.sha-timestamp path commit-b.sha))
+                          [early late] (if (<= commit-a-ts commit-b-ts)
+                                        [commit-a commit-b]
+                                        [commit-b commit-a])
+                          breaking-logs (Git.log-breaking path early.sha late.sha)]
+               (<= 1 (length breaking-logs)))))
+
 {: register
  : fetch-commits
  : setup-commit
  : verify-commit
- : commit-at-path}
+ : commit-at-path
+ : distance-between
+ : breaking-between?}

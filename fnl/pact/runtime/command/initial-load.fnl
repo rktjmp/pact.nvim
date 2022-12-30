@@ -33,53 +33,66 @@
                  (E.each #(set $.tasks (+ $.tasks 1)) sibling-packages)
                  (result-let [;; pull out some information
                               {:install {:path install-path} :git {: origin}} (E.hd sibling-packages)
-                              ds-p (-> (Datastore.Git.register datastore canonical-id origin)
-                                       (task/run)
-                                       (task/await))
+                              dsp (-> (Datastore.Git.register datastore canonical-id origin)
+                                      (task/run)
+                                      (task/await))
                               commits (-> (Datastore.Git.fetch-commits datastore canonical-id)
                                           (task/run)
                                           (task/await))
-                              ;; current head is just informational, so dispatch a task and forget about it
-                              _ (task/run #(result-let [installs-to (FS.join-path runtime-prefix install-path)
-                                                        head (-> (Datastore.Git.commit-at-path datastore installs-to)
-                                                                 (task/run)
-                                                                 (task/await))
-                                                        commit (match-try head
-                                                                 {: sha} (E.find #(match? {:sha sha} $) commits)
-                                                                 commit commit
-                                                                 (catch _ nil))]
-                                             (E.each #(Package.set-current-commit $ commit)
-                                                     sibling-packages)
-                                             (R.ok)))
+                              ;; find local HEAD if it exists
+                              installs-to (FS.join-path runtime-prefix install-path)
+                              head (-> (Datastore.Git.commit-at-path datastore installs-to)
+                                       (task/run)
+                                       (task/await))
+                              _ (if head
+                                  (let [c (or (E.find #(match? {:sha head.sha} $) commits) head)]
+                                    (E.each #(Package.set-current-commit $ c)
+                                            sibling-packages)))
+                              ;; Solve constraints
                               constraints (E.map #$.constraint sibling-packages)
                               ;; solver returns a result, but we want to catch and work on it ourselves
-                              _ (match (Solver.solve constraints commits verify-sha)
-                                  ;; sovled case is very easy, we just set the target to the commit
-                                  [:ok commit]
-                                  (E.each #(Package.set-target-commit $ commit) sibling-packages)
-                                  ;; unsolved is more compilicated as we want to show *which* packages failed to solve.
-                                  ;; this means we get back a list of <ok:constraint+commit> and <err:constraint+msg>
-                                  ;; results, and we need to re-pair those constraints with their packages and extract
-                                  ;; the error messages
-                                  [:err mixed]
-                                  (E.each #(match $
-                                             [:ok {: constraint :commits [c]}]
-                                             (->> (E.filter #(Constraint.equal? $.constraint constraint)
-                                                            sibling-packages)
-                                                  (E.each #(-> $
-                                                               (Package.set-target-commit c)
-                                                               (Package.degrade-health "degraded by sibling"))))
-                                             [:err {: constraint : msg}]
-                                             (->> (E.filter #(Constraint.equal? $.constraint constraint)
-                                                            sibling-packages)
-                                                  (E.each #(-> $
-                                                               (Package.fail-health msg)))))
-                                          mixed))
+                              solved (match (Solver.solve constraints commits verify-sha)
+                                       ;; sovled case is very easy, we just set the target to the commit
+                                       [:ok commit]
+                                       (do
+                                         (E.each #(Package.set-target-commit $ commit)
+                                                 sibling-packages)
+                                         (R.ok commit))
+                                       ;; unsolved is more compilicated as we want to show *which* packages failed to solve.
+                                       ;; this means we get back a list of <ok:constraint+commit> and <err:constraint+msg>
+                                       ;; results, and we need to re-pair those constraints with their packages and extract
+                                       ;; the error messages
+                                       [:err mixed]
+                                       (do
+                                         (E.each #(match $
+                                                    [:ok {: constraint :commits [c]}]
+                                                    (->> (E.filter #(Constraint.equal? $.constraint constraint)
+                                                                   sibling-packages)
+                                                         (E.each #(-> $
+                                                                      (Package.set-target-commit c 0 false)
+                                                                      (Package.degrade-health "degraded by sibling"))))
+                                                    [:err {: constraint : msg}]
+                                                    (->> (E.filter #(Constraint.equal? $.constraint constraint)
+                                                                   sibling-packages)
+                                                         (E.each #(-> $
+                                                                      (Package.fail-health msg)))))
+                                                 mixed)
+                                         (R.ok nil)))
                               ;; note the highest version if there is one
                               highest-version-constraint (Constraint.git :version "> 0.0.0")
                               _ (match (Solver.solve [highest-version-constraint] commits verify-sha)
                                   [:ok commit]  (E.each #(Package.set-latest-commit $ commit) sibling-packages)
-                                  [:err _] nil)]
+                                  [:err _] nil)
+                              _ (when (and head solved)
+                                  (->  #(result-let [dist-t (-> (Datastore.Git.distance-between dsp head solved)
+                                                                     (task/run))
+                                                          break-t (-> (Datastore.Git.breaking-between? dsp head solved)
+                                                                      (task/run))
+                                                          (distance breaking?) (task/await dist-t break-t)]
+                                               (E.each #(Package.set-target-commit-meta $ (R.unwrap distance) (R.unwrap breaking?))
+                                                       sibling-packages))
+                                      (task/run) ;; TODO not awaiting here will drop the task because parent is not checked for any siblings before removing it from the list.
+                                      (task/await)))]
                    (R.ok))
                  (E.each #(do
                             (set $.tasks (- $.tasks 1))
