@@ -23,10 +23,6 @@
     ;; by the data store (not as constraints but as commits), then the solver
     ;; can strictly resolve between them. TODO
     ;; It does bleed some of the "what is a constraint" into the other domain.
-    (fn verify-sha [sha]
-      (-> (Datastore.Git.verify-commit datastore canonical-id (Commit.new sha))
-          (task/run)
-          (task/await)))
     ;; returns task & opts as we want to attach the tracer to the sibling packages
     (E.each Package.increment-tasks-waiting sibling-packages)
     [(task/new (fmt :process-package-%s canonical-id)
@@ -38,12 +34,16 @@
                               dsp (-> (Datastore.Git.register datastore canonical-id origin)
                                       (task/run)
                                       (task/await))
-                              commits (-> (Datastore.Git.fetch-commits datastore canonical-id)
+                              verify-sha (fn [sha]
+                                           (-> (Datastore.Git.verify-commit dsp (Commit.new sha))
+                                               (task/run)
+                                               (task/await)))
+                              commits (-> (Datastore.Git.fetch-commits dsp)
                                           (task/run)
                                           (task/await))
                               ;; find local HEAD if it exists
                               installs-to (FS.join-path runtime-prefix install-path)
-                              head (-> (Datastore.Git.commit-at-path datastore installs-to)
+                              head (-> (Datastore.Git.commit-at-path dsp installs-to)
                                        (task/run)
                                        (task/await))
                               _ (if head
@@ -87,12 +87,12 @@
                                   [:err _] nil)
                               _ (when (and head solved)
                                   (->  #(result-let [dist-t (-> (Datastore.Git.distance-between dsp head solved)
-                                                                     (task/run))
-                                                          break-t (-> (Datastore.Git.breaking-between? dsp head solved)
-                                                                      (task/run))
-                                                          (distance breaking?) (task/await dist-t break-t)]
-                                               (E.each #(Package.set-target-commit-meta $ (R.unwrap distance) (R.unwrap breaking?))
-                                                       sibling-packages))
+                                                                (task/run))
+                                                     break-t (-> (Datastore.Git.breaking-between? dsp head solved)
+                                                                 (task/run))
+                                                     (distance breaking?) (task/await dist-t break-t)]
+                                          (E.each #(Package.set-target-commit-meta $ (R.unwrap distance) (R.unwrap breaking?))
+                                                  sibling-packages))
                                       (task/run) ;; TODO not awaiting here will drop the task because parent is not checked for any siblings before removing it from the list.
                                       (task/await)))]
                    (E.each #(set $.ready? true) sibling-packages)

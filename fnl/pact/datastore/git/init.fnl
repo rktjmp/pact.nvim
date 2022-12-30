@@ -42,19 +42,20 @@
                _ (Git.update-refs repo-path)]
     (R.ok :updated-refs)))
 
-(λ get-package [ds canonical-id]
-  (match (. ds :packages canonical-id)
-    (where t (task? t)) (task/await t)
-    p p
-    nil nil))
+(λ package-by-canonical-id [ds canonical-id]
+  ; (match (. ds :packages canonical-id)
+  ;   (where t (task? t)) (task/await t)
+  ;   p p
+  ;   nil nil)
+  (. ds :packages canonical-id))
 
 (λ register [ds canonical-id repo-origin]
   "Add git-repo to datastore registry, creates local stub if needed."
   ;; It's simpler to manage git packages via a local clone, so we always create
   ;; a "stub" clone with no data - just commit information when a package is
   ;; registered.
-  (match (get-package ds canonical-id)
-    p (task/new (fmt :register-%s canonical-id) #p)
+  (match (package-by-canonical-id ds canonical-id)
+    p (error (fmt "attempt to re-register known package %s" canonical-id))
     nil (let [f #(-> (result-let [store-path (FS.join-path ds.path.git canonical-id :HEAD)
                                   _ (clone-if-missing repo-origin store-path)]
                        (R.ok {:kind :git
@@ -62,22 +63,22 @@
                               :path store-path
                               :origin repo-origin}))
                      (tap #(tset ds :packages canonical-id $)))
-              task (task/new f)]
+              task (task/new (fmt :register-%s canonical-id) f)]
           (tset ds :packages canonical-id task)
           task)))
 
-(λ fetch-commits [ds canonical-id]
+(λ fetch-commits [ds-package]
   "Return all 'named' commits for a given registered package"
-  (task/new #(result-let [{: path} (get-package ds canonical-id)
+  (task/new #(result-let [{: path} ds-package
                           _ (validate-git-dir path)
                           _ (update-refs path)
                           _ (trace "git ls-local-refs")
                           refs (Git.ls-local path)]
                (R.ok (Commit.local-refs->commits refs)))))
 
-(λ setup-commit [ds canonical-id commit]
+(λ setup-commit [ds-package commit]
   "Create usable copy of a registered package, at given commit, and return the path to package"
-  (task/new #(result-let [{:path repo-path} (get-package ds canonical-id)
+  (task/new #(result-let [{:path repo-path} ds-package
                           {:short-sha sha} commit
                           _ (validate-git-dir repo-path)
                           worktree-path (string.gsub repo-path "HEAD$" sha)
@@ -89,15 +90,16 @@
                                   (Git.add-worktree repo-path worktree-path sha)))]
                (R.ok worktree-path))))
 
-(λ verify-commit [ds canonical-id commit]
+(λ verify-commit [ds-package commit]
   "Special support for verifing that a commit-sha is valid"
-  (task/new #(result-let [{: path} (get-package ds canonical-id)
+  (task/new #(result-let [{: path} ds-package
                           sha (Git.verify-commit path commit.sha)]
                (R.ok sha))))
 
-(λ commit-at-path [ds path]
+(λ commit-at-path [ds-package]
   "Support for getting current HEAD commit of path"
-  (task/new #(result-let [_ (if (not (FS.absolute-path? path))
+  (task/new #(result-let [{: path} ds-package
+                          _ (if (not (FS.absolute-path? path))
                               (R.err (fmt "repo path must be absolute, got %s" path)))
                           ?sha (match [(FS.dir-exists? path) (FS.git-dir? path)]
                                  [true true] (Git.HEAD-sha path)
@@ -130,6 +132,7 @@
                (<= 1 (length breaking-logs)))))
 
 {: register
+ : package-by-canonical-id
  : fetch-commits
  : setup-commit
  : verify-commit

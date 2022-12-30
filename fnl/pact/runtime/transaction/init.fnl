@@ -43,10 +43,10 @@
 
 (λ use-package [t package commit]
   (result-let [canonical-id package.canonical-id
-               files-path (-> (Datastore.Git.setup-commit t.datastore canonical-id commit)
+               dsp (Datastore.Git.package-by-canonical-id t.datastore canonical-id)
+               files-path (-> (Datastore.Git.setup-commit dsp commit)
                               (task/run)
                               (task/await))
-               _ (vim.pretty_print files-path)
                link-path (FS.join-path t.path.root package.install.path)
                _ (FS.symlink files-path link-path)]
     (R.ok)))
