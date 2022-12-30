@@ -13,15 +13,16 @@
      {: spawn
       : fs_open : fs_close
       : new_pipe : pipe_open
-      : close : read_start} vim.loop
+      : close : read_start
+      :is_closing closing?} vim.loop
      {:format fmt} string)
 
-(fn into-table [t]
+(fn into-table [pipe t]
   (fn [err data]
-    (when err
-      (error err))
-    (when data
-      (table.insert t data))))
+    (match [err data]
+      [any _] (error err)
+      [_ nil] (close pipe)
+      [_ data] (table.insert t data))))
 
 (fn stream->lines [bytes]
   (E.map #$1 #(string.gmatch (table.concat bytes) "[^\r\n]+")))
@@ -38,11 +39,19 @@
          (spawn cmd {: args : cwd : env : stdio}
                 (fn [code sig]
                   (close process-h)
-                  (close stdout)
-                  (close stderr)
-                  (on-exit code
-                           (stream->lines out-bytes)
-                           (stream->lines err-bytes)))))
+                  ;; It's possible to close the read handlers before all data
+                  ;; is read. So we do a little check to collect everything.
+                  ;; This is cycle-wasteful but generally there should not be
+                  ;; much time between the process ending and the read closing.
+                  (fn read-until-closed []
+                    (if (and (closing? stdout) (closing? stderr))
+                      (do
+                        (on-exit code
+                                 (stream->lines out-bytes)
+                                 (stream->lines err-bytes)))
+                      (do
+                        (vim.defer_fn read-until-closed 10))))
+                  (vim.defer_fn read-until-closed 10))))
     (match process-h
       ;; pid is actually an error string in some cases, if the command isn't
       ;; found for example.
@@ -53,8 +62,8 @@
       ;; otherwise assume the process handle is fine and act as normal.
       _
       (do
-        (read_start stdout (into-table out-bytes))
-        (read_start stderr (into-table err-bytes))
+        (read_start stdout (into-table stdout out-bytes))
+        (read_start stderr (into-table stderr err-bytes))
         (values pid)))))
 
 (fn string->spawn-args [cmd-str opts]
