@@ -90,7 +90,7 @@
                                              #(tasks-iter scheduler.tasks))
               (_index {: traced}) (if task-context.traced
                                     (values 0 task-context)
-                                    (E.find #(match? {: traced} $)
+                                    (E.find #(match? {: traced} $2)
                                             #(bward parents)))]
     (coroutine.yield [traced message])
     (else
