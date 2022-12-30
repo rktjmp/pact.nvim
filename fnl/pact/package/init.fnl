@@ -25,7 +25,6 @@
 
 (local Package {:Health Health})
 
-
 (fn Package.userspec->package [spec]
   ;; Warning: some of these properties are place holders and should be
   ;; filled by another process.
@@ -37,14 +36,16 @@
          :uid (gen-id :plugin-package) ;; globally unique between all packages, even those
                                        ;; with the same c-id
          :canonical-id spec.canonical-id ;; shared between packages with same origin
-         :name spec.name
-         :source spec.source
+         :ready? false ;; -> true after all other data is collected (target, current, etc)
+         :name spec.name ;; generally visible name
+         :source spec.source ;; 
          :constraint spec.constraint
          :depended-by nil
          :depends-on (or spec.dependencies []) ;; placeholder
          :events []
          :workflows []
-         :tasks 0
+         :tasks {:waiting 0
+                 :active 0}
          :action :hold
          :health (Health.healthy)
          ;; all paths are kept relative as they will be different for every
@@ -64,6 +65,22 @@
                                   (match (. Package k)
                                     (where f (function? f)) f
                                     _ nil))}))))
+
+(fn Package.increment-tasks-waiting [package]
+  (set package.tasks.waiting (+ package.tasks.waiting 1))
+  package)
+
+(fn Package.decrement-tasks-waiting [package]
+  (set package.tasks.waiting (math.max 0 (- package.tasks.waiting 1)))
+  package)
+
+(fn Package.increment-tasks-active [package]
+  (set package.tasks.active (+ package.tasks.active 1))
+  package)
+
+(fn Package.decrement-tasks-active [package]
+  (set package.tasks.active (math.max 0 (- package.tasks.active 1)))
+  package)
 
 (fn Package.add-event [package workflow event]
   (Log.log [workflow.id event])

@@ -20,7 +20,7 @@
 (fn rate-limited-inc [value]
   ;; only increment n at a fixed fps
   ;; uv.now increments only at the event loop start, but this is ok for us.
-  (let [every-n-ms (/ 1000 6)
+  (let [every-n-ms (/ 1000 30)
         now (vim.loop.now)]
     (if (< every-n-ms (- now last-time))
       (do
@@ -30,10 +30,8 @@
 
 (fn workflow-active-symbol [progress]
   (let [symbols [:◐ :◓ :◑ :◒]
-        symbols [:○
-                 :◯
-                 :◉]
-        symbols [:⁐ :‿ :⁀]
+        ; symbols [:○ :◯ :◉]
+        ; symbols [:⁐ :‿ :⁀]
         ; symbols [:⍐ :⍗]
         ; symbols [:∫ :∬ :∭]
         ]
@@ -68,6 +66,7 @@
                               :health (Package.Health.failing "")
                               :indent (length $2)}
         package-data #{:uid $1.uid
+                       :__data $1
                        :name $1.name
                        :health $1.health
                        :git {:current {:commit (?. $ :git :current :commit)}
@@ -76,16 +75,15 @@
                                       :breaking? (?. $ :git :target :breaking?)
                                       :direction (?. $ :git :target :direction)}
                              :latest {:commit (?. $ :git :latest :commit)}}
-                       :working? (< 0 $1.tasks)
-                       ;(E.any? #$1.timer $1.workflows)
-                       :waiting? false;(E.any? #$1 $1.workflows)
+                       :working? (< 0 $.tasks.active)
+                       :waiting? (< 0 $.tasks.waiting)
                        :constraint $1.constraint
                        :last-event (do
                                (-> (inspect (?. $ :events 1 2) true)
                                    (string.gmatch "([^\n]+)")
                                    (E.map $1)
                                    (table.concat " ")))
-                       :distance (length (or (?. $ :git :target :logs) []))
+                       :distance (?. $ :git :target :distance)
                        :indent (length $2)
                        :action $.action
                        :events $1.events
@@ -126,6 +124,7 @@
                                 count (match (?. package.git.target.logs)
                                         nil ""
                                         l (length l))
+                                count package.distance
                                 name (match (Constraint.type constraint)
                                        :version (-> (E.map #$
                                                            (or (?. package.git.target :commit :versions) []))
@@ -153,7 +152,11 @@
           constraint-col (mk-col
                            (mk-chunk (tostring constraint)))
           action-col (mk-col
-                       (mk-chunk package.action))
+                       (mk-chunk package.action)
+                       (mk-chunk (.. (tostring package.__data.git.target.distance)
+                                   (tostring package.git.current.commit)
+                                     " "
+                                     (tostring package.git.target.commit))))
           latest-col (mk-col
                        (match (?. package :git :latest :commit)
                          c (mk-chunk (fmt "(%s)" (table.concat c.versions ",")))
@@ -166,7 +169,7 @@
                   latest-col)
        :meta {:uid package.uid
               :workflow (match [package.working? package.waiting?]
-                          [true _] {:text (workflow-active-symbol (vim.loop.now))
+                          [true _] {:text (workflow-active-symbol spinner-frame)
                                     :highlight :DiagnosticInfo}
                           [_ true] {:text (workflow-waiting-symbol (vim.loop.gettimeofday))
                                     :highlight :Comment})
@@ -360,6 +363,7 @@
   ;; that an extmark should be placed to map between rows and packages in
   ;; keybindings.
   (use Runtime :pact.runtime)
+  (set spinner-frame (rate-limited-inc spinner-frame))
   (let [;; split packages into sections
         {: waiting
          : in-sync

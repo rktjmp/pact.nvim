@@ -28,9 +28,11 @@
           (task/run)
           (task/await)))
     ;; returns task & opts as we want to attach the tracer to the sibling packages
+    (E.each Package.increment-tasks-waiting sibling-packages)
     [(task/new (fmt :process-package-%s canonical-id)
                (fn []
-                 (E.each #(set $.tasks (+ $.tasks 1)) sibling-packages)
+                 (E.each Package.decrement-tasks-waiting sibling-packages)
+                 (E.each Package.increment-tasks-active sibling-packages)
                  (result-let [;; pull out some information
                               {:install {:path install-path} :git {: origin}} (E.hd sibling-packages)
                               dsp (-> (Datastore.Git.register datastore canonical-id origin)
@@ -93,12 +95,9 @@
                                                        sibling-packages))
                                       (task/run) ;; TODO not awaiting here will drop the task because parent is not checked for any siblings before removing it from the list.
                                       (task/await)))]
-                   (R.ok))
-                 (E.each #(do
-                            (set $.tasks (- $.tasks 1))
-                            (PubSub.broadcast $ :changed))
-                         sibling-packages)
-                 (R.ok)))
+                   (E.each #(set $.ready? true) sibling-packages)
+                   (E.each Package.decrement-tasks-active sibling-packages)
+                   (R.ok))))
      {:traced (fn [msg]
                 (E.each #(-> $
                              (Package.add-event :some-task msg)
