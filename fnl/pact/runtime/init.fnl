@@ -228,12 +228,34 @@
                                                canonical-sets)
                           ;; TODO we await each task separately until await can handle a seq of tasks
                           ;;      and return a seq of values.
-                          results (E.map #(task/await $) package-tasks)
-                          ;; TODO check results of each
-                          ;; if ok do afters
-                          ;; then save transaction
-                          _ (Transaction.commit t)]
-               (R.ok))
+                          {true ok-results false err-results} (->> (E.map #(task/await $) package-tasks)
+                                                                   (E.group-by R.ok?))]
+               (if (not err-results)
+                 (do
+                   ;; run afters if they exist, these may be defined multiple times,
+                   ;; so we need to collate them somehow TODO (strings can be compared but functions might just be a pick-one)
+                   (Transaction.commit t)
+                   (vim.cmd "packloadall!")
+                   (vim.cmd "silent! helptags ALL")
+                   ;; run afters for any newly aligned packages
+                   (->> (E.map #(if (match? {:action :align} $) $)
+                               #(Package.iter runtime.packages))
+                        (E.each (fn [package]
+                                  (let [pre (if package.opt?
+                                              #(vim.cmd (fmt "packadd! %s" package.package-name))
+                                              #nil)
+                                        f (match package.after
+                                            (where f (function? f)) f
+                                            (where s (string? s)) #(vim.cmd s)
+                                            other #(error (fmt "`after` must be function or string, got %s" (type other)))
+                                            nil #nil)]
+                                    (match (pcall (fn [] (pre) (f)))
+                                      (true _) nil
+                                      (false err) (vim.notify (fmt "%s.after encountered an error: %s" package.name err)
+                                                              vim.log.levels.ERROR)))))))
+                 (do
+                   (E.each #(vim.notify (tostring $) vim.log.levels.error) err-results)
+                   (R.err "not-committed"))))
             {:traced print}))
 
 (fn Runtime.dispatch [runtime command]
