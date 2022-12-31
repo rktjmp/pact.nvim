@@ -26,61 +26,60 @@
   (set task-context.tasks (E.reject #(= $.id child-context.id)
                                        task-context.tasks)))
 
-(fn make-timer-cb [scheduler]
+(fn tick [scheduler]
   ;; walk tasks and collect the first N deepest we find.
-  #(let [runnable (E.reduce (fn [acc task-context]
-                              (if (E.empty? task-context.tasks)
-                                (table.insert acc task-context))
-                              (if (= (length acc) scheduler.concurrency-limit)
-                                (E.reduced acc)
-                                acc))
-                            [] #(tasks-iter scheduler.tasks))
-         ;; run tasks we found
-         {:exec task/exec} (require :pact.task)
-         results (E.map (fn [task-context]
-                          (let [_ (set scheduler.current-task task-context)
-                                (action value) (task/exec task-context.task)
-                                _ (set scheduler.current-task nil)]
-                            [task-context action value]))
-                        runnable)
-         ;; remove any finished tasks
-         _ (E.each (fn [[task-context action _value]]
-                     (match action
-                       :halt (remove-child-task (or task-context.parent scheduler)
-                                                task-context)
-                       :crash (remove-child-task (or task-context.parent scheduler)
-                                                 task-context)))
-                   results)
-         ;; handle any results
-         _ (E.each (fn [[task-context action value]]
-                     (match [action value]
-                       [:trace [f msg]]
-                       (match (pcall f msg)
-                         (false err) (vim.schedule
-                                       #(vim.notify (fmt "Task (%s) trace handler crashed: %s"
-                                                         task-context.task.id
-                                                         err)
-                                                    vim.log.levels.ERROR)))
-                       [:crash err]
-                       (let [msg (debug.traceback task-context.task.thread
-                                                  (fmt "Task (%s) crashed: %s"
-                                                       task-context.task.id
-                                                       (tostring err)))]
-                         (Log.log msg) ;; TODO consistent logging
-                         (vim.schedule #(vim.notify  msg vim.log.levels.ERROR)))
-                       (where [:halt err] (R.err? err))
-                       (vim.schedule
-                         #(vim.notify (debug.traceback task-context.task.thread
-                                                       (fmt "Task (%s) result was R.err: %s"
-                                                            task-context.task.id
-                                                            (tostring err)))
-                                      vim.log.levels.WARN))))
-                   results)]
-     (PubSub.broadcast scheduler :tick)
-     (when (= 0 (length scheduler.tasks))
-       (uv.timer_stop scheduler.timer-handle)
-       (uv.close scheduler.timer-handle)
-       (tset scheduler :timer-handle nil))))
+  (let [runnable (E.reduce (fn [acc task-context]
+                             (if (E.empty? task-context.tasks)
+                               (table.insert acc task-context))
+                             (if (= (length acc) scheduler.concurrency-limit)
+                               (E.reduced acc)
+                               acc))
+                           [] #(tasks-iter scheduler.tasks))
+        ;; run tasks we found
+        {:exec task/exec} (require :pact.task)
+        results (E.map (fn [task-context]
+                         (let [_ (set scheduler.current-task task-context)
+                               (action value) (task/exec task-context.task)
+                               _ (set scheduler.current-task nil)]
+                           [task-context action value]))
+                       runnable)
+        ;; remove any finished tasks
+        _ (E.each (fn [[task-context action _value]]
+                    (match action
+                      :halt (remove-child-task (or task-context.parent scheduler)
+                                               task-context)
+                      :crash (remove-child-task (or task-context.parent scheduler)
+                                                task-context)))
+                  results)
+        ;; handle any results
+        _ (E.each (fn [[task-context action value]]
+                    (match [action value]
+                      [:trace [f msg]]
+                      (match (pcall f msg)
+                        (false err) (vim.schedule
+                                      #(vim.notify (fmt "Task (%s) trace handler crashed: %s"
+                                                        task-context.task.id
+                                                        err)
+                                                   vim.log.levels.ERROR)))
+                      [:crash err]
+                      (let [msg (debug.traceback task-context.task.thread
+                                                 (fmt "Task (%s) crashed: %s"
+                                                      task-context.task.id
+                                                      (tostring err)))]
+                        (Log.log msg) ;; TODO consistent logging
+                        (vim.schedule #(vim.notify  msg vim.log.levels.ERROR)))
+                      (where [:halt err] (R.err? err))
+                      (vim.schedule
+                        #(vim.notify (debug.traceback task-context.task.thread
+                                                      (fmt "Task (%s) result was R.err: %s"
+                                                           task-context.task.id
+                                                           (tostring err)))
+                                     vim.log.levels.WARN))))
+                  results)]
+    (PubSub.broadcast scheduler :tick)
+    (if (< 0 (length scheduler.tasks))
+      (vim.defer_fn #(tick scheduler) scheduler.timer-rate-per-ms)
+      (set scheduler.scheduled? false))))
 
 (fn trace [scheduler thread message]
   ;; find task owning thread, then search up to the first found message handler
@@ -106,10 +105,9 @@
                       :tasks []
                       :traced (?. ?opts :traced)}]
     (add-child-task (or scheduler.current-task scheduler) task-context)
-    (when (= nil scheduler.timer-handle)
-      (let [h (uv.new_timer)]
-        (tset scheduler :timer-handle h)
-        (uv.timer_start h 0 scheduler.timer-rate-per-ms (make-timer-cb scheduler))))
+    (when (not scheduler.scheduled?)
+      (set scheduler.scheduled? true)
+      (vim.defer_fn #(tick scheduler) scheduler.timer-rate-per-ms))
     task))
 
 (fn shutdown [scheduler]
@@ -125,7 +123,7 @@
   {:id (gen-id :scheduler)
    :concurrency-limit (or (?. opts :concurrency-limit) 5)
    :tasks []
-   :timer-handle nil
+   :scheduled? false
    :timer-rate-per-ms (/ 1000 60)})
 
 (local default-scheduler (new))
