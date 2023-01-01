@@ -194,7 +194,27 @@
             #(Package.iter package.depends-on)))
   (propagate-down package))
 
-(fn Runtime.Command.discard [package])
+(λ Runtime.Command.discard-package-tree [runtime package]
+  "Hold package at current state, this may mean keeping a package at the
+  current checkout, or not cloning the package at all if it does not exist yet."
+  ;; set the direct package to discard
+  (if package.git.current.commit
+    (set package.action :discard)
+    (set package.action :discard))
+
+  (fn propagate-between [package]
+    ;; only set sibling package to discard if its parent is already held
+    ;; or it has no parent, otherwise rely on discarding of *its* parent
+    ;; to propagate down.
+    (E.each #(if (and (= $1.canonical-id package.canonical-id)
+                      (or (= $1.depended-by nil)
+                          (= $1.depended-by.action :discard)))
+               (set $1.action :discard))
+            #(Package.iter runtime.packages)))
+  (fn propagate-down [package]
+    (E.each propagate-between
+            #(Package.iter package.depends-on)))
+  (propagate-down package))
 
 (fn Runtime.Command.run-transaction [runtime]
   (local {:new task/new :run task/run :await task/await : trace} (require :pact.task))

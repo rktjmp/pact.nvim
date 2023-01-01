@@ -61,7 +61,15 @@
     package (do
               (-> (Runtime.Command.hold-package-tree ui.runtime package)
                   (R.map-err #(vim.notify $ vim.log.levels.ERROR)))
-              (print package.canonical-id package.action)
+              (schedule-redraw ui))
+    nil (vim.notify "No package under cursor"
+                    vim.log.levels.INFO)))
+
+(fn exec-keymap-d [ui]
+  (match (cursor->package ui)
+    package (do
+              (-> (Runtime.Command.discard-package-tree ui.runtime package)
+                  (R.map-err #(vim.notify $ vim.log.levels.ERROR)))
               (schedule-redraw ui))
     nil (vim.notify "No package under cursor"
                     vim.log.levels.INFO)))
@@ -81,6 +89,9 @@
       (vim.notify "May only view diff of staged or unstaged sync-able plugins"))))
 
 (fn prepare-interface [ui]
+  (fn map [buf mode key cb]
+    (api.nvim_buf_set_keymap buf mode key "" {:callback cb
+                                             :nowait true}))
   (doto ui.win
         (api.nvim_win_set_option :wrap false))
   (doto ui.buf
@@ -91,11 +102,12 @@
         (api.nvim_buf_set_option :swapfile false)
         (api.nvim_buf_set_option :ft :pact))
   (doto ui.buf
-        (api.nvim_buf_set_keymap :n := "" {:callback #(exec-keymap-= ui)})
-        (api.nvim_buf_set_keymap :n :<cr> "" {:callback #(exec-keymap-<cr> ui)})
-        (api.nvim_buf_set_keymap :n :cc "" {:callback #(exec-keymap-cc ui)})
-        (api.nvim_buf_set_keymap :n :s "" {:callback #(exec-keymap-s ui)})
-        (api.nvim_buf_set_keymap :n :u "" {:callback #(exec-keymap-u ui)}))
+        (map :n := #(exec-keymap-= ui))
+        (map :n :<cr> #(exec-keymap-<cr> ui))
+        (map :n :cc #(exec-keymap-cc ui))
+        (map :n :s #(exec-keymap-s ui))
+        (map :n :u #(exec-keymap-u ui))
+        (map :n :d #(exec-keymap-d ui)))
   ui)
 
 (fn M.attach [win buf proxies opts]
