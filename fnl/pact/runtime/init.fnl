@@ -150,9 +150,9 @@
       true))
 
   (fn propagate-between [package]
-    (E.each #(when (= $1.canonical-id package.canonical-id)
-               (set $1.action :align))
-            #(Package.iter runtime.packages)))
+    (->> (Package.find-canonical-set package runtime.packages)
+         (E.each #(if (not (Package.aligned? $))
+                    (set $.action :align)))))
 
   (fn propagate [package]
     (propagate-between package)
@@ -167,53 +167,49 @@
       (R.ok))
     (R.err "unable to stage tree, some packages unstagable")))
 
-(λ Runtime.Command.hold-package-tree [runtime package]
-  "Hold package at current state, this may mean keeping a package at the
-  current checkout, or not cloning the package at all if it does not exist yet."
-  ;; set the direct package to hold
-  (if package.git.current.commit
-    (set package.action :retain)
-    (set package.action :discard))
-
-  ;; TODO need to decide what propagation rules are here
-
-  ;; now propagate down the tree, and between canonical siblings, but only if
-  ;; that siblings parent is also held.
-
-  (fn propagate-between [package]
-    ;; only set sibling package to hold if its parent is already held
-    ;; or it has no parent, otherwise rely on holding of *its* parent
-    ;; to propagate down.
-    (E.each #(if (and (= $1.canonical-id package.canonical-id)
-                      (or (= $1.depended-by nil)
-                          (= $1.depended-by.action :discard)))
-               (set $1.action :discard))
-            #(Package.iter runtime.packages)))
-  (fn propagate-down [package]
+(λ Runtime.Command.unstage-package-tree [runtime package]
+  "Keep package at current state, whatever that may be. Existing packages
+  should not be updated, new packages should not be installed, orphans should
+  remain."
+  (let [new-action #(if (Package.installed? $) :retain :discard)
+        propagate-between (fn [package]
+                            ;; If the parent of a package is also unstaged, we
+                            ;; should unstage otherwise we should just keep the
+                            ;; same action.
+                            (let [canonical-set (Package.find-canonical-set package runtime.packages)]
+                              (if (E.all? #(match (?. $ :depended-by :action)
+                                             (where (or nil :discard :retain)) true
+                                             _ false)
+                                          canonical-set)
+                                (E.each #(set $.action (new-action $))
+                                        canonical-set))))]
+    (E.each #(set $.action (new-action $))
+            (Package.find-canonical-set package runtime.packages))
     (E.each propagate-between
-            #(Package.iter package.depends-on)))
-  (propagate-down package))
+            #(Package.iter package.depends-on))
+    (R.ok)))
 
 (λ Runtime.Command.discard-package-tree [runtime package]
   "Hold package at current state, this may mean keeping a package at the
   current checkout, or not cloning the package at all if it does not exist yet."
-  ;; set the direct package to discard
-  (if package.git.current.commit
-    (set package.action :discard)
-    (set package.action :discard))
-
   (fn propagate-between [package]
     ;; only set sibling package to discard if its parent is already held
     ;; or it has no parent, otherwise rely on discarding of *its* parent
     ;; to propagate down.
-    (E.each #(if (and (= $1.canonical-id package.canonical-id)
-                      (or (= $1.depended-by nil)
-                          (= $1.depended-by.action :discard)))
-               (set $1.action :discard))
+    (E.each #(if (and (= $.canonical-id package.canonical-id)
+                      (or (= $.depended-by nil)
+                          (= $.depended-by.action :discard)))
+               (set $.action :discard))
             #(Package.iter runtime.packages)))
+
   (fn propagate-down [package]
     (E.each propagate-between
             #(Package.iter package.depends-on)))
+
+  ;; set the direct package to discard
+  (if (Package.installed? package)
+    (set package.action :discard)
+    (set package.action :discard))
   (propagate-down package))
 
 (fn Runtime.Command.run-transaction [runtime]

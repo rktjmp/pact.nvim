@@ -221,7 +221,8 @@
           constraint-col (mk-col
                            (mk-chunk (tostring constraint)))
           action-col (mk-col
-                       (nice-action package))
+                       (nice-action package)
+                       (mk-chunk (fmt " (%s)" package.action)))
           latest-col (mk-col
                        (match [(?. package :git :latest :commit)
                                (?. package :git :target :commit)]

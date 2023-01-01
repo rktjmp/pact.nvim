@@ -59,7 +59,7 @@
 (fn exec-keymap-u [ui]
   (match (cursor->package ui)
     package (do
-              (-> (Runtime.Command.hold-package-tree ui.runtime package)
+              (-> (Runtime.Command.unstage-package-tree ui.runtime package)
                   (R.map-err #(vim.notify $ vim.log.levels.ERROR)))
               (schedule-redraw ui))
     nil (vim.notify "No package under cursor"

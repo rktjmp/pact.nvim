@@ -217,4 +217,8 @@
                    [false _] (error (E.unpack r 2)))))]
     (values iter (coroutine.create f) 0)))
 
+(fn Package.find-canonical-set [package packages]
+  (E.map #(if (= package.canonical-id $.canonical-id) $)
+         #(Package.iter packages)))
+
 (values Package)
