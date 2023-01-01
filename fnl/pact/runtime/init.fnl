@@ -228,24 +228,23 @@
                                     #(Package.iter runtime.packages))
                           package-tasks (E.map (fn [canonical-set canonical-id]
                                                  (let [[p] canonical-set
-                                                       f (match p.action
-                                                           :discard #(Transaction.discard-package t p)
-                                                           :retain #(Transaction.retain-package t p)
-                                                           :align #(Transaction.align-package t p)
-                                                           _ #(R.err [:unhandled p.action]))
                                                        task (task/new (fn []
                                                                         (E.each (fn [p]
                                                                                   (set p.transaction :start)
                                                                                   (Package.decrement-tasks-waiting p)
                                                                                   (Package.increment-tasks-active p))
                                                                                 canonical-set)
-                                                                        (f)
+                                                                        (local result (match p.action
+                                                                                        :discard (Transaction.discard-package t p)
+                                                                                        :retain (Transaction.retain-package t p)
+                                                                                        :align (Transaction.align-package t p)
+                                                                                        _ (R.err [:unhandled p.action])))
                                                                         (E.each (fn [p]
                                                                                   (if (not p.after)
                                                                                     (set p.transaction :done))
                                                                                   (Package.decrement-tasks-active p))
                                                                                 canonical-set)
-                                                                        (R.ok)))]
+                                                                        result))]
                                                    (set task.queued-at (vim.loop.hrtime))
                                                    (task/run task {:traced (fn [msg]
                                                                              (E.each #(-> p
