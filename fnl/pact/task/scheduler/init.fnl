@@ -124,7 +124,7 @@
    :concurrency-limit (or (?. opts :concurrency-limit) 5)
    :tasks []
    :scheduled? false
-   :timer-rate-per-ms (/ 1000 60)})
+   :timer-rate-per-ms (/ 1000 30)})
 
 (local default-scheduler (new))
 
