@@ -47,6 +47,7 @@
   (local opts (or opts {}))
   (doto opts
     (tset :concurrency-limit (or opts.concurrency-limit opts.concurrency_limit)))
+  (tset package :preload :pact.config #opts)
   (let [e-str "must provide both win and buf or neither"
         (win buf) (match opts
                     {: buf :win nil} (error e-str)
