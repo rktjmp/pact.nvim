@@ -88,9 +88,10 @@ Matches are checked in the order given, so higher specificity patterns should
 be first.
 
 Arguments matching follow `(match)` semantics *except `& rest` is unsupported
-and `...` is*. Arguments may be symbols or values. Destructuring is supported.
-Arguments may not be nil unless defined as nil-able by prefixing with `?` or
-with the explicit value (eg: `[a b nil]`).
+and `...` is* - this aligns closer to regular function arguments.
+Arguments may be symbols or values. Destructuring is supported. Arguments may
+not be nil unless defined as nil-able by prefixing with `?` or with the
+explicit value (eg: `[a b nil]`).
 
 As with `(match)`, values in patterns may match previously defined in-scope
 symbols. This is explicity opt-in for [`fn*`](#fn), and symbols should be prefixed with
@@ -100,6 +101,11 @@ A default "match all" handler can be defined with `(where _)`, the handler
 will receive `...` as an argument.
 
 See also [`fn+`](#fn-1) to add additional patterns to an existing function.
+
+Each call to `fn*` creates 4 local variables (3 if the function is assigned to
+a field of an existing table). The function bodies specified with `fn*` do
+not allocate additional variables. Lua has a limit of 200 local variables, you
+can create new scopes with `(do)`.
 
 ```
 (local var 10)
@@ -139,7 +145,7 @@ See also [`fn+`](#fn-1) to add additional patterns to an existing function.
   ;; anything else that does not match will call this
   (where _)
   (print :no-match ...))
-  ```
+```
 
 ## `fn+`
 Function signature:
@@ -164,6 +170,10 @@ Attach new function body to `name`. `name` must have been defined via [`fn*`](#f
   ```
 
   See also [`fn*`](#fn).
+
+  Each call to `fn+` creates a local variable (used by fennel to assign the
+  function to the dispatcher), which may impact large modules. Lua has a limit
+  of 200 local variables, you can create new scopes with `(do)`.
 
 
 <!-- Generated with Fenneldoc v1.0.0

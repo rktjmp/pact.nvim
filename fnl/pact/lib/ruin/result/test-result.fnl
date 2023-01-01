@@ -62,8 +62,8 @@
 (describe "result-let"
   (it "handles all success"
     (let [val (m.result-let [x (values 10)
-                      y (values 99)]
-                     (+ x y))]
+                             y (values 99)]
+                            (+ x y))]
       (must equal true (r.ok? val))
       (must equal (+ 10 99) (r.unwrap val)))
     (let [val (m.result-let [x (values 10 :ignored)
@@ -117,6 +117,14 @@
     [no (r.map o #(* 2 $1))]
     (must match 100 (r.unwrap o))
     (must match 200 (r.unwrap no)))
+  (it "maps over an ok<nil> value"
+    [o-nil (r.ok nil)
+     no (r.map o-nil #:was-nil)]
+    (must match :was-nil (r.unwrap no)))
+  (it "maps over an ok<> value"
+    [o-nothing (r.ok)
+     no (r.map o-nothing #:was-nothing)]
+    (must match :was-nothing (r.unwrap no)))
   (it "does not map over an err value by default"
     [ne (r.map e #(* 2 $1))]
     (must match :whoops (r.unwrap ne)))
@@ -134,3 +142,31 @@
     (must match :now-error (r.unwrap ne))
     (must equal true (r.ok? no))
     (must match :now-ok (r.unwrap no))))
+
+(describe "join"
+  (it "joins two ok with no value, returns ok"
+    (must match [:ok nil] (r.join (r.ok) (r.ok))))
+
+  (it "joins two ok with values, returns ok"
+    (must match [:ok 1 2 nil] (r.join (r.ok 1) (r.ok 2))))
+
+  (it "joins two ok with values, returns ok"
+    (must match [:ok 1 [11 nil] 2 22 nil]
+          (r.join (r.ok 1 [11]) (r.ok 2 22))))
+
+  (it "joins two ok with some value, returns ok"
+    (must match [:ok :all-good] (r.join (r.ok) (r.ok :all-good)))
+    (must match [:ok :all-good] (r.join (r.ok :all-good) (r.ok))))
+
+  (it "joins two ok with nil and some value, returns ok"
+    (must match [:ok nil :all-good] (r.join (r.ok nil) (r.ok :all-good)))
+    (must match [:ok :all-good nil] (r.join (r.ok :all-good) (r.ok nil))))
+
+  (it "keeps joining values"
+    (must match [:ok 1 2 3 4 nil] (r.join (r.join
+                                            (r.join (r.ok 1)
+                                                    (r.ok 2))
+                                            (r.ok 3))
+                                          (r.ok 4))))
+  (it "joins two err with values, returns err"
+    (must match [:err 1 2] (r.join (r.err 1) (r.err 2)))))

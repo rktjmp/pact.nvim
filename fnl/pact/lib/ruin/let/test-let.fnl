@@ -20,11 +20,11 @@
                  (+ x y)))
     (must match 20 one)
     (local two (match-let [str "10 10"
-                         pat "(%d+) (%d+)"
-                         (a b) (string.match str pat)
-                         x (tonumber a)
-                         y (tonumber b)
-                         (where val (and (= 10 x y))) true]
+                           pat "(%d+) (%d+)"
+                           (a b) (string.match str pat)
+                           x (tonumber a)
+                           y (tonumber b)
+                           (where val (and (= 10 x y))) true]
                val))
     (must match true two))
 
@@ -58,6 +58,11 @@
                  (values 10)
                  (else  :table :bad-type)))
     (must match :bad-type one))
+
+  (it "returns nil err on match fail if that is the value"
+      (must match (nil "error")
+            (match-let [true (values nil "error")]
+                       true)))
 
   (it "returns all values"
     (must match (nil "fail")
@@ -136,6 +141,13 @@
     ))
 
 (describe "if-let"
+  (it "supports multiple bind values"
+      (must match [:hello :bye]
+            (if-let [(a b c) (values :hello :bye :xyz)]
+              [a b]))
+      (must match [:hello :bye]
+            (if-let [(nil b c) (values nil :hello :bye :xyz)]
+              [b c])))
   (it "works"
     (must match [:hello :bye]
           (if-let [a :hello

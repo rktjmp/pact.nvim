@@ -51,15 +51,20 @@ Ex,
                               :value (unpack arguments)}}}))
 
 (fn M.join [r1 r2]
+  ;; TODO docs
   (assert (and (M.result? r1) (M.result? r2))
-          (.. "result#join argument was not a result type" (type-of r1) (type-of r2)))
+          (string.format "result#join argument was not a result type (join %s %s)"
+                         (type-of r1)
+                         (type-of r2)))
   (fn package [how a b]
     ;; act carefully so we don't drop any sparse nils
     (let [a (enum.pack (M.unwrap a))
-          b (enum.pack (M.unwrap b))]
-      (-> [(enum.unpack a 1 a.n)]
-          (enum.append$ (enum.unpack b 1 b.n))
-          (#(how (enum.unpack $1 1 (+ a.n b.n)))))))
+          b (enum.pack (M.unwrap b))
+          _ (when (< 0 b.n)
+              (for [i 1 b.n]
+                (tset a (+ a.n i) (. b i)))
+              (set a.n (+ a.n b.n)))]
+      (how (enum.unpack a 1 a.n))))
   (match [(M.ok? r1) (M.ok? r2)]
       ;; ok + ok -> ok-ok
       [true true] (package M.ok r1 r2)

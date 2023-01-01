@@ -33,7 +33,7 @@ These include:
   - The functions `nil?`, `not-nil?`, `seq?`, `assoc?`, `table?`, `number?`, `boolean?`,
   `string?`, `function?`, `userdata?`, `thread?`
 - use
-  The macro `use`
+  - The macro `use`
 
 ## modules
 

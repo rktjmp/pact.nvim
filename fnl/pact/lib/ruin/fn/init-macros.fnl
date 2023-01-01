@@ -327,9 +327,10 @@ Matches are checked in the order given, so higher specificity patterns should
 be first.
 
 Arguments matching follow `(match)` semantics *except `& rest` is unsupported
-and `...` is*. Arguments may be symbols or values. Destructuring is supported.
-Arguments may not be nil unless defined as nil-able by prefixing with `?` or
-with the explicit value (eg: `[a b nil]`).
+and `...` is* - this aligns closer to regular function arguments.
+Arguments may be symbols or values. Destructuring is supported. Arguments may
+not be nil unless defined as nil-able by prefixing with `?` or with the
+explicit value (eg: `[a b nil]`).
 
 As with `(match)`, values in patterns may match previously defined in-scope
 symbols. This is explicity opt-in for `fn*', and symbols should be prefixed with
@@ -464,9 +465,11 @@ can create new scopes with `(do)`.
                                            (true {:view view#}) view#
                                            (false _#) (or _G.vim.inspect print))
                                    msg# (string.format (.. "Multi-arity function %s had no matching head "
-                                                           "or default defined.\nCalled with: %s\nHeads:\n%s")
+                                                           "or default defined.\nCalled with: [%s]\nHeads:\n%s")
                                                        ,(tostring name)
-                                                       (view# [...])
+                                                       (-> (fcollect  [i# 1 (select :# ...)]
+                                                             (view# (. [...] i#)))
+                                                           (table.concat ", "))
                                                        (table.concat (. ,dispatch-lookup-sym :help) "\n"))]
                                (error msg#))))]
     ;; so we can only return one expression from a macro, but we want to
