@@ -213,15 +213,19 @@
   (propagate-down package))
 
 (fn Runtime.Command.run-transaction [runtime]
-  (local {:new task/new :run task/run :await task/await : trace} (require :pact.task))
+  (local {:new task/new
+          :run task/run
+          :await task/await
+          : trace
+          :await-schedule task/await-schedule} (require :pact.task))
   (local inspect (require :pact.inspect))
   (task/run #(result-let [t (Transaction.new runtime.datastore runtime.path.data)
                           _ (Transaction.prepare t)
                           ;; TODO topological sort these as a combined graph
-                          ;; TODO run afters, how to do for opt?
                           canonical-sets (E.group-by #(values $.canonical-id $)
                                                      #(Package.iter runtime.packages))
-                          _ (E.each Package.increment-tasks-waiting #(Package.iter runtime.packages))
+                          _ (E.each Package.increment-tasks-waiting
+                                    #(Package.iter runtime.packages))
                           package-tasks (E.map (fn [canonical-set canonical-id]
                                                  (let [[p] canonical-set
                                                        f (match p.action
@@ -231,44 +235,74 @@
                                                            _ #(R.err [:unhandled p.action]))
                                                        task (task/new (fn []
                                                                         (E.each (fn [p]
+                                                                                  (set p.transaction :start)
                                                                                   (Package.decrement-tasks-waiting p)
                                                                                   (Package.increment-tasks-active p))
                                                                                 canonical-set)
                                                                         (f)
-                                                                        (E.each Package.decrement-tasks-active
+                                                                        (E.each (fn [p]
+                                                                                  (if (not p.after)
+                                                                                    (set p.transaction :done))
+                                                                                  (Package.decrement-tasks-active p))
                                                                                 canonical-set)
                                                                         (R.ok)))]
-                                                   (task/run task {:traced #(-> p
-                                                                                (Package.add-event :some-task $)
-                                                                                (PubSub.broadcast :changed))})))
+                                                   (set task.queued-at (vim.loop.hrtime))
+                                                   (task/run task {:traced (fn [msg]
+                                                                             (E.each #(-> p
+                                                                                         (Package.add-event :some-task msg)
+                                                                                         (PubSub.broadcast :changed))
+                                                                                    canonical-set))})))
                                                canonical-sets)
                           ;; TODO we await each task separately until await can handle a seq of tasks
                           ;;      and return a seq of values.
-                          {true ok-results false err-results} (->> (E.map #(task/await $) package-tasks)
+                          {true ok-results false err-results} (->> (E.map #(task/await $)
+                                                                          package-tasks)
                                                                    (E.group-by R.ok?))]
                (if (not err-results)
                  (do
                    ;; run afters if they exist, these may be defined multiple times,
                    ;; so we need to collate them somehow TODO (strings can be compared but functions might just be a pick-one)
                    (Transaction.commit t)
-                   (vim.cmd "packloadall!")
-                   (vim.cmd "silent! helptags ALL")
+                   (task/await-schedule
+                     (fn []
+                       (vim.notify (fmt "Committed %s" t.id)
+                                   vim.log.levels.INFO)
+                       (vim.cmd "packloadall!")
+                       (vim.cmd "silent! helptags ALL")))
                    ;; run afters for any newly aligned packages
                    (->> (E.map #(if (match? {:action :align} $) $)
                                #(Package.iter runtime.packages))
-                        (E.each (fn [package]
-                                  (let [pre (if package.opt?
-                                              #(vim.cmd (fmt "packadd! %s" package.package-name))
-                                              #nil)
-                                        f (match package.after
-                                            (where f (function? f)) f
-                                            (where s (string? s)) #(vim.cmd s)
-                                            other #(error (fmt "`after` must be function or string, got %s" (type other)))
-                                            nil #nil)]
-                                    (match (pcall (fn [] (pre) (f)))
-                                      (true _) nil
-                                      (false err) (vim.notify (fmt "%s.after encountered an error: %s" package.name err)
-                                                              vim.log.levels.ERROR)))))))
+                        (E.filter #$.after)
+                        (E.map (fn [package]
+                                 (let [pre (if package.opt?
+                                             #(vim.cmd (fmt "packadd! %s" package.package-name))
+                                             #nil)
+                                       f (match package.after
+                                           (where f (function? f)) f
+                                           (where s (string? s)) #(vim.cmd s)
+                                           other #(error (fmt "`after` must be function or string, got %s" (type other)))
+                                           nil #nil)
+                                       _ (Package.increment-tasks-waiting package)
+                                       task #(let [_ (Package.decrement-tasks-waiting package)
+                                                   _ (Package.increment-tasks-active package)
+                                                   ;; TODO propagate active to can-set
+                                                   result (task/await-schedule
+                                                            #(match (pcall (fn [] (pre) (f {:trace trace})))
+                                                               (true _) (R.ok)
+                                                               (false err)
+                                                               (do
+                                                                 (vim.notify (fmt "%s.after encountered an error: %s" package.name err)
+                                                                             vim.log.levels.ERROR)
+                                                                 (R.err err))))
+                                                   _ (set package.transaction :done)
+                                                   _ (Package.decrement-tasks-active package)]
+                                               result)]
+                                   (task/run task {:traced #(-> package
+                                                                (Package.add-event :some-task $)
+                                                                (PubSub.broadcast :changed))}))))
+                        (E.map #(task/await $)))
+                   (vim.schedule #(vim.notify (fmt "Transaction complete %s" t.id)
+                                              vim.log.levels.INFO)))
                  (do
                    (E.each #(vim.notify (tostring $) vim.log.levels.error) err-results)
                    (R.err "not-committed"))))

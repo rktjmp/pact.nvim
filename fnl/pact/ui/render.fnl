@@ -217,7 +217,10 @@
                                (match (highlight-for-health package.health)
                                  hl hl
                                  nil (let [[verb name] (action-data package)]
-                                       (.. :Pact :Action (s->camel verb) (s->camel name))))))
+                                       (.. :Pact :Action (s->camel verb) (s->camel name)))))
+                     (match package.transaction
+                       any (mk-chunk (fmt " (t %s)" any))
+                       _ (mk-chunk "")))
           constraint-col (mk-col
                            (mk-chunk (tostring constraint)))
           action-col (mk-col
@@ -360,7 +363,7 @@
        (widths->maximum-widths)))
 
 (local const {:lede [(mk-basic-row ";; 🔪🩸🐐")
-                     (mk-basic-row ";; (sorry things are ugly right now)")
+                     (mk-basic-row ";; (some things are ugly right now, sorry)")
                      (mk-basic-row "")]
               :blank [(mk-basic-row "")]
               :no-plugins [(mk-basic-row ";;")
@@ -373,9 +376,9 @@
               :usage [(mk-basic-row "")
                       (mk-basic-row ";; Usage:")
                       (mk-basic-row ";;")
-                      (mk-basic-row ";;   s  - Stage plugin for update")
-                      (mk-basic-row ";;   u  - Unstage plugin")
-                      (mk-basic-row ";;   cc - Commit staging and fetch updates")
+                      (mk-basic-row ";;   s  - Stage down plugin tree for update")
+                      (mk-basic-row ";;   u  - Unstage down plugin tree")
+                      (mk-basic-row ";;   cc - Commit transaction")
                       (mk-basic-row ";;   =  - View git log (staged/unstaged only)")]})
 
 (λ group-packages-by-section [packages]
@@ -398,6 +401,10 @@
 (λ ui-data->log-virt-text [])
 
 (fn Render.output [ui]
+  ; (let [now (vim.loop.now)
+  ;       last (or ui.last-run-at now)]
+  ;   (set ui.last-run-at now)
+  ;   (print :outp (- now last)))
   ;; We always operate on the top level packages, as we want to group
   ;; package-trees not separate packages.
   ;;
