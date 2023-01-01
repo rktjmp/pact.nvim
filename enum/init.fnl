@@ -62,17 +62,11 @@
   (where _)
   (error "reduced accepts only a single value"))
 
-;; Would love this but any custom seq-iterators will hit identity which might
-;; be annoying, and is unfixable as lua always passes the *first* value back to
-;; the generator, so even if custom iters returned val index, it would pass val
-;; back.
-;; Kind of depends on how accurately we really detect seq and
-;; assoc, these could be passed to reduce-impl to order the values passed to f.
-; (fn r-order-identity [...] (values ...))
-; (fn r-order-v-k [i v] (values v i))
-; (fn r-order-k-v [k v] (values k v))
+(fn reduce-order-identity [...] (values ...))
+(fn reduce-order-v-k [i v] (values v i))
+(fn reduce-order-k-v [k v] (values k v))
 
-(fn reduce-impl [f acc [gen invariant ctrl]]
+(fn reduce-impl [f acc [gen invariant ctrl] order-values]
   (let [{: n &as vals} (M.pack (gen invariant ctrl))]
     (match [n vals]
       ;; pairs returns nil for its final value, this is also a reasonable
@@ -85,21 +79,24 @@
       [0 _] (values acc)
       ;; otherwise we're ok to keep stepping
       _ (let [[ctrl & _] vals]
-          (match (f acc (M.unpack vals 1 n))
+          (match (f acc (order-values (M.unpack vals 1 n)))
             ;; explicit stop, note this can return more than one value if more
             ;; than one was given to reduced, this allows find to return
             (reduced-marker ?new-acc) ?new-acc
             ;; nil is a valid acc value!
-            (?new-acc) (reduce-impl f ?new-acc [gen invariant ctrl])
+            (?new-acc) (reduce-impl f ?new-acc [gen invariant ctrl] order-values)
             _ (error "internal-error: reduce could not match next value"))))))
 
 (fn* M.reduce
   "Reduce `enumerable` by `f` with `?initial` as initial accumulator value if given.
 
   If `?initial` is not given, the first value from `enumerable` is used. `nil`
-  is a valid initial value and distinct from not providing one.
+  is a valid initial value and distinct from not providing one. When enumerable is
+  a generator function, only the first value from the function is used as the default
+  initial value.
 
-  `f' should accept the accumulator then any arguments as per the iterator.
+  `f' should accept the accumulator then any arguments as per the iterator, be
+  aware of the iterator rules outlined above.
 
   `seqs` are automatically iterated with `ipairs`, `assocs` are iterated with `pairs`.
 
@@ -112,24 +109,85 @@
   #(M.reduce f $1 $2)
   ;; seq/assoc -> ipairs/pairs
   (where [f ?initial t] (and (function? f) (seq? t)))
-  (reduce-impl f ?initial (M.pack (ipairs t)))
+  (reduce-impl f ?initial (M.pack (ipairs t)) reduce-order-v-k)
   (where [f ?initial t] (and (function? f) (assoc? t)))
-  (reduce-impl f ?initial (M.pack (pairs t)))
+  (reduce-impl f ?initial (M.pack (pairs t)) reduce-order-v-k)
   (where [f ?initial generator] (and (function? f) (function? generator)))
-  (reduce-impl f ?initial (M.pack (generator)))
+  (reduce-impl f ?initial (M.pack (generator)) reduce-order-identity)
   ;; as above but inital is retrieved from ipairs/pairs
   (where [f t] (and (function? f) (seq? t)))
-  (let [[iter a n] (ipairs t)
+  (let [(iter a n) (ipairs t)
         (nn initial) (iter a n)]
-    (reduce-impl f initial (M.pack iter a nn)))
+    (reduce-impl f initial (M.pack iter a nn) reduce-order-v-k))
   (where [f t] (and (function? f) (assoc? t)))
-  (let [[iter a n] (pairs t)
+  (let [(iter a n) (pairs t)
         (nn initial) (iter a n)]
-    (reduce-impl f initial (M.pack iter a nn)))
+    (reduce-impl f initial (M.pack iter a nn) reduce-order-v-k))
   (where [f generator] (and (function? f) (function? generator)))
-  (let [[iter a n] (generator)
-        (nn initial) (iter a n)]
-    (reduce-impl f initial (M.pack iter a nn))))
+  (let [(iter a n) (generator)
+        initial (iter a n)]
+    (reduce-impl f initial (M.pack iter a initial) reduce-order-identity)))
+
+(fn* depth-walk-impl
+  ;; TODO seq? restricted?
+  ;; termnator, no more down
+  (where [f node ?list ?acc history next-id] (or (= nil ?list) (= nil (. ?list 1))))
+  (f ?acc node history)
+
+  (where [f node list ?acc history next-id])
+  ;; fresh history so we dont sully other branches
+  (let [branch-history (M.concat$ [] history [node])]
+    (M.reduce #(depth-walk-impl f $2 (next-id $2 branch-history) $1 branch-history next-id)
+              (f ?acc node history) list)))
+
+(fn* breadth-walk-impl
+  ;; TODO seq? restricted?
+  (where [f ?list ?acc history next-id] (or (= nil ?list) (= nil (. ?list 1))))
+  ?acc
+
+  (where [f list ?acc history next-id])
+  (let [next-list (M.flat-map #(next-id $1) list)
+        history (M.append$ history [])]
+    (breadth-walk-impl f
+                       next-list
+                       (M.reduce #(let [acc (f $1 $2 history)]
+                                    (doto (M.last history)
+                                          (M.append$ $2))
+                                    acc) ?acc list)
+                       history
+                       next-id)))
+
+(fn* M.depth-walk
+  "Visit every node in a graph, depth first.
+
+  Accepts a function `f`, a head `node`, optionally an `acc` value and a
+  `next-identity` function.
+
+  If an acc value is provided (may be nil) then `f` is called with `acc node
+  history` otherwise its called with `node history` where history is a list of
+  visited nodes in the current branch.
+
+  `next-identity` is called with the current `node` and `history` and should
+  return the a list of the next nodes to visit, an empty list or nil.
+
+  By default no provisions are taken to avoid loops or optimisations for
+  visited nodes, these should be filtered in `next-identity`."
+  (where [f node next-identity] (and (function? f) (table? node) (function? next-identity)))
+  (depth-walk-impl #(f $2 $3) node (next-identity node []) nil [] next-identity)
+  (where [f node ?acc next-identity] (and (function? f) (table? node) (function? next-identity)))
+  (depth-walk-impl f node (next-identity node []) ?acc [] next-identity))
+
+(fn* M.breadth-walk
+  "Visit every node in a graph, breadth first. See `depth-walk' for details on arguments.
+
+  `history` currently underconstruction...
+
+  `history` in `breadth-walk` is a seq of seqs where each seq is another depth level."
+  ;; TODO better history without blanks
+  (where [f node next-identity] (and (function? f) (table? node) (function? next-identity)))
+  (breadth-walk-impl #(f $2 $3) [node] nil [] next-identity)
+  (where [f node ?acc next-identity] (and (function? f) (table? node) (function? next-identity)))
+  (breadth-walk-impl f [node] ?acc [] next-identity))
 
 ;; Map
 
@@ -172,7 +230,7 @@
 (fn* M.flatten
   "Flatten a sequence of sequences into one sequence."
   (where [seq] (seq? seq))
-  (let [fx (fn [acc i v]
+  (let [fx (fn [acc v i]
              (if (seq? v)
                (-> (icollect [_ vv (ipairs v) :into acc] vv))
                (M.append$ acc v)))]
@@ -188,8 +246,10 @@
 ;; Predicators
 
 (fn* M.filter
-  "Collect every `x` in `t` where `pred` is true into a seq. Only accepts
-  seq or assocs, use `map` or `reduce` to drop values from a custom iterator.
+  "Collect every `x` in `t` where `pred` is true into a seq.
+
+  Only accepts seq or assocs, use `map` or `reduce` to drop values from a
+  custom iterator.
 
   Can accept a stream."
   (where [pred] (function? pred))
@@ -200,10 +260,10 @@
                                (values stream-use-last-value-marker)
                                (values stream-halt-marker)))
     (values stream))
-  (where [pred t] (and (function? pred) (enumerable? t)))
-  (let [insert (if (or (seq? t) (function? t))
-                 #(doto $1 (table.insert $3))
-                 #(doto $1 (tset $2 $3)))
+  (where [pred t] (and (function? pred) (or (seq? t) (assoc? t))))
+  (let [insert (if (seq? t)
+                 #(doto $1 (table.insert $2))
+                 #(doto $1 (tset $3 $2)))
         insert? (fn [acc k v]
                   (if (pred k v)
                     (insert acc k v)
@@ -231,9 +291,9 @@
             true t))
 
 (fn* M.find
-  "Return first values from `e` that `f` returns true for.
+  "Return first value from `e` that `f` returns true for.
 
-  Note this currently means `find` returns `(index value)` or `(key value)` for
+  Note this currently means `find` returns `(value index)` or `(value key)` for
   tables"
   (where [f e] (and (function? f) (enumerable? e)))
   (let [reducer (M.reduce (fn [_ ...]
@@ -245,19 +305,21 @@
       any (M.unpack any)
       nil nil)))
 
-(fn* M.find-key
-  "See `find', but returns key only. Does not support function-enumerables."
-  (where [f t] (and (function? f) (table? t)))
-  (match (M.find f t)
-    (k _) (values k)
-    _ (values nil)))
+;; deprecated? find now returns val key so finding values is the same with find
+;; or find-values and keys is just (_ key).
+; (fn* M.find-key
+;   "See `find', but returns key only. Does not support function-enumerables. - use `Find'."
+;   (where [f t] (and (function? f) (table? t)))
+;   (match (M.find f t)
+;     (k _) (values k)
+;     _ (values nil)))
 
-(fn* M.find-value
-  "See `find', but returns value only. Does not support function-enumerables."
-  (where [f t] (and (function? f) (table? t)))
-  (match (M.find f t)
-    (_ v) (values v)
-    _ (values nil)))
+; (fn* M.find-value
+;   "See `find', but returns value only. Does not support function-enumerables - use `Find'."
+;   (where [f t] (and (function? f) (table? t)))
+;   (match (M.find f t)
+;     (_ v) (values v)
+;     _ (values nil)))
 
 (fn* M.group-by
   "Group values of `enumerable` by the key from `f`.
@@ -265,7 +327,7 @@
   May return one value, the `key` to store the enumerable value under, or two
   values, where the first is the `key` and the second is the `value`.
 
-  Function enumerables must always return two values.
+  Function enumerables must always return both the group-key and value.
 
   Keys may not be `nil`.
 
@@ -275,8 +337,8 @@
   ;; tables (seq or assoc) always have a k v pair so we can be
   ;; confident in what to pass around
   (where [f e] (and (function? f) (table? e)))
-  (M.reduce (fn [acc k v]
-              (let [(key val) (f k v)
+  (M.reduce (fn [acc v k]
+              (let [(key val) (f v k)
                     _ (assert (not= nil key) "group-by key may not be nil")
                     val (or val v)
                     group (or (. acc key) [])]
@@ -304,7 +366,14 @@
   ;; TODO: accept keys table or table keys?
   "For each key in `ks`, get value from `t`, Returns seq."
   (where [t ks] (and (table? t) (seq? ks)))
-  (M.map #(. t $2) ks))
+  (M.map #(. t $1) ks))
+
+(fn* M.dot
+  "Get value of `k` from `t`."
+  (where [k])
+  #(M.dot k $1)
+  (where [k t] (table? t))
+  (. t k))
 
 ;; Seq-only alterations
 
@@ -354,6 +423,11 @@
   (where [seq seq-1 seq-2 ...] (and (seq? seq) (seq? seq-1) (seq? seq-2)))
   (M.concat$ (M.concat$ seq seq-1) seq-2 ...))
 
+; (fn* M.concat
+;   "Concatenate the values of `seq-1` and any other seqs onto a new seq."
+;   (where [seq ...] (seq? seq))
+;   (M.concat$ [] seq ...))
+
 (fn* M.shuffle$
   "Shuffle sequence in place"
   (where [seq] (seq? seq))
@@ -397,7 +471,7 @@
   (where [seq] (seq? seq))
   (M.unique seq #$1)
   (where [seq identity] (and (seq? seq) (function? identity)))
-  (-> (M.reduce (fn [[new-seq seen] _index value]
+  (-> (M.reduce (fn [[new-seq seen] value _index]
                   (let [id-key (identity value)]
                     (if (nil? (. seen id-key))
                       (do
@@ -433,9 +507,24 @@
 
 ;; General table alterations
 
+(fn* M.merge$
+  "For every key-value pair in b, copy it to a. Optionally accepts f to resolve
+  conflicts, called with the key name, `a` value and `b` value, otherwise
+  replaces."
+  (where [a b] (and (table? a) (table? b)))
+  (M.merge$ a b #$3)
+  (where [a b f] (and (table? a) (table? b) (function? f)))
+  (M.reduce (fn [acc val key]
+              (if (not= nil (. a key) )
+                (M.set$ acc key (f key (. a key) (. b key)))
+                (M.set$ acc key val)))
+            a b))
+
 (fn* M.set$
-  "Set `t.k` to `v`, return `t`. This differs from Fennels `set`/`tset` by
-  returning the table `t`, it may be used in pipelines."
+  "Set `t.k` to `v`, return `t`.
+
+  This differs from Fennels `set`/`tset` by returning the table `t` and it may
+  be used in pipelines."
   (where [t k ?v] (table? t))
   (doto t (tset k ?v))
   (where [t] (table? t))
@@ -465,22 +554,22 @@
   (let [sorted-keys (-> (M.table->pairs seq)
                         (#(doto $1
                             (table.sort (fn [[_ a] [_ b]] (f a b)))))
-                        (#(M.reduce (fn [acc i [oi v]] (M.set$ acc oi i))
+                        (#(M.reduce (fn [acc [oi v] i] (M.set$ acc oi i))
                                     {} $1)))]
     ;; recreate new seq by inserting values according to their sorted-index
-    (M.reduce (fn [acc i v] (M.set$ acc (. sorted-keys i) v)) [] seq)))
+    (M.reduce (fn [acc v i] (M.set$ acc (. sorted-keys i) v)) [] seq)))
 
 ;; x -> tuples
 
 (fn* M.table->pairs
   "Convert a table of `{k v ...}` into `[[k v] ...]`"
   (where [t] (table? t))
-  (M.map #[$1 $2] t))
+  (M.map #[$2 $1] t))
 
 (fn* M.pairs->table
   "Convert `seq` of `[[k, v] ...]` into `{k v ...}`"
   (where [seq] (seq? seq))
-  (M.reduce (fn [acc i [k v]] (M.set$ acc k v)) [] seq))
+  (M.reduce (fn [acc [k v]] (M.set$ acc k v)) [] seq))
 
 (fn* M.keys
   "Get keys from table, order is undetermined."
@@ -500,8 +589,8 @@
   ;; be a value and which is a key.
   (where [e inter] (seq? e))
   (M.reduce (fn*
-              (where [acc n v] (= n (length ^e))) (M.append$ acc v)
-              (where [acc i v]) (M.append$ acc v inter))
+              (where [acc v n] (= n (length ^e))) (M.append$ acc v)
+              (where [acc v i]) (M.append$ acc v inter))
             [] e))
 
 (fn* M.empty?
@@ -519,9 +608,9 @@
   ```
   (->> [4 2 3]
        (enum.stream) ;; create a stream over sequence
-       (enum.map #(* 2 $2)) ;; evaluates (*2 4)
-       (enum.filter #(<= 5 $2)) ;; then evaulates (<= 5 8)
-       (enum.map #(* 10 $2)) ;; then (* 10 8)
+       (enum.map #(* 2 $1)) ;; evaluates (*2 4)
+       (enum.filter #(<= 5 $1)) ;; then evaulates (<= 5 8)
+       (enum.map #(* 10 $1)) ;; then (* 10 8)
        ;; we must \"resolve\" the stream into a concrete collection
        (enum.stream->seq)) ;; then stores [80], then repeats for 2, 3, etc
   ```"
@@ -531,9 +620,9 @@
 (fn* M.stream->seq
   "\"resolve\" stream into seq."
   (where [l] (and (stream? l) (or (seq? l.enum) (assoc? l.enum))))
-  (M.map (fn [k v]
-           (M.reduce (fn [acc i f]
-                       (match [(f k acc)]
+  (M.map (fn [v k]
+           (M.reduce (fn [acc f]
+                       (match [(f acc k)]
                          ;; halt processing and drop from resulting seq
                          [stream-halt-marker] (M.reduced nil)
                          ;; keep processing but actually ignore the result
@@ -546,7 +635,7 @@
   ;; We need to capture all return values and pack/unpack as we go.
   (where [l] (and (stream? l) (function? l.enum)))
   (->> (M.map (fn [...]
-               (M.reduce (fn [acc _ f]
+               (M.reduce (fn [acc f]
                            (let [new (M.pack (f (M.unpack acc)))]
                              (match new
                                [stream-halt-marker] (M.reduced nil)

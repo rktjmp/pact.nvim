@@ -1,5 +1,9 @@
 # ruin/let
 
+Note: Most of these functions follow their parent expressions, so `if-let`
+behaves like `if`, where it accepts two expressions, a true and false branch,
+vs `let` which accepts multiple body expressions after the binding table.
+
 - **[macros](#init-macrosfnl)**
 - **[tests](#tests)**
 
@@ -148,11 +152,16 @@ Check `bindings` in order, if all are not nil, evaluate `...` or nil.
 ✓ match-let without shadowing it returns catch matches
 ✓ match-let without shadowing it can have multiple body clauses
 ✓ match-let without shadowing it can have multiple body clauses and an else
+✓ match-let without shadowing it returns nil err on match fail if that is the value
 ✓ match-let without shadowing it returns all values
 ✓ match-let with shadowing locals it warns on rebinding (until matchless exists)
   match-let with shadowing locals it does allow rescoping _
 ✓ match-let with shadowing locals it warns when attempting to bind(?)/match a symbol that exists in outerscope not defined by us
   match-let with shadowing locals it returns value
+✕ if-let it supports multiple bind values 
+  -->let/test-let.fnl:146: mismatch: 
+["hello" "bye"]
+[["hello"]]
 ✓ if-let it works
 ✓ when-let it works
 ✓ if-some-let it works

@@ -1,20 +1,56 @@
 (import-macros {: view : must : describe : it : rerequire} :test)
 (local enum (rerequire :enum))
 
+; (fn visit [node history]
+;   (print :at node.id
+;          :history (.. (enum.reduce #(.. $1 "->" $2.id) "" history))))
+
+; (fn xyz [x]
+;   (enum.reduce #(.. $1 ", " $2.id) "" x))
+
+; (let [a {:id :a}
+;       b {:id :b}
+;       c {:id :c}
+;       d {:id :d}
+;       e {:id :e}]
+;   (enum.each #(setmetatable $1 {:__fennelview (fn [t] t.id)})
+;              [a b c d e])
+;   (set a.edges [b])
+;   (set b.edges [c e])
+;   (set c.edges [d e])
+;   (print :depth)
+;   (enum.depth-walk visit a #$1.edges)
+;   (print :breadth)
+;   (enum.breadth-walk #(view $1 $2) a #$1.edges))
+
+(describe "pack, unpack"
+  (it "unpacks"
+    (must match (1 2 3) (enum.unpack [1 2 3]))
+    (must match nil (enum.unpack []))))
+
 (describe "reduce"
   (it "handles seq"
-    (must match
-          [[1 :a] [2 :b] [3 :c]]
-          (enum.reduce #(doto $1 (table.insert [$2 $3])) [] [:a :b :c]))
-    (let [sum (enum.reduce #(+ $1 $3))]
-      (must match 8 (sum 0 [5 2 1]))))
+    ;; with initial
+    (must match "abc"
+          (enum.reduce #(.. $1 $2) [:a :b :c]))
+    (let [sum (enum.reduce #(+ $1 $2))]
+      (must match 18 (sum 10 [5 2 1])))
+    ;; without initial
+    (must match 8 (enum.reduce #(+ $1 $2) [5 2 1])))
+
   (it "handles assoc"
-    (must match
-          [[1 :a] [2 :b] [3 :c]]
-          (doto (enum.reduce #(doto $1 (table.insert [$3 $2])) [] {:a 1 :b 2 :c 3})
-            (table.sort (fn [[i _] [ii _]] (< i ii))))))
+    (must match 18
+          (enum.reduce #(+ $1 $2) 10 {:a 5 :b 2 :c 1}))
+    ;; with initial
+    (let [sum (enum.reduce #(+ $1 $2))]
+      (must match 18 (sum 10 {:a 1 :b 2 :c 5})))
+    ;; without initial
+    (must match 8 (enum.reduce #(+ $1 $2) {:a 1 :b 2 :c 5})))
   (it "handles stl-custom iter"
-    (must match :abc (enum.reduce #(.. $1 $2) "" #(string.gmatch "abc" "[%a]"))))
+    ;; with initial
+    (must match :abc (enum.reduce #(.. $1 $2) "" #(string.gmatch "abc" "[%a]")))
+    ;; without initial
+    (must match :abc (enum.reduce #(.. $1 $2) #(string.gmatch "abc" "[%a]"))))
   (it "handles custom stateless iterator"
     (fn iter []
       (fn gen [invar state]
@@ -26,14 +62,14 @@
 
 (describe "reduced"
   (it "can stop early"
-    (must match 6 (enum.reduce #(if (<= 5 $1) (enum.reduced $1) (+ $1 $3))
+    (must match 6 (enum.reduce #(if (<= 5 $1) (enum.reduced $1) (+ $1 $2))
                                0 [1 2 3 100 100]))))
 
 (describe "map"
   (it "handles empty tables"
     (must equal 0 (length (enum.map #10 []))))
   (it "handles seq"
-    (must match [:aa :bb :cc] (enum.map #(.. $2 $2) [:a :b :c])))
+    (must match [:aa :bb :cc] (enum.map #(.. $1 $1) [:a :b :c])))
   (it "handles stl-custom iter"
     (must match [:a :b :c] (enum.map #$1 #(string.gmatch "abc" "[%a]")))))
 
@@ -64,41 +100,31 @@
 
 (describe "filter"
   (it "handles seq"
-    (must match [2 4 6] (enum.filter #(= 0 (% $2 2)) [1 2 3 4 5 6] )))
+    (must match [2 4 6] (enum.filter #(= 0 (% $1 2)) [1 2 3 4 5 6] )))
   (it "handles assoc"
-    (must match {:a 1 :b nil :c 3} (enum.filter #(= 1 (% $2 2)) {:a 1 :b 2 :c 3})))
+    (must match {:a 1 :b nil :c 3} (enum.filter #(= 1 (% $1 2)) {:a 1 :b 2 :c 3})))
   (it "errors on inter-fn"
-    (must throw (enum.filter  #(= 1 (% $2 2)) #nil))))
+    (must throw (enum.filter  #(= 1 (% $1 2)) #nil))))
 
 (describe "any?"
   (it "finds one"
-    (must match true (enum.any? #(<= 5 $2) [1 2 3 5 3 2 1])))
+    (must match true (enum.any? #(<= 5 $1) [1 2 3 5 3 2 1])))
   (it "finds none"
-    (must match false (enum.any? #(<= 50 $2) [1 2 3 5 3 2 1]))))
+    (must match false (enum.any? #(<= 50 $1) [1 2 3 5 3 2 1]))))
 
 (describe "all?"
   (it "finds all good"
-    (must match true (enum.all? #(<= 5 $2) [6 10 7 9])))
+    (must match true (enum.all? #(<= 5 $1) [6 10 7 9])))
   (it "finds one bad"
-    (must match false (enum.all? #(<= 50 $2) [6 10 7 1 91]))))
+    (must match false (enum.all? #(<= 50 $1) [6 10 7 1 91]))))
 
 (describe "find"
   (it "returns found key, value"
-    (must match (4 6) (enum.find #(<= 5 $2) [1 -1 3 6 10 7 9])))
+    (must match (6 4) (enum.find #(<= 5 $1) [1 -1 3 6 10 7 9]))
+    (must match (:hello 3) (enum.find #(= :string (type $)) [#nil 10 :hello true]))
+    (must match (:hello :x) (enum.find #(= :string (type $)) {:a #nil :b 10 :x :hello :y  true})))
   (it "returns nil on no find"
-    (must match nil (enum.find #(<= 50 $2) [6 10 7 1 39]))))
-
-(describe "find-value"
-  (it "returns found value"
-    (must match 6 (enum.find-value #(<= 5 $2) [1 -1 3 6 10 7 9])))
-  (it "returns nil on no find"
-    (must match nil (enum.find-value #(<= 50 $2) [6 10 7 1 39]))))
-
-(describe "find-key"
-  (it "returns found key"
-    (must match 4 (enum.find-key #(<= 5 $2) [1 -1 3 6 10 7 9])))
-  (it "returns nil on no find"
-    (must match nil (enum.find-key #(<= 50 $2) [6 10 7 1 39]))))
+    (must match nil (enum.find #(<= 50 $1) [6 10 7 1 39]))))
 
 (describe "unique"
   (it "strips uniques"
@@ -107,20 +133,20 @@
 (describe "group-by"
   (it "table groups with just key"
     (must match {true [1 2] false [3 4]}
-          (enum.group-by #(<= $2 2) [1 2 3 4]))
+          (enum.group-by #(<= $1 2) [1 2 3 4]))
     (must match {true [1] false [2]}
-          (enum.group-by #(<= $2 1) {:a 1 :b 2}))
+          (enum.group-by #(<= $1 1) {:a 1 :b 2}))
     (must throw (enum.group-by #nil [1 2 3])))
   (it "table groups with key, value"
     (must match {true [2 4] false [6 8]}
-          (enum.group-by #(values (<= $2 2) (* $2 2))
+          (enum.group-by #(values (<= $1 2) (* $2 2))
                          [1 2 3 4])))
   (it "function groups errors with just key"
     (must throw (enum.group-by #true #(ipairs [1 2 3]))))
 
   (it "function groups with key, value"
     (must match {true [2 4] false [6 8]}
-          (enum.group-by #(values (<= $2 2) (* $2 2))
+          (enum.group-by #(values (<= $1 2) (* $1 2))
                          #(ipairs [1 2 3 4])))))
 
 (fn fixture []
@@ -334,11 +360,11 @@
     (must not match [1 2 3] (enum.shuffle$ l))))
 
 (describe "mixed tables"
-  (it "maps"
+  (it "maps naturally"
     [t {1 :first :greet :hello}]
-    (must match [[1 :first]] (enum.map #[$1 $2] t)))
+    (must match [[1 :first]] (enum.map #[$2 $1] t)))
 
-  (it "maps"
+  (it "maps with iterator"
     [t {1 :first :greet :hello}]
     (must match [[1 :first] [:greet :hello]] (enum.map #[$1 $2] #(pairs t)))))
 
@@ -347,11 +373,11 @@
     [t []]
     (local x (->> (enum.stream [7 8 9])
                   (enum.map #(do
-                               (table.insert t [:a $2])
+                               (table.insert t [:a $1])
                                (* $1 $2)))
                   (enum.map #(do
-                               (table.insert t [:b $2])
-                               (* $2 (+ $1 10))))))
+                               (table.insert t [:b $1])
+                               (* $1 (+ $2 10))))))
     (must match {:enum [7 8 9]
                  :funs [_ _]} x)
     ;; should collate out to list correctly
@@ -362,7 +388,7 @@
   (it "can map->filter seq"
     [t []]
     (local x (->> (enum.stream [1 2 1 4])
-                  (enum.filter #(<= 2 $2))
+                  (enum.filter #(<= 2 $1))
                   (enum.map #(* $1 $2))))
     ;; should still pass original index through to functions,
     ;; so 2*2, 4*4
@@ -372,9 +398,9 @@
     [t []]
     (local x (->> (enum.stream [1 2 1 4])
                   (enum.each #(do
-                                (table.insert t $2)
+                                (table.insert t $1)
                                 100))
-                  (enum.map #(* $2 2))))
+                  (enum.map #(* $1 2))))
     ;; should still pass original index through to functions,
     ;; so 2*2, 4*4
     (must match [2 4 2 8] (enum.stream->seq x))
@@ -382,8 +408,8 @@
 
   (it "works with assocs?"
     (local x (->> (enum.stream {:a 1 :b 2 :c 1 :d 8})
-                  (enum.filter #(<= 2 $2))
-                  (enum.map #[$1 $2])
+                  (enum.filter #(<= 2 $1))
+                  (enum.map #[$2 $1])
                   (enum.stream->seq)
                   (enum.sort (fn [[_ v1] [_ v2]] (<= v1 v2)))))
     (must match [[:b 2] [:d 8]] x))
@@ -406,3 +432,11 @@
     (must match [true false] (enum.pluck {:a true :b false :c 1} [:a :b])))
   (it "works with tables"
     (must match [true false] (enum.pluck [true true false true] [1 3]))))
+
+(describe "merge"
+  (it "merges new keys"
+    (must match {:a 10 :b 20} (enum.merge$ {:a 10} {:b 20})))
+  (it "replaces old keys"
+    (must match {:a 20} (enum.merge$ {:a 10} {:a 20})))
+  (it "conflict resolves old keys"
+    (must match {:a 30} (enum.merge$ {:a 10} {:a 20} #(+ $2 $3)))))

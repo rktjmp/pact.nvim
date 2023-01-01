@@ -7,6 +7,12 @@ functions accept a `stream` (see below).
 These functions will attempt to call the correct `ipairs` or `pairs` where
 appropriate (generators are simply called as given).
 
+When iterating sequences or assocs, **functions are always passed `value
+key`**. This is generally more ergonomic when working with sequences (`(E.map
+print seq)` vs `(E.map #(print $2) seq)`) and *mostly* ergonomic when working
+with assocs - and reduces the potential cognitive guess work by having both
+types behave the same instead of assocs acting as `key value`.
+
 As lua does not natively distinguish between sequences (*contiguous* numerically
 indexed tables from `1` to  `n`) and tables, the table type is determined by
 `seq?` and `assoc?` as defined in the `type` module.
@@ -26,8 +32,6 @@ To force a mixed-key table to iterate all values, you can pass a generator with
 (map print #(pairs {:1 :first :color :red})) ; => 1 first; color red
 ```
 
-This behaviour may change in the future.
-
 Functions suffixed with `$` modify the given table "in place" and return their
 first argument.
 
@@ -43,17 +47,17 @@ can be more performant as intermediary collections are not created.
 
 ```fennel
 (->> [4 2 3]
-     (enum.map #(* 2 $2)) ;; first sequence created => [8 4 6]
-     (enum.filter #(<= 5 $2)) ;; second sequence => [8 6]
-     (enum.map #(* 10 $2))) ;; third => [80 60]
+     (enum.map #(* 2 $1)) ;; first sequence created => [8 4 6]
+     (enum.filter #(<= 5 $1)) ;; second sequence => [8 6]
+     (enum.map #(* 10 $1))) ;; third => [80 60]
 ```
 
 ```fennel
 (->> [4 2 3]
      (enum.stream) ;; create a stream over sequence
-     (enum.map #(* 2 $2)) ;; evaluates (*2 4)
-     (enum.filter #(<= 5 $2)) ;; then evaulates (<= 5 8)
-     (enum.map #(* 10 $2)) ;; then (* 10 8)
+     (enum.map #(* 2 $1)) ;; evaluates (*2 4)
+     (enum.filter #(<= 5 $1)) ;; then evaulates (<= 5 8)
+     (enum.map #(* 10 $1)) ;; then (* 10 8)
      ;; we must "resolve" the stream into a concrete collection
      (enum.stream->seq)) ;; then stores [80], then repeats for 2, 3, etc
 ```
@@ -70,8 +74,11 @@ can be more performant as intermediary collections are not created.
 - [`all?`](#all)
 - [`any?`](#any)
 - [`append$`](#append)
+- [`breadth-walk`](#breadth-walk)
 - [`chunk-every`](#chunk-every)
 - [`concat$`](#concat)
+- [`depth-walk`](#depth-walk)
+- [`dot`](#dot)
 - [`each`](#each)
 - [`empty?`](#empty)
 - [`filter`](#filter)
@@ -85,6 +92,7 @@ can be more performant as intermediary collections are not created.
 - [`intersperse`](#intersperse)
 - [`keys`](#keys)
 - [`last`](#last)
+- [`merge$`](#merge)
 - [`pack`](#pack)
 - [`pairs->table`](#pairs-table)
 - [`pluck`](#pluck)
@@ -100,6 +108,7 @@ can be more performant as intermediary collections are not created.
 - [`stream->seq`](#stream-seq)
 - [`table->pairs`](#table-pairs)
 - [`tl`](#tl)
+- [`unique`](#unique)
 - [`unpack`](#unpack)
 - [`vals`](#vals)
 
@@ -113,9 +122,12 @@ Function signature:
 Reduce `enumerable` by `f` with `?initial` as initial accumulator value if given.
 
   If `?initial` is not given, the first value from `enumerable` is used. `nil`
-  is a valid initial value and distinct from not providing one.
+  is a valid initial value and distinct from not providing one. When enumerable is
+  a generator function, only the first value from the function is used as the default
+  initial value.
 
-  `f` should accept the accumulator then any arguments as per the iterator.
+  `f` should accept the accumulator then any arguments as per the iterator, be
+  aware of the iterator rules outlined above.
 
   `seqs` are automatically iterated with `ipairs`, `assocs` are iterated with `pairs`.
 
@@ -166,6 +178,19 @@ Function signature:
 
 Append `v1 v2 ...` to `seq` and return `seq`
 
+## `breadth-walk`
+Function signature:
+
+```
+(breadth-walk [ (where [f node next-identity] (and (function? f) (table? node) (function? next-identity))) | (where [f node ?acc next-identity] (and (function? f) (table? node) (function? next-identity))) ])
+```
+
+Visit every node in a graph, breadth first. See [`depth-walk`](#depth-walk) for details on arguments.
+
+  `history` currently underconstruction...
+
+  `history` in `breadth-walk` is a seq of seqs where each seq is another depth level.
+
 ## `chunk-every`
 Function signature:
 
@@ -183,6 +208,37 @@ Function signature:
 ```
 
 Concatenate the values of `seq-1` (and any other seqs) into `seq`.
+
+## `depth-walk`
+Function signature:
+
+```
+(depth-walk [ (where [f node next-identity] (and (function? f) (table? node) (function? next-identity))) | (where [f node ?acc next-identity] (and (function? f) (table? node) (function? next-identity))) ])
+```
+
+Visit every node in a graph, depth first.
+
+  Accepts a function `f`, a head `node`, optionally an `acc` value and a
+  `next-identity` function.
+
+  If an acc value is provided (may be nil) then `f` is called with `acc node
+  history` otherwise its called with `node history` where history is a list of
+  visited nodes in the current branch.
+
+  `next-identity` is called with the current `node` and `history` and should
+  return the a list of the next nodes to visit, an empty list or nil.
+
+  By default no provisions are taken to avoid loops or optimisations for
+  visited nodes, these should be filtered in `next-identity`.
+
+## `dot`
+Function signature:
+
+```
+(dot [ (where [k]) | (where [k t] (table? t)) ])
+```
+
+Get value of `k` from `t`.
 
 ## `each`
 Function signature:
@@ -208,11 +264,13 @@ Check if table is empty
 Function signature:
 
 ```
-(filter [ (where [pred] (function? pred)) | (where [pred stream] (and (function? pred) (stream? stream))) | (where [pred t] (and (function? pred) (enumerable? t))) ])
+(filter [ (where [pred] (function? pred)) | (where [pred stream] (and (function? pred) (stream? stream))) | (where [pred t] (and (function? pred) (or (seq? t) (assoc? t)))) ])
 ```
 
-Collect every `x` in `t` where `pred` is true into a seq. Only accepts
-  seq or assocs, use `map` or `reduce` to drop values from a custom iterator.
+Collect every `x` in `t` where `pred` is true into a seq.
+
+  Only accepts seq or assocs, use `map` or `reduce` to drop values from a
+  custom iterator.
 
   Can accept a stream.
 
@@ -220,10 +278,13 @@ Collect every `x` in `t` where `pred` is true into a seq. Only accepts
 Function signature:
 
 ```
-(find [ (where [f t] (and (function? f) (enumerable? t))) ])
+(find [ (where [f e] (and (function? f) (enumerable? e))) ])
 ```
 
-Return first value pair from `t` that `f` returns true for.
+Return first value from `e` that `f` returns true for.
+
+  Note this currently means `find` returns `(value index)` or `(value key)` for
+  tables
 
 ## `first`
 Function signature:
@@ -264,7 +325,7 @@ Group values of `enumerable` by the key from `f`.
   May return one value, the `key` to store the enumerable value under, or two
   values, where the first is the `key` and the second is the `value`.
 
-  Function enumerables must always return two values.
+  Function enumerables must always return both the group-key and value.
 
   Keys may not be `nil`.
 
@@ -314,6 +375,17 @@ Function signature:
 ```
 
 Return last element of `seq`
+
+## `merge$`
+Function signature:
+
+```
+(merge$ [ (where [a b] (and (table? a) (table? b))) | (where [a b f] (and (table? a) (table? b) (function? f))) ])
+```
+
+For every key-value pair in b, copy it to a. Optionally accepts f to resolve
+  conflicts, called with the key name, `a` value and `b` value, otherwise
+  replaces.
 
 ## `pack`
 Function signature:
@@ -377,7 +449,10 @@ Function signature:
 (set$ [ (where [t k ?v] (table? t)) | (where [t] (table? t)) | (where [t k] (table? t)) ])
 ```
 
-Set `t.k` to `v`, return `t`. `k` and `v` may also be functions.
+Set `t.k` to `v`, return `t`.
+
+  This differs from Fennels `set`/`tset` by returning the table `t` and it may
+  be used in pipelines.
 
 ## `shuffle$`
 Function signature:
@@ -431,9 +506,9 @@ Create stream container from given enumerable.
   ```
   (->> [4 2 3]
        (enum.stream) ;; create a stream over sequence
-       (enum.map #(* 2 $2)) ;; evaluates (*2 4)
-       (enum.filter #(<= 5 $2)) ;; then evaulates (<= 5 8)
-       (enum.map #(* 10 $2)) ;; then (* 10 8)
+       (enum.map #(* 2 $1)) ;; evaluates (*2 4)
+       (enum.filter #(<= 5 $1)) ;; then evaulates (<= 5 8)
+       (enum.map #(* 10 $1)) ;; then (* 10 8)
        ;; we must "resolve" the stream into a concrete collection
        (enum.stream->seq)) ;; then stores [80], then repeats for 2, 3, etc
   ```
@@ -465,6 +540,20 @@ Function signature:
 
 Return all but first element of `seq`
 
+## `unique`
+Function signature:
+
+```
+(unique [ (where [seq] (seq? seq)) | (where [seq identity] (and (seq? seq) (function? identity))) ])
+```
+
+Remove any duplicate values from `seq`. Optionally accepts an `identity`
+  function.
+
+  By default all values are compared directly, so different tables that have
+  the same content are considered different values. The identity function can
+  be used to 'hash' complex value types into an appropriate comparison value.
+
 ## `unpack`
 Function signature:
 
@@ -490,6 +579,7 @@ Get values from table, order is undetermined.
 
 # tests
 ```
+✓ pack, unpack it unpacks
 ✓ reduce it handles seq
 ✓ reduce it handles assoc
 ✓ reduce it handles stl-custom iter
@@ -509,8 +599,9 @@ Get values from table, order is undetermined.
 ✓ any? it finds none
 ✓ all? it finds all good
 ✓ all? it finds one bad
-✓ find it returns found value
+✓ find it returns found key, value
 ✓ find it returns nil on no find
+✓ unique it strips uniques
 ✓ group-by it table groups with just key
 ✓ group-by it table groups with key, value
 ✓ group-by it function groups errors with just key
@@ -557,8 +648,8 @@ Get values from table, order is undetermined.
 ✓ empty? it works on seq
 ✓ empty? it works on assoc
 ✓ shuffle$ it shuffles a list
-✓ mixed tables it maps
-✓ mixed tables it maps
+✓ mixed tables it maps naturally
+✓ mixed tables it maps with iterator
 ✓ stream it simple map over seq
 ✓ stream it can map->filter seq
 ✓ stream it works with each seq
@@ -566,4 +657,7 @@ Get values from table, order is undetermined.
 ✓ stream it works with functions?
 ✓ pluck it works with assocs
 ✓ pluck it works with tables
+✓ merge it merges new keys
+✓ merge it replaces old keys
+✓ merge it conflict resolves old keys
 ```

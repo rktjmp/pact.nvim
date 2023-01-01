@@ -309,7 +309,16 @@ Function signature:
 ✓ result-let* it can return multiple values
 ✓ result-let* it short-circuts on error and unpacks to `nil reason`
 ✓ map, map-ok, map-err it maps over an ok value
+✓ map, map-ok, map-err it maps over an ok<nil> value
+✓ map, map-ok, map-err it maps over an ok<> value
 ✓ map, map-ok, map-err it does not map over an err value by default
 ✓ map, map-ok, map-err it does map over ok and err if given err-fn
 ✓ map, map-ok, map-err it can alter type by return value
+✓ join it joins two ok with no value, returns ok
+✓ join it joins two ok with values, returns ok
+✓ join it joins two ok with values, returns ok
+✓ join it joins two ok with some value, returns ok
+✓ join it joins two ok with nil and some value, returns ok
+✓ join it keeps joining values
+✓ join it joins two err with values, returns err
 ```
