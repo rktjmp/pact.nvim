@@ -45,6 +45,15 @@
       [any nil] (vim.notify (fmt "%s has no path to open" any.plugin.name))
       _ nil)))
 
+
+(fn exec-keymap-p [ui]
+  (match (cursor->package ui)
+    package (vim.notify (inspect package)
+                        vim.log.levels.DEBUG)
+    nil (vim.notify "No package under cursor"
+                    vim.log.levels.INFO))
+  (schedule-redraw ui))
+
 (fn exec-keymap-s [ui]
   (match (cursor->package ui)
     package (if (Package.aligned? package)
@@ -106,6 +115,7 @@
         (map :n :<cr> #(exec-keymap-<cr> ui))
         (map :n :cc #(exec-keymap-cc ui))
         (map :n :s #(exec-keymap-s ui))
+        (map :n :p #(exec-keymap-p ui))
         (map :n :u #(exec-keymap-u ui))
         (map :n :d #(exec-keymap-d ui)))
   ui)
@@ -130,8 +140,6 @@
     ;; TODO unsub all on win close
     (let [{: default-scheduler} (require :pact.task.scheduler)]
       (subscribe default-scheduler #(schedule-redraw ui)))
-    ; (E.each #(subscribe $1 #(schedule-redraw ui))
-    ;         #(Package.iter ui.runtime.packages))
     (Runtime.Command.initial-load runtime)
     (schedule-redraw ui)))
 
