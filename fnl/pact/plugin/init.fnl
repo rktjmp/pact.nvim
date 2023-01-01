@@ -61,7 +61,7 @@
 (fn* forge
   ;; default to tracking head when given no constraint
   (where [forge-name user-repo nil] (and (string? user-repo)
-                                     (not (= :git forge-name))))
+                                         (not (= :git forge-name))))
   (forge forge-name user-repo {:head true})
 
   ;; otherwise infer type from prefix/string
