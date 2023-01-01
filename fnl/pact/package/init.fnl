@@ -39,10 +39,13 @@
          :uid (gen-id :plugin-package) ;; globally unique between all packages, even those
                                        ;; with the same c-id
          :canonical-id spec.canonical-id ;; shared between packages with same origin
-         :name spec.name ;; generally visible name
+         :name spec.name ;; generally visible name TODO these need better diferentiated names
+         :package-name package-name ;; installed as-name
          :depended-by nil
          :depends-on (or spec.dependencies []) ;; placeholder
          :install {:path rtp-path} ;; start|opt/<name>
+         :after spec.after
+         :opt? spec.opt?
 
          ;; general bookkeeping
          :health (Health.healthy)
@@ -144,6 +147,15 @@
        (not-nil? package.git.current.commit)
        (= package.git.target.commit.sha package.git.current.commit.sha)))
 
+(λ Package.installed? [package]
+  (not-nil? package.git.current.commit))
+
+;; TODO retain -> ... dont-change? 
+;; does it make more sense to describe the states as
+;; align -> change to match constraint (covers install and sync)
+;; discard -> specifically drop
+;; persist | hold | status-quo | static | retain(?) ->
+;;    keep any current state (dont install dont sync dont discard)
 (λ Package.retaining? [package]
   (match? {:action :retain} package))
 

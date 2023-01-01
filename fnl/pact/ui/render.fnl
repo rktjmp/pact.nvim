@@ -19,6 +19,36 @@
 (var last-time 0)
 (var spinner-frame 0)
 
+
+(fn package-error? [package]
+  (= package.uid :error))
+
+(fn package-loading? [package]
+  (E.any? #(not (Package.ready? $1))
+          #(Package.iter [package])))
+
+;; These are intended to be applied in order, where staged packages are
+;; not checked for unstaged and those are not checked for up-to-date.
+(fn package-staged? [package]
+  ;; any package in the tree is set to align or discard
+  (E.any? #(or (and (not (Package.installed? $))
+                    (Package.aligning? $))
+               (and (Package.installed? $)
+                    (or (Package.aligning? $)
+                        (Package.discarding? $))))
+          #(Package.iter [package])))
+
+(fn package-unstaged? [package]
+  ;; any package in the tree is not aligned
+  (and (not (package-staged? package))
+       (E.any? #(not (Package.aligned? $1))
+               #(Package.iter [package]))))
+
+(fn package-up-to-date? [package]
+  (and (not (package-unstaged? package))
+       (E.all? #(Package.aligned? $1)
+               #(Package.iter [package]))))
+
 (fn rate-limited-inc [value]
   ;; only increment n at a fixed fps
   ;; uv.now increments only at the event loop start, but this is ok for us.
@@ -36,12 +66,6 @@
 
 (fn workflow-waiting-symbol [] "⧖")
 
-(λ highlight-for-health [h]
-  (match h
-    [:healthy] :DiagnosticInfo
-    [:degraded] :DiagnosticWarn
-    [:failing] :DiagnosticError))
-
 (fn mk-chunk [text ?hl ?len] {:text text
                               :highlight (or ?hl :PactComment)
                               :length (or ?len (length (or text "")))})
@@ -50,8 +74,8 @@
 (fn mk-row [content ?meta] {:content content :meta (or ?meta {})})
 (fn mk-basic-row [content] (mk-row (mk-content (mk-col (mk-chunk content :PactComment)))))
 
-(fn package-tree->ui-data [packages]
-  "Extract and construct UI specific data from packages"
+(fn package-tree->ui-data [packages section-id]
+  "Extract and construct UI specific data from packages while also flattening the tree."
   (use Package :pact.package
        Runtime :pact.runtime)
   ;; TODO: wrap in result? otherwise keep duplicating some fields to error for
@@ -61,38 +85,32 @@
                               :constraint ""
                               :health (Package.Health.failing "")
                               :indent (length $2)}
-        package-data #{:uid $1.uid
-                       :__data $1
-                       :name $1.name
-                       :health $1.health
-                       :git {:current {:commit (?. $ :git :current :commit)}
-                             :target {:commit (?. $ :git :target :commit)
-                                      :logs (?. $ :git :target :logs)
-                                      :breaking? (?. $ :git :target :breaking?)
-                                      :direction (?. $ :git :target :direction)}
-                             :latest {:commit (?. $ :git :latest :commit)}}
-                       :working? (< 0 $.tasks.active)
-                       :waiting? (< 0 $.tasks.waiting)
-                       :constraint $1.constraint
-                       :last-event (do
-                               (-> (inspect (?. $ :events 1 2) true)
-                                   (string.gmatch "([^\n]+)")
-                                   (E.map $1)
-                                   (table.concat " ")))
-                       :distance (?. $ :git :target :distance)
-                       :indent (length $2)
-                       :action $.action
-                       :events $1.events
-                       :error (match (E.last $1.events)
-                                (where e (R.err? e)) (R.unwrap e)
-                                _ nil)}]
+        package-data (fn [node history]
+                       (-> {:working? (< 0 node.tasks.active)
+                            :waiting? (< 0 node.tasks.waiting)
+                            :error? false
+                            :loading? false
+                            :staged? false
+                            :unstaged? false
+                            :up-to-date? false
+                            :last-event (do
+                                          (-> (inspect (?. node :events 1 2) true)
+                                              (string.gmatch "([^\n]+)")
+                                              (E.map node)
+                                              (table.concat " ")))
+                            :indent (length history)
+                            :error (match (E.last node.events)
+                                     (where e (R.err? e)) (R.unwrap e)
+                                     _ nil)}
+                           (E.set$ (.. section-id :?) true)
+                           (setmetatable {:__index node})))]
     (E.map (fn [node history]
              (if (R.err? node)
                (configuration-error node history)
                (package-data node history)))
            #(Package.iter packages {:include-err? true}))))
 
-(fn ui-data->rows [ui-data]
+(fn ui-data->rows [ui-data section-id]
   (fn indent-with [n]
     (match n
       0 ""
@@ -111,12 +129,66 @@
     ;; text content, highlight group and optionally length. Length may be
     ;; specifically included as it must be utf8 aware, and the chunk generator
     ;; best knows how to do that curently.
+
+    ;; The symbology needed for a package state is complex.
+    ;;
+    ;; At an individual package level, the action may be:
+    ;;
+    ;; align - the package will under go some kind of change to align with its constraint
+    ;; discard - the package will be discarded
+    ;; hold - the package will remain at its current state, whatever that is
+    ;;
+    ;; If a package *can* undergo alignment, we show the potential action in
+    ;; some diminished way, and if a package *will* undergo alignment, we want
+    ;; to call that out stronger.
+    ;;
+    ;; This is complicated when viewing a tree, as A -> B, when B will undergo alignment
+    ;; A will appear in the "staged" section as its tree will incur a change, but A itself
+    ;; may not be re-aligned -- but *may be able to undergo alignment*!
+    (use {: installed? : aligned?} Package)
+    (fn action-data [package]
+      (match [section-id (if (installed? package) :existing :new) package.action]
+        [:staged :existing :retain] [:will :hold]
+        [:staged :existing :discard] [:will :discard]
+        [:staged :existing :align] [:will :sync]
+
+        [:unstaged :existing :retain] [:will :hold]
+        ; [:unstaged :existing :discard] :discard
+        [:unstaged :existing :align] [:can :sync]
+
+        [:up-to-date :existing :retain] [:will :hold]
+        ; [:up-to-date :existing :discard] :discard
+        ; [:up-to-date :existing :align] :sync
+
+        ; [:staged :new :retain] :hold
+        [:staged :new :discard] [:can :install]
+        [:staged :new :align] [:will :install]
+
+        ; [:unstaged :new :retain] :install
+        [:unstaged :new :discard] [:can :install]
+        [:unstaged :new :align] [:can :install]
+        [_ _ action] [:will (.. "_" action "_")]))
+    (fn s->camel [s]
+      (match [(string.match s "([%w])([%w]*)(.*)")]
+        [a b nil] (.. (string.upper a) (or b ""))
+        [a b rest] (.. (string.upper a) (or b "") (s->camel rest))
+        _ s))
+    (fn nice-action [package]
+      (let [[verb name] (action-data package)
+            hl (.. :Pact :Action (s->camel verb) (s->camel name))]
+        (mk-chunk name hl)))
+    (λ highlight-for-health [h]
+      (match h
+        ; [:healthy] :DiagnosticInfo
+        [:degraded] :DiagnosticWarn
+        [:failing] :DiagnosticError))
+
     (let [{: name : last-event : state : constraint : indent} package
           commits-col (mk-col
                         (if package.git
                           (let [from (?. package.git.current.commit :short-sha)
                                 to (?. package.git.target.commit :short-sha)
-                                distance package.distance
+                                distance package.git.target.distance
                                 direction (if (and distance (< 0 distance)) "ahead" "behind")
                                 breaking? (?. package.git.target :breaking?)
                                 name (match (Constraint.type constraint)
@@ -130,28 +202,35 @@
                                 warn #(if breaking? "⚠ " "")]
                             (match [from to distance]
                               [nil nil _] (mk-chunk (fmt "%s" :working) :PactComment)
-                              [nil to _] (mk-chunk (fmt "install %s" name) :DiagnosticInfo)
-                              [same same _] (mk-chunk (fmt "status-quo %s" name) :DiagnosticInfo)
-                              [from to count] (mk-chunk (fmt "%schange %s (%s %s)" (warn) name (math.abs count) direction)
-                                                        (hl))))
+                              [nil to _] (mk-chunk (fmt "%s" name) :DiagnosticInfo)
+                              [same same _] (mk-chunk (fmt "%s" name) :DiagnosticInfo)
+                              [from to count] (let [x (fmt "%s%s (%s %s)" (warn) name (math.abs count) direction)
+                                                    ;; correct for /!\ sym
+                                                    len (+ (length x) (match (warn) "" 0 _ -2))]
+                                                    (mk-chunk x (hl) len))))
                           (mk-chunk "")))
           name-col (mk-col
                      (mk-chunk (indent-with indent)
                                :PactComment
                                (indent-width indent))
                      (mk-chunk name
-                               (highlight-for-health package.health)))
+                               (match (highlight-for-health package.health)
+                                 hl hl
+                                 nil (let [[verb name] (action-data package)]
+                                       (.. :Pact :Action (s->camel verb) (s->camel name))))))
           constraint-col (mk-col
                            (mk-chunk (tostring constraint)))
           action-col (mk-col
-                       (mk-chunk package.action))
+                       (nice-action package))
           latest-col (mk-col
-                       (match (?. package :git :latest :commit)
-                         c (mk-chunk (fmt "(%s)" (table.concat c.versions ",")))
+                       (match [(?. package :git :latest :commit)
+                               (?. package :git :target :commit)]
+                         [{: sha} {: sha}] (mk-chunk "")
+                         [a _] (mk-chunk (fmt "(%s)" (table.concat a.versions ",")))
                          _ (mk-chunk "")))]
       {:content (mk-content
-                  name-col
                   action-col
+                  name-col
                   constraint-col
                   commits-col
                   latest-col)
@@ -171,9 +250,9 @@
                         ;; staged but parent unstaged and need to show the
                         ;; differences. Could be only shown (or shown as
                         ;; virt-lines?) in that case but for its as is.
-                        :sync {:text "⍙"
+                        :align {:text "⍙"
                                :highlight :DiagnosticOk}
-                        :hold {:text "⍑"
+                        :retain {:text "⍑"
                                :highlight :PactComment})
               :health (match package.health
                          [:healthy] nil
@@ -242,7 +321,7 @@
                               row.content)})
            rows)))
 
-(λ intersperse-column-breaks [rows]
+(λ intersperse-column-gutters [rows]
   "Add gaps between columns"
   (E.map #{:meta $.meta
            :content (E.intersperse $.content [{:text " " :highlight "@comment"}])}
@@ -280,6 +359,7 @@
        (widths->maximum-widths)))
 
 (local const {:lede [(mk-basic-row ";; 🔪🩸🐐")
+                     (mk-basic-row ";; (sorry things are ugly right now)")
                      (mk-basic-row "")]
               :blank [(mk-basic-row "")]
               :no-plugins [(mk-basic-row ";;")
@@ -297,35 +377,22 @@
                       (mk-basic-row ";;   cc - Commit staging and fetch updates")
                       (mk-basic-row ";;   =  - View git log (staged/unstaged only)")]})
 
-(λ packages->sections [packages]
-  ;; Given a list of packages, split then into groups for each UI section
-  (let [error? (fn [package]
-                 (= package.uid :error))
-        loading? (fn [package]
-                   (E.any? #(not (Package.ready? $1))
-                           #(Package.iter [package])))
-        retaining? (fn [package]
-                   (E.all? #(Package.retaining? $1)
-                           #(Package.iter [package])))
-        discarding? (fn [package]
-                   (E.all? #(Package.discarding? $1)
-                           #(Package.iter [package])))
-        aligning? (fn [package]
-                    (E.all? #(Package.aligning? $1)
-                            #(Package.iter [package])))]
-        ;; we intentionally only iterate the "top" packages so sub-packages
-        ;; are nested inside the correct parent && section.
-        (E.reduce (fn [grouped [f key]]
-                    (let [{true g false r} (E.group-by f grouped.rest)]
-                      (doto grouped
-                            (tset key (or g []))
-                            (tset :rest (or r [])))))
-                  {:rest packages}
-                  [[error? :error]
-                   [loading? :loading]
-                   [retaining? :retaining]
-                   [aligning? :aligning]
-                   [discarding? :discarding]])))
+(λ group-packages-by-section [packages]
+  ;; we intentionally only iterate the "top" packages so sub-packages
+  ;; are nested inside the correct parent && section.
+  (E.reduce (fn [grouped [f key]]
+              (let [{true g false r} (E.group-by f grouped.rest)]
+                (doto grouped
+                      (tset key (or g []))
+                      (tset :rest (or r [])))))
+            {:rest packages}
+            ;; these intentionally cascade,
+            ;; something that matches aligning 
+            [[package-error? :error]
+             [package-loading? :loading]
+             [package-staged? :staged]
+             [package-unstaged? :unstaged]
+             [package-up-to-date? :up-to-date]]))
 
 (λ ui-data->log-virt-text [])
 
@@ -357,14 +424,13 @@
   ;; keybindings.
   (use Runtime :pact.runtime)
   (set spinner-frame (rate-limited-inc spinner-frame))
-  (let [;; split packages into sections
-        sections (packages->sections ui.runtime.packages)
+  (let [sections (group-packages-by-section ui.runtime.packages)
         ;; We must create stub sections first which contains the text content
         ;; but none of it will be aligned.
         rows (E.reduce (fn [acc section id]
                          (E.set$ acc id (-> section
-                                            (package-tree->ui-data)
-                                            (ui-data->rows))))
+                                            (package-tree->ui-data id)
+                                            (ui-data->rows id))))
                        {} sections)
         ;; get the max widths of every section, then the max width between sections
         ;; which will then dictate the padding needed across all lines.
@@ -377,8 +443,22 @@
         rows (E.reduce (fn [acc section id]
                          (E.set$ acc id (-> section
                                             (inject-padding-chunks column-widths)
-                                            (intersperse-column-breaks))))
+                                            (intersperse-column-gutters))))
                        {} rows)
+        header-rows (-> [(mk-row
+                           (mk-content
+                             (mk-col
+                               (mk-chunk "action" :PactColumnHeader))
+                             (mk-col
+                               (mk-chunk "package" :PactColumnHeader))
+                             (mk-col
+                               (mk-chunk "con" :PactColumnHeader))
+                             (mk-col
+                               (mk-chunk "solve" :PactColumnHeader))
+                             (mk-col
+                               (mk-chunk "(latest)" :PactColumnHeader))))]
+                        (inject-padding-chunks column-widths)
+                        (intersperse-column-gutters))
         ;; Generate title lines. These dont follow the strict alignment and need us to know
         ;; the row counts before creation.
         title-map {:unstaged {:t "Unstaged" :hl "Unstaged"}
@@ -388,8 +468,8 @@
         titles (E.reduce (fn [acc section id]
                            (E.set$ acc id [(mk-row
                                              (mk-content
-                                               (mk-col (mk-chunk id)
-                                                       (mk-chunk (tostring (length section))))))]))
+                                               (mk-col (mk-chunk (string.upper id) :PactTitle)
+                                                       (mk-chunk (fmt " (%s)" (length section))))))]))
                       {} rows)]
     ;; Clear extmarks so we don't have them all pile up. We have to re-make
     ;; then each draw as the lines are re-drawn.
@@ -450,6 +530,7 @@
     (fn write-section [title section]
       (when (not (E.empty? section))
         (write-rows title)
+        (write-rows header-rows)
         (write-rows section)
         (write-rows const.blank)))
 
@@ -458,14 +539,14 @@
     (write-rows const.lede)
 
     (if (E.all? #(= 0 (length $)) rows)
-      (write-rows const.no-plugins))
-
-    (write-section titles.error rows.error)
-    (write-section titles.rest rows.rest)
-    (write-section titles.loading rows.loading)
-    (write-section titles.discarding rows.discarding)
-    (write-section titles.aligning rows.aligning)
-    (write-section titles.retaining rows.retaining)
+      (write-rows const.no-plugins)
+      (do
+        (write-section titles.error rows.error)
+        (write-section titles.rest rows.rest)
+        (write-section titles.loading rows.loading)
+        (write-section titles.unstaged rows.unstaged)
+        (write-section titles.staged rows.staged)
+        (write-section titles.up-to-date rows.up-to-date)))
 
     (write-rows const.usage)
 
