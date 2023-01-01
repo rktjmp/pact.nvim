@@ -285,9 +285,11 @@
                                        _ (Package.increment-tasks-waiting package)
                                        task #(let [_ (Package.decrement-tasks-waiting package)
                                                    _ (Package.increment-tasks-active package)
+                                                   after-helpers {:trace trace
+                                                                  :path (Transaction.package-path t package)}
                                                    ;; TODO propagate active to can-set
                                                    result (task/await-schedule
-                                                            #(match (pcall (fn [] (pre) (f {:trace trace})))
+                                                            #(match (pcall (fn [] (pre) (f after-helpers)))
                                                                (true _) (R.ok)
                                                                (false err)
                                                                (do

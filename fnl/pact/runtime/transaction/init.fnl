@@ -41,6 +41,9 @@
     (trace "created transaction %s paths: %s/start|opt" t.id t.path.root)
     (R.ok t)))
 
+(λ Transaction.package-path [t package]
+  (FS.join-path t.path.root package.install.path))
+
 (λ use-package [t package commit]
   (result-let [canonical-id package.canonical-id
                dsp (Datastore.package-by-canonical-id t.datastore canonical-id)
