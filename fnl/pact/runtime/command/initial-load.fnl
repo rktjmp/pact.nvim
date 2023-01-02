@@ -92,8 +92,12 @@
                                                      break-t (-> (Datastore.Git.breaking-between? dsp head solved)
                                                                  (task/run))
                                                      (distance breaking?) (task/await dist-t break-t)]
-                                          (E.each #(Package.set-target-commit-meta $ (R.unwrap distance) (R.unwrap breaking?))
-                                                  sibling-packages))
+                                          ;; TODO result-let "bug"? this wont fail the result-let
+                                          ;; as we match into two things.
+                                          (if (and (R.ok? distance) (R.ok? breaking?))
+                                            (E.each #(Package.set-target-commit-meta $ (R.unwrap distance) (R.unwrap breaking?))
+                                                    sibling-packages)
+                                            (R.join distance breaking?)))
                                       (task/run) ;; TODO not awaiting here will drop the task because parent is not checked for any siblings before removing it from the list.
                                       (task/await)))]
                    (E.each (fn [p]
