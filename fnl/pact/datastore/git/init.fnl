@@ -107,11 +107,17 @@
                  ;; if no checkout exist, no commit is a valid return value
                  (R.ok nil)))))
 
-;; TODO this and breaking are obviously unoptimised
+;; TODO this and breaking are obviously unoptimised as they normally run
+;; together but must act alone
 (λ distance-between [ds-package commit-a commit-b]
   (task/new #(result-let [{: path} ds-package
-                          commit-a-ts (tonumber (Git.sha-timestamp path commit-a.sha))
-                          commit-b-ts (tonumber (Git.sha-timestamp path commit-b.sha))
+                          _ (validate-git-dir path)
+                          ;; explictly throw result back to result-let
+                          ts-a (Git.sha-timestamp path commit-a.sha)
+                          ts-b (Git.sha-timestamp path commit-b.sha)
+                          ;; then convert if no err
+                          commit-a-ts (tonumber ts-a)
+                          commit-b-ts (tonumber ts-b)
                           [mod early late] (if (<= commit-a-ts commit-b-ts)
                                         [1 commit-a commit-b]
                                         [-1 commit-b commit-a])
@@ -120,8 +126,13 @@
 
 (λ breaking-between? [ds-package commit-a commit-b]
   (task/new #(result-let [{: path} ds-package
-                          commit-a-ts (tonumber (Git.sha-timestamp path commit-a.sha))
-                          commit-b-ts (tonumber (Git.sha-timestamp path commit-b.sha))
+                          _ (validate-git-dir path)
+                          ;; explictly throw result back to result-let
+                          ts-a (Git.sha-timestamp path commit-a.sha)
+                          ts-b (Git.sha-timestamp path commit-b.sha)
+                          ;; then convert if no err
+                          commit-a-ts (tonumber ts-a)
+                          commit-b-ts (tonumber ts-b)
                           [early late] (if (<= commit-a-ts commit-b-ts)
                                         [commit-a commit-b]
                                         [commit-b commit-a])
