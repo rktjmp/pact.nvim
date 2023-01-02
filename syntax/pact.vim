@@ -7,7 +7,7 @@ endif
 
 let b:current_syntax = "pact"
 
-syn match PactComment "\v;;.+$"
+syn match PactComment "\v^;;.*$"
 
 " Title -> leading word before list of section
 " Name -> the plugin name
@@ -17,6 +17,37 @@ hi def link PactTitle DiagnosticWarn
 hi def link PactName Identifier
 hi def link PactText DiagnosticInfo
 hi def link PactComment @comment
+hi def link PactError ErrorMsg
+
+hi def PactColumnHeader ctermfg=8 gui=underline cterm=underline
+
+" generic action groups
+" these should look 'potential but not active'
+hi def link PactActionCanOk @comment
+hi def link PactActionCanDanger @comment
+" these should look active
+hi def PactActionWillOk  ctermfg=3 guibg=#6be581 guifg=#005E11
+hi def link PactActionWillDanger DiagnosticError
+
+hi def link PactActionCanInstall PactActionCanOk
+hi def link PactActionCanSync PactActionCanOk
+hi def link PactActionCanHold DiagnosticInfo
+
+hi def link PactActionWillInstall PactActionWillOk
+hi def link PactActionWillSync PactActionWillOk
+hi def link PactActionWillDiscard PactActionWillDanger
+hi def link PactActionWillHold DiagnosticInfo
+
+hi def link PactStagedActionSync MoreMsg
+hi def link PactStagedActionRetain Question
+hi def link PactStagedActionDiscard WarningMsg
+
+" these highlight groups should look inactive as they're only
+" referencing a potential action.
+hi def link PactUnstagedActionInstall @comment
+hi def link PactUnstagedActionSync @comment
+hi def link PactUnstagedActionRetain @comment
+hi def link PactUnstagedActionDiscard @comment
 
 hi def link PactErrorTitle DiagnosticError
 hi def link PactErrorName PactName

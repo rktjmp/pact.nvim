@@ -1,5 +1,10 @@
 # 🔪🩸🐐 `pact` Changelog
 
+## unreleased
+
+- Ignore untracked files when dirty-checking a repo before syncing.
+- Fix fetching new remote tags.
+
 ## 0.0.9
 
 - Fixed incorrect sourcehut url generation. [contributor: pluffie](https://github.com/pluffie)

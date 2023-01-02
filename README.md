@@ -64,6 +64,26 @@ To automatically install `pact`,
 
 ```lua
 -- in your init.lua
+local pactstrap function()
+  local pact_repo = vim.fn.stdpath('data') .. '/site/pack/pact/data/repos/pact.nvim'
+  local pact_t1 = vim.fn.stdpath('data') .. '/site/pack/pact/data/1/start'
+  local pact_rtp = vim.fn.stdpath('data') .. '/site/pack/pact/start'
+  if vim.fn.empty(vim.fn.glob(pact_repo)) > 0 then
+    print("Could not find pact.nvim, cloning new copy to", pact_path)
+    vim.fn.mkdir(pact_t1, "p")
+    vim.fn.system({
+      'git',
+      'clone',
+      '--depth', '1',
+      '--branch', 'v0.0.8',
+      'https://github.com/rktjmp/pact.nvim',
+      pact_repo
+    })
+    vim.cmd("helptags " .. pact_path .. "/doc")
+
+  end
+
+end
 local pact_path = vim.fn.stdpath('data') .. '/site/pack/pact/start/pact.nvim'
 if vim.fn.empty(vim.fn.glob(pact_path)) > 0 then
   print("Could not find pact.nvim, cloning new copy to", pact_path)
