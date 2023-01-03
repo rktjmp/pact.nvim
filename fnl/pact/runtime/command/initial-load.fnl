@@ -14,6 +14,34 @@
       {:format fmt} string
       {:new task/new :run task/run :await task/await :trace task/trace} :pact.task)
 
+(λ distribute-solved-result [canonical-set solved-to]
+  (match solved-to
+    ;; sovled case is very easy, we just set the target to the commit
+    [:ok commit]
+    (do
+      (E.each #(Package.set-target-commit $ commit)
+              canonical-set)
+      (R.ok commit))
+    ;; unsolved is more compilicated as we want to show *which* packages failed to solve.
+    ;; this means we get back a list of <ok:constraint+commit> and <err:constraint+msg>
+    ;; results, and we need to re-pair those constraints with their packages and extract
+    ;; the error messages
+    [:err mixed]
+    (do
+      (E.each #(match $
+                 [:ok {: constraint :commits [commit]}]
+                 (->> (E.filter #(Constraint.equal? $.constraint constraint)
+                                canonical-set)
+                      (E.each (fn [p]
+                                (Package.set-target-commit p commit)
+                                (Package.degrade-health p "degraded by sibling"))))
+                 [:err {: constraint : msg}]
+                 (->> (E.filter #(Constraint.equal? $.constraint constraint)
+                                canonical-set)
+                      (E.each #(Package.fail-health $ msg))))
+              mixed)
+      (R.ok nil))))
+
 (λ process-initial-packages [runtime-prefix datastore all-packages]
   (fn make-process-task [sibling-packages canonical-id]
     ;; solving - perhaps incorrectly - performs checks against commit
@@ -51,36 +79,11 @@
                                   (let [c (or (E.find #(match? {:sha head.sha} $) commits) head)]
                                     (E.each #(Package.set-current-commit $ c)
                                             sibling-packages)))
-                              ;; Solve constraints
                               constraints (E.map #$.constraint sibling-packages)
                               ;; solver returns a result, but we want to catch and work on it ourselves
-                              solved (match (Solver.solve constraints commits verify-sha)
-                                       ;; sovled case is very easy, we just set the target to the commit
-                                       [:ok commit]
-                                       (do
-                                         (E.each #(Package.set-target-commit $ commit)
-                                                 sibling-packages)
-                                         (R.ok commit))
-                                       ;; unsolved is more compilicated as we want to show *which* packages failed to solve.
-                                       ;; this means we get back a list of <ok:constraint+commit> and <err:constraint+msg>
-                                       ;; results, and we need to re-pair those constraints with their packages and extract
-                                       ;; the error messages
-                                       [:err mixed]
-                                       (do
-                                         (E.each #(match $
-                                                    [:ok {: constraint :commits [c]}]
-                                                    (->> (E.filter #(Constraint.equal? $.constraint constraint)
-                                                                   sibling-packages)
-                                                         (E.each #(-> $
-                                                                      (Package.set-target-commit c 0 false)
-                                                                      (Package.degrade-health "degraded by sibling"))))
-                                                    [:err {: constraint : msg}]
-                                                    (->> (E.filter #(Constraint.equal? $.constraint constraint)
-                                                                   sibling-packages)
-                                                         (E.each #(-> $
-                                                                      (Package.fail-health msg)))))
-                                                 mixed)
-                                         (R.ok nil)))
+                              solved (let [solved (Solver.solve constraints commits verify-sha)]
+                                       (distribute-solved-result sibling-packages solved)
+                                       solved)
                               ;; note the highest version if there is one
                               highest-version-constraint (Constraint.git :version "> 0.0.0")
                               _ (match (Solver.solve [highest-version-constraint] commits verify-sha)
