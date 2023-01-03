@@ -9,13 +9,13 @@
 
 (λ mkdir [path]
   (let [p (vim.fs.normalize path)]
-    (vim.notify (fmt "mkdir %s" p)
-                vim.log.levels.INFO)
+    ; (vim.notify (fmt "mkdir %s" p)
+    ;             vim.log.levels.INFO)
     (assert (= 1 (vim.fn.mkdir p :p)) (fmt "Could not create dir %s" p))))
 
 (λ symlink [target name]
-  (vim.notify (fmt "link %s -> %s" name target)
-              vim.log.levels.INFO)
+  ; (vim.notify (fmt "link %s -> %s" name target)
+  ;             vim.log.levels.INFO)
   (assert (vim.loop.fs_symlink target name)))
 
 (λ bootstrap [pactstrap-path]
@@ -49,14 +49,14 @@
     ;; copy pact into real pact
     (let [src source-path
           dest (fmt "%s/start/pact.nvim" t-1-path)]
-      (vim.notify (fmt "copy %s -> %s" src dest)
-                  vim.log.levels.INFO)
+      ; (vim.notify (fmt "copy %s -> %s" src dest)
+      ;             vim.log.levels.INFO)
       (vim.fn.system [:cp :-r src dest]))
 
     ;; rm pactstrap
     (let [src pactstrap-path]
-      (vim.notify (fmt "remove %s" src)
-                  vim.log.levels.INFO)
+      ; (vim.notify (fmt "remove %s" src)
+      ;             vim.log.levels.INFO)
       (vim.fn.system [:rm :-rf src]))
 
     (vim.cmd "packloadall!")
