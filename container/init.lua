@@ -1,46 +1,36 @@
-local pact_path = vim.fn.stdpath('data') .. '/site/pack/pact/start/pact.nvim'
-
-if vim.fn.empty(vim.fn.glob(pact_path)) > 0 then
-  print("Could not find pact.nvim, cloning new copy to", pact_path)
+-- Bootstrap pact if its missing, you will be instructed to install pact again
+-- the first time you run `:Pact` to finalise installation.
+if vim.loop.fs_stat(vim.fn.stdpath("data") .. "/site/pack/pact/start/pact.nvim") == nil then
+  vim.notify(
+    string.format("Could not find pact.nvim, cloning new copy to %s", check_path)
+    vim.log.levels.WARN
+  )
+  local pactstrap_path = vim.fn.stdpath("data") .. "/site/pack/pactstrap"
   vim.fn.system({
     'git',
     'clone',
     '--depth', '1',
     '--branch', 'v0.0.9',
     'https://github.com/rktjmp/pact.nvim',
-    pact_path
+    pactstrap_path .. "/opt/pact.nvim"
   })
-  vim.cmd("packloadall!")
-  vim.cmd("helptags " .. pact_path .. "/doc")
+  vim.cmd("packadd pact.nvim")
+  require("pact.bootstrap")(pactstrap_path)
 end
 
 vim.opt.termguicolors = true
 vim.cmd("colorscheme habamax")
 
 local pact = require("pact")
-local github = pact.github
+local github, make_pact = pact.github, pact.make_pact
 
-github("rktjmp/pact.nvim", ">= 0.0.0")
-github("rktjmp/lush.nvim", {version = "~ 2.0.0"})
-github("nvim-treesitter/nvim-treesitter", {
-  branch = "master",
-  after = function()
-    -- because we run off the main loop, we must schedule some vim-specific things back
-    vim.schedule(vim.cmd.TSUpdate)
-  end
-})
-github("nvim-lua/plenary.nvim", {
-  branch = "master",
-  after = function(p)
-    p.yield("Fetching something online")
-    local exit, out, _err = p.run("curl", {"https://neovim.io"})
-    if exit == 0 then
-      for i, line in ipairs(out) do
-        local neovim = string.match(line, "<h1.->(.+)</h1>")
-        if neovim then return "neovim is a " .. neovim end
-      end
-    end
-    return "couldn't work out what neovim.io thinks about neovim"
-  end})
-github("some/fake-plugin.nvim", {branch = "master"})
-github("rktjmp/paperplanes.nvim", {version = ">= 10000.0.0"})
+make_pact(
+  github("rktjmp/pact.nvim", ">= 0.0.0"),
+  github("rktjmp/lush.nvim", {version = "~ 2.0.0"}),
+  github("nvim-treesitter/nvim-treesitter", {
+    after = "TSInstallSync! vim lua"
+  }),
+  github("nvim-lua/plenary.nvim")
+  github("some/fake-plugin.nvim", {branch = "master"}),
+  github("rktjmp/paperplanes.nvim", {version = ">= 10000.0.0"}),
+)
