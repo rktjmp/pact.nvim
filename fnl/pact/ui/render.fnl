@@ -11,6 +11,8 @@
      Commit :pact.git.commit
      inspect :pact.inspect
      api vim.api
+     {: mk-row : mk-col : mk-chunk : mk-content : mk-basic-row
+      : rows->extmarks : rows->lines} :pact.ui.layout
      {:format fmt} string)
 
 (local Render {})
@@ -19,9 +21,10 @@
 (var last-time 0)
 (var spinner-frame 0)
 
-
-(fn package-error? [package]
-  (= package.uid :error))
+(fn package-configuration-error? [package]
+  (or (R.err? package)
+      (E.any? #(R.err? $)
+              #(Package.iter [package] {:include-err? true}))))
 
 (fn package-loading? [package]
   (E.any? #(not (Package.ready? $1))
@@ -66,14 +69,6 @@
 
 (fn workflow-waiting-symbol [] "⧖")
 
-(fn mk-chunk [text ?hl ?len] {:text text
-                              :highlight (or ?hl :PactComment)
-                              :length (or ?len (length (or text "")))})
-(fn mk-col [...] [...])
-(fn mk-content [...] [...])
-(fn mk-row [content ?meta] {:content content :meta (or ?meta {})})
-(fn mk-basic-row [content] (mk-row (mk-content (mk-col (mk-chunk content :PactComment)))))
-
 (fn package-tree->ui-data [packages section-id]
   "Extract and construct UI specific data from packages while also flattening the tree."
   (use Package :pact.package
@@ -82,7 +77,6 @@
   ;; simpler view construction or otherwise flag
   (let [configuration-error #{:uid :error
                               :name (R.unwrap $1)
-                              :constraint ""
                               :health (Package.Health.failing "")
                               :indent (length $2)}
         package-data (fn [node history]
@@ -124,7 +118,20 @@
       s (-> (length s)
             (- 2))))
 
-  (fn package->columns [package]
+  (fn* package->columns)
+
+  (fn+ package->columns (where [err] (= err.uid :error))
+    (mk-row
+      (mk-content
+        (mk-col)
+        (mk-col
+          (mk-chunk (indent-with err.indent)
+                    :PactComment
+                    (indent-width err.indent))
+          (mk-chunk err.name :DiagnosticError)))
+      {:error true}))
+
+  (fn+ package->columns [package]
     ;; Each column may contain multiple "chunk" tables, which describe
     ;; text content, highlight group and optionally length. Length may be
     ;; specifically included as it must be utf8 aware, and the chunk generator
@@ -266,37 +273,6 @@
   ;; convert each package into a collection of columns, into a collection of lines
   (E.map #(package->columns $) ui-data))
 
-(fn rows->lines [rows]
-  (fn decomp-line [line-chunks]
-    ;; combine column chunks into columns into lines
-    (-> (E.map #(-> (E.map (fn [{: text}] text) $)
-                    (table.concat ""))
-               line-chunks)
-        (table.concat "")))
-  (E.map #(decomp-line $.content) rows))
-
-(fn rows->extmarks [rows]
-  (var cursor 0)
-  (fn decomp-column [column]
-    ;; combine column chunks into [{: hl : start : stop} ...]
-    (-> (E.reduce (fn [data {: text : highlight}]
-                    (let [start cursor
-                          ;; note: extmarks are byte-offsets, so no need to use length prop
-                          stop (+ cursor (length (or text "")))]
-                      (set cursor stop)
-                      (E.append$ data {:start start
-                                       :stop stop
-                                       :highlight highlight})))
-                  [] column)))
-  (fn decomp-line [line]
-    ;; combine columns with column separators
-    (set cursor 0) ;; ugly...
-    (-> (E.map decomp-column line.content)
-        (E.flatten)
-        (E.append$ (E.merge$ line.meta
-                            {:meta true}))))
-  (E.map decomp-line rows))
-
 (fn inject-padding-chunks [rows widths]
   ;; Each row has columns, but they are not intrinsically aligned in the data
   ;; we need to work out what the padding should be for each column on each
@@ -341,9 +317,6 @@
                    _ $1))
               0 column))
   (E.map width-of-column row.content))
-
-(fn rows->column-widths [rows]
-  (E.map row->column-widths rows))
 
 (fn widths->maximum-widths [widths]
   (E.reduce (fn [col-max col-widths]
@@ -392,13 +365,11 @@
             {:rest packages}
             ;; these intentionally cascade,
             ;; something that matches aligning 
-            [[package-error? :error]
+            [[package-configuration-error? :error]
              [package-loading? :loading]
              [package-staged? :staged]
              [package-unstaged? :unstaged]
              [package-up-to-date? :up-to-date]]))
-
-(λ ui-data->log-virt-text [])
 
 (fn Render.output [ui]
   ; (let [now (vim.loop.now)
@@ -407,13 +378,6 @@
   ;   (print :outp (- now last)))
   ;; We always operate on the top level packages, as we want to group
   ;; package-trees not separate packages.
-  ;;
-  ;; We have these sections
-  ;;
-  ;; waiting: still collecting data for some package in the tree
-  ;; aligned: collected all data, no update available
-  ;; unstaged: collected all data, one or more packages *can* be updated
-  ;; staged: collected all data, one or more packages *will* be updated
   ;;
   ;; Line format:
   ;;
@@ -430,6 +394,7 @@
   ;; There is an additional {:id} key associated with the chunk which indicates
   ;; that an extmark should be placed to map between rows and packages in
   ;; keybindings.
+
   (use Runtime :pact.runtime)
   (set spinner-frame (rate-limited-inc spinner-frame))
   (let [sections (group-packages-by-section ui.runtime.packages)
@@ -444,7 +409,7 @@
         ;; which will then dictate the padding needed across all lines.
         column-widths (->> (E.map #(->> (E.map row->column-widths $)
                                         (widths->maximum-widths))
-                                  rows)
+                                  (E.filter #(not (?. $ :meta :error)) rows))
                            (widths->maximum-widths))
         ;; now that we know column widths we can insert padding chunks into every column
         ;; so they all align.
@@ -460,9 +425,9 @@
                              (mk-col
                                (mk-chunk "package" :PactColumnHeader))
                              (mk-col
-                               (mk-chunk "con" :PactColumnHeader))
+                               (mk-chunk "target" :PactColumnHeader))
                              (mk-col
-                               (mk-chunk "solve" :PactColumnHeader))
+                               (mk-chunk "solved" :PactColumnHeader))
                              (mk-col
                                (mk-chunk "(latest)" :PactColumnHeader))))]
                         (inject-padding-chunks column-widths)
