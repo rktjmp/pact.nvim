@@ -1,31 +1,30 @@
 (local {:format fmt} string)
-;; we don't want to add the same plugins again and again, so keep track of what
-;; we've seen. We manually build a key with forge-user/repo for now.
-(local seen-plugins {})
-(var plugin-proxies [])
+
+;; generate default configuration options
+(let [data-path (.. (vim.fn.stdpath :data) :/pact)
+      runtime-path (.. (vim.fn.stdpath :data) :/site/pack/pact)
+      head-path (.. data-path :/HEAD)
+      config {:lang :en
+              :path {:data data-path
+                     :runtime runtime-path
+                     :head head-path}}]
+  (tset package :preload :pact.config #config))
+
 
 ;; we proxy our plugin providers so we have no runtime cost until the UI is
 ;; actually invoked.
+(var plugin-proxies [])
 (fn proxy [name]
   (when (= (vim.fn.has :nvim-0.8) 0)
     (error "pact.nvim requires nvim-0.8 or later"))
-  ;; assumes ... first arg is string
-  (fn id [user-repo] (.. name "/" user-repo))
   (fn [...]
-    (let [plugin-id (fmt "%s/%s" name (. [...] 1))
-          ?existing (. seen-plugins plugin-id)]
-      ;; (print "proxinging" plugin-id)
-      ; (when ?existing
-      ;   (vim.notify (fmt "Replacing existing plugin %s with new configuration" plugin-id))
-      ;   (tset seen-plugins plugin-id nil))
+    (let [plugin-id (fmt "%s/%s" name (. [...] 1))]
       (let [arg-v [...]
             arg-c (select :# ...)
-            real-fn #(let [mod (require :pact.plugin)
-                           f (. mod name)]
-                       (f (unpack arg-v 1 arg-c)))]
-        (tset seen-plugins plugin-id true)
-        ; (table.insert plugin-proxies real-fn)
-        real-fn))))
+            unproxy-fn #(let [mod (require :pact.plugin)
+                              f (. mod name)]
+                          (f (unpack arg-v 1 arg-c)))]
+        unproxy-fn))))
 
 (local providers {:github (proxy :github)
                   :gitlab (proxy :gitlab)
@@ -45,9 +44,15 @@
   (when (= (vim.fn.has :nvim-0.8) 0)
     (error "pact.nvim requires nvim-0.8 or later"))
   (local opts (or opts {}))
-  (doto opts
-    (tset :concurrency-limit (or opts.concurrency-limit opts.concurrency_limit)))
-  (tset package :preload :pact.config #opts)
+
+  ;; patch default config with options
+  (let [config (require :pact.config)]
+    (tset config :concurrency-limit (or opts.concurrency-limit
+                                        opts.concurrency_limit
+                                        10))
+    ;; dont propagate what we dont need
+    (tset opts :concurrency-limit nil))
+
   (let [e-str "must provide both win and buf or neither"
         (win buf) (match opts
                     {: buf :win nil} (error e-str)
