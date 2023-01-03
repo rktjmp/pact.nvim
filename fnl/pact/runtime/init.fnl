@@ -104,12 +104,12 @@
                                        (FS.join-path runtime.path.runtime $))))))
 
 (λ Runtime.new [opts]
-  (let [FS (require :pact.fs)
+  (let [config (require :pact.config)
+        FS (require :pact.fs)
         Datastore (require :pact.datastore)
-        data-path (FS.join-path (vim.fn.stdpath :data) :pact)
-        repos-path (FS.join-path data-path :repos)
-        head-path (FS.join-path data-path :HEAD)
-        runtime-path (FS.join-path (vim.fn.stdpath :data) :site/pack/pact)
+        data-path config.path.data
+        head-path config.path.head ;; TODO deprecated?
+        runtime-path config.path.runtime
         runtime {:path {:runtime runtime-path ;; where pact exists in the rtp for loading
                         :data data-path ;; where pact stores all its data, repos, transactions, etc
                         :head head-path} ;; link path thats updated to point at current transaction

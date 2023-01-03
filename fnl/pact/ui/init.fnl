@@ -6,12 +6,12 @@
      Package :pact.package
      Runtime :pact.runtime
      Log :pact.log
+     FS :pact.fs
      inspect :pact.inspect
      {: subscribe : unsubscribe} :pact.pubsub
      R :pact.lib.ruin.result
      {: api} vim
-     {:format fmt} string
-     {: abbrev-sha} :pact.git.commit)
+     {:format fmt} string)
 
 (local M {})
 
@@ -125,7 +125,8 @@
   (let [opts (or opts {})
         ;; todo get real buf id if 0
         Runtime (require :pact.runtime)
-        runtime (-> (Runtime.new {:concurrency-limit opts.concurrency-limit})
+        config (require :pact.config)
+        runtime (-> (Runtime.new {:concurrency-limit config.concurrency-limit})
                     (Runtime.add-proxied-plugins proxies))
         ui (-> {: runtime
                 : win
@@ -136,7 +137,7 @@
                 :package->line {}
                 :errors []}
                (prepare-interface))]
-    (Log.new-log-file :pact.log) ;; TODO real path
+    (Log.new-log-file (FS.join-path config.path.data :pact.log))
     ;; TODO unsub all on win close
     (let [{: default-scheduler} (require :pact.task.scheduler)]
       (subscribe default-scheduler #(schedule-redraw ui)))
