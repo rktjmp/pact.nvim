@@ -129,7 +129,7 @@
    :timer-rate-per-ms (/ 1000 30)})
 
 (local default-scheduler (let [config (require :pact.config)]
-                           (new {:concurrency-limit (or config.concurrency-limit 10)})))
+                           (new {:concurrency-limit config.concurrency-limit})))
 
 {: new
  : trace

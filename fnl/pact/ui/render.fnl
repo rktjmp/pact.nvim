@@ -208,7 +208,7 @@
                                 hl #(if breaking? :DiagnosticWarn :DiagnosticInfo)
                                 warn #(if breaking? "⚠ " "")]
                             (match [from to distance]
-                              [nil nil _] (mk-chunk (fmt "%s" :working) :PactComment)
+                              [nil nil _] (mk-chunk (fmt "%s" :...) :PactComment)
                               [nil to _] (mk-chunk (fmt "%s" name) :DiagnosticInfo)
                               [same same _] (mk-chunk (fmt "%s" name) :DiagnosticInfo)
                               [from to count] (let [x (fmt "%s%s (%s %s)" (warn) name (math.abs count) direction)
