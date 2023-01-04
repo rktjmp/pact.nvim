@@ -16,6 +16,33 @@
 (fn stop-timer [task]
   (E.set$ task :timer (- (uv.now) task.timer)))
 
+(fn awaitable? [a]
+  (match? {: awaiting : awaited? : return} a))
+
+(fn* new-awaitable
+  ;; TODO can we check if we called await without run?
+  (where [tasks] (and (seq? tasks) (M.task? (. tasks 1))))
+  {:awaiting tasks
+   :awaited? #(E.all? #(= :dead (coroutine.status $.thread))
+                      tasks)
+   :return #(E.reduce (fn [vals t i]
+                        (when (M.task? t)
+                          ;; may be mixed thread & tasks for
+                          ;; now, so check if we actually can
+                          ;; get a value
+                          (tset vals i t.value))
+                        vals)
+                      {:n (length tasks)} tasks)}
+  (where [thread] (thread? thread))
+  {:awaiting [thread]
+   :awaited? #(= :dead (coroutine.status thread))
+   :return #nil}
+  (where [task] (. task :thread))
+  {:awaiting [task]
+   :awaited? #(= :dead (coroutine.status task.thread))
+   :return #task.value})
+
+
 (fn resume [task ...]
   "Called by the scheduler, task should yield or return a value"
   (match [(coroutine.resume task.thread ...)]
@@ -28,12 +55,18 @@
     ;;
     ;; We return the following values:
     ;; [:trace [f msg]] <- dispatch message via f
-    ;; [:wait thread|[tasks]] <- we're waiting for sub tasks, suspend us
+    ;; [:wait awaitable] <- we're waiting for sub tasks, suspend us
     ;; [:halt value] <- unschedule us, we no longer want to progress
     (where [true [msg-f msg]] (and (function? msg-f msg)))
     (do
       (table.insert task.events [:message msg])
       (values :trace [msg-f msg]))
+
+    (where [true awaitable] (awaitable? awaitable))
+    (do
+      (table.insert task.events [:suspend])
+      (tset task :awaiting awaitable)
+      (values :wait awaitable))
 
     ;; "Awaited" portions of a task should yield the future/thread.
     ;; We instruct the scheduler to return to us later.
@@ -41,16 +74,8 @@
     (where [true thread] (thread? thread))
     (do
       (table.insert task.events [:suspended])
-      (tset task :awaiting [thread])
+      (tset task :awaiting (new-awaitable thread))
       (values :wait thread))
-
-    ;; awaiting multiple threads, assumes all are threads ...
-    (where [true [t & ts]] (M.task? t))
-    (do
-      (table.insert task.events [:suspended])
-      (table.insert ts 1 t) ;; reform
-      (tset task :awaiting ts)
-      (values :wait ts))
 
     ;; result.ok signals that the task has terminated
     (where [true ok] (R.ok? ok))
@@ -88,14 +113,6 @@
           (values :halt err))))
 
 (fn M.exec [task]
-  (fn still-awaiting? [tasks]
-    (->> (E.map (fn [task-or-thread]
-                  (if (M.task? task-or-thread)
-                    task-or-thread.thread
-                    task-or-thread))
-                tasks)
-         (E.any? #(not= :dead (coroutine.status $)))))
-
   (match task
     ;; Never run before
     (where task (= nil task.timer))
@@ -104,18 +121,14 @@
       (resume task))
 
     ;; task is paused by some threads, so just return to scheduler for continuation later
-    (where {: awaiting} (still-awaiting? awaiting))
+    (where {: awaiting} (not (awaiting.awaited?)))
     (values :wait awaiting)
 
     ;; has some threads but the the threads are finished, clear awaiting and resume.
-    (where {: awaiting} (not (still-awaiting? awaiting)))
-    (let [vals (E.reduce (fn [vals t i]
-                           (when (M.task? t)
-                             (tset vals i t.value))
-                           vals)
-                         [] awaiting)]
+    (where {: awaiting} (awaiting.awaited?))
+    (do
       (tset task :awaiting nil)
-      (resume task (E.unpack vals 1 (length awaiting))))
+      (resume task (awaiting.return)))
 
     ;; otherwise just resume the task
     (where task)
@@ -125,14 +138,8 @@
   ;; *very* loose definition...
   (match? {: thread} t))
 
-(fn* M.await
-     ;; TODO this can we check if we called await without run?
-  ;; TODO: [tasks] should return [values], but right now it would expand to (values ...)
-  ; "Await an async tasks completion. Accepts 1 task, n-tasks or [task ...]"
-  ; (where [tasks] (seq? tasks))
-  ; (coroutine.yield tasks)
-  (where [...])
-  (coroutine.yield (E.pack ...)))
+(λ M.await [a]
+  (coroutine.yield (new-awaitable a)))
 
 (fn M.trace [msg ...]
   "Output a 'trace message'. When called from a task, the message is dispatched
