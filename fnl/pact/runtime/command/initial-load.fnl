@@ -99,7 +99,7 @@
                                                                     (task/run))
                                                          break-t (-> (Datastore.Git.breaking-between? dsp head solved)
                                                                      (task/run))
-                                                         (distance breaking?) (task/await dist-t break-t)]
+                                                         [distance breaking?] (task/await [dist-t break-t])]
                                                         ;; TODO result-let "bug"? this wont fail the result-let
                                                         ;; as we match into two things.
                                                         (if (and (R.ok? distance) (R.ok? breaking?))

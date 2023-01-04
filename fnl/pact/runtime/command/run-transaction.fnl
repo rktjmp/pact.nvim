@@ -96,8 +96,7 @@
                                                canonical-sets)
                           ;; TODO we await each task separately until await can handle a seq of tasks
                           ;;      and return a seq of values.
-                          {true ok-results false err-results} (->> (E.map #(task/await $)
-                                                                          package-tasks)
+                          {true ok-results false err-results} (->> (task/await package-tasks)
                                                                    (E.group-by R.ok?))]
                (if (not err-results)
                  (do
