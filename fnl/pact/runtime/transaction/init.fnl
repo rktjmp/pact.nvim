@@ -77,4 +77,7 @@
   (vim.loop.fs_unlink t.path.head)
   (FS.symlink t.path.root t.path.head))
 
+(λ Transaction.cancel [t]
+  (FS.remove-path t.path.root))
+
 Transaction
