@@ -248,7 +248,7 @@
                                                    (set task.queued-at (vim.loop.hrtime))
                                                    (task/run task {:traced (fn [msg]
                                                                              (E.each #(-> p
-                                                                                         (Package.add-event :some-task msg)
+                                                                                         (Package.add-event :transaction msg)
                                                                                          (PubSub.broadcast :changed))
                                                                                     canonical-set))})))
                                                canonical-sets)
@@ -299,7 +299,7 @@
                                                    _ (Package.decrement-tasks-active package)]
                                                result)]
                                    (task/run task {:traced #(-> package
-                                                                (Package.add-event :some-task $)
+                                                                (Package.add-event :transaction-after $)
                                                                 (PubSub.broadcast :changed))}))))
                         (E.map #(task/await $)))
                    (vim.schedule #(vim.notify (fmt "Transaction complete %s" t.id)

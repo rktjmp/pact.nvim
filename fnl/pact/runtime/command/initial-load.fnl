@@ -115,7 +115,7 @@
                    (R.ok))))
      {:traced (fn [msg]
                 (E.each #(-> $
-                             (Package.add-event :some-task msg)
+                             (Package.add-event :initial-load msg)
                              (PubSub.broadcast :changed))
                         sibling-packages))}])
   (->> (E.group-by #(values $.canonical-id $)

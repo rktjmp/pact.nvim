@@ -89,10 +89,14 @@
   (set package.tasks.active (math.max 0 (- package.tasks.active 1)))
   package)
 
-(fn Package.add-event [package workflow event]
-  (Log.log [workflow.id event])
-  (table.insert package.events 1 [workflow.id event])
-  package)
+(fn* Package.add-event
+  (where [package event])
+  (Package.add-event package :no-ctx event)
+  (where [package ctx event])
+  (do
+    (Log.log [ctx event])
+    (table.insert package.events 1 [ctx event])
+    package))
 
 (fn Package.update-health [package health]
   "Set health to current health level or degrade, you can never improve health."
