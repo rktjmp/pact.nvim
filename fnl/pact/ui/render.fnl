@@ -267,8 +267,8 @@
                                :highlight :PactComment})
               :health (match package.health
                          [:healthy] nil
-                         [:degraded msg] {:text (.. "" msg) :highlight :DiagnosticWarn}
-                         [:failing msg] {:text (.. "" msg) :highlight :DiagnosticError})}}))
+                         [:degraded msg] {:text (tostring msg) :highlight :DiagnosticWarn}
+                         [:failing msg] {:text (tostring msg) :highlight :DiagnosticError})}}))
 
   ;; convert each package into a collection of columns, into a collection of lines
   (E.map #(package->columns $) ui-data))
