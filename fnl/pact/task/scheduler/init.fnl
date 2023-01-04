@@ -69,10 +69,9 @@
                          (vim.schedule #(vim.notify  msg vim.log.levels.ERROR)))
                        (where [:halt err] (R.err? err))
                        (vim.schedule
-                         #(vim.notify (debug.traceback task-context.task.thread
-                                                       (fmt "Task (%s) result was R.err: %s"
-                                                            task-context.task.id
-                                                            (tostring err)))
+                         #(vim.notify (fmt "Task (%s) returned an error: %s"
+                                           task-context.task.id
+                                           (tostring err))
                                       vim.log.levels.WARN))))
                    results)]
      (PubSub.broadcast scheduler :tick)
