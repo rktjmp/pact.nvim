@@ -159,7 +159,7 @@
         [:staged :existing :discard] [:will :discard]
         [:staged :existing :align] [:will :sync]
 
-        [:unstaged :existing :retain] [:will :hold]
+        [:unstaged :existing :retain] [:can :sync]
         ; [:unstaged :existing :discard] :discard
         [:unstaged :existing :align] [:can :sync]
 
@@ -232,7 +232,8 @@
                            (mk-chunk (tostring constraint)))
           action-col (mk-col
                        (nice-action package)
-                       (mk-chunk (fmt " (%s)" package.action)))
+                       ;(mk-chunk (fmt " (%s)" package.action))
+                       )
           latest-col (mk-col
                        (match [(?. package :git :latest :commit)
                                (?. package :git :target :commit)]
@@ -261,10 +262,12 @@
                         ;; staged but parent unstaged and need to show the
                         ;; differences. Could be only shown (or shown as
                         ;; virt-lines?) in that case but for its as is.
-                        :align {:text "⍙"
-                               :highlight :DiagnosticOk}
-                        :retain {:text "⍑"
-                               :highlight :PactComment})
+                        _ nil
+                        ; :align {:text "⍙"
+                        ;        :highlight :DiagnosticOk}
+                        ; :retain {:text "⍑"
+                        ;        :highlight :PactComment}
+                        )
               :health (match package.health
                          [:healthy] nil
                          [:degraded msg] {:text (tostring msg) :highlight :DiagnosticWarn}
@@ -349,8 +352,9 @@
               :usage [(mk-basic-row "")
                       (mk-basic-row ";; Usage:")
                       (mk-basic-row ";;")
-                      (mk-basic-row ";;   s  - Stage down plugin tree for update")
-                      (mk-basic-row ";;   u  - Unstage down plugin tree")
+                      (mk-basic-row ";;   s  - Stage package tree in transaction")
+                      (mk-basic-row ";;   u  - Unstage package tree in transaction")
+                      (mk-basic-row ";;   d  - Discard package tree in transaction")
                       (mk-basic-row ";;   cc - Commit transaction")
                       (mk-basic-row ";;   =  - View git log (staged/unstaged only)")]})
 
