@@ -190,14 +190,14 @@
         [:degraded] :DiagnosticWarn
         [:failing] :DiagnosticError))
 
-    (let [{: name : last-event : state : constraint : indent} package
-          commits-col (mk-col
+    (let [commits-col (mk-col
                         (if package.git
                           (let [from (?. package.git.current.commit :short-sha)
                                 to (?. package.git.target.commit :short-sha)
                                 distance package.git.target.distance
                                 direction (if (and distance (< 0 distance)) "ahead" "behind")
                                 breaking? (?. package.git.target :breaking?)
+                                constraint package.constraint
                                 name (match (Constraint.type constraint)
                                        :version (-> (E.map #$
                                                            (or (?. package.git.target :commit :versions) []))
@@ -217,10 +217,10 @@
                                                     (mk-chunk x (hl) len))))
                           (mk-chunk "")))
           name-col (mk-col
-                     (mk-chunk (indent-with indent)
+                     (mk-chunk (indent-with package.indent)
                                :PactComment
-                               (indent-width indent))
-                     (mk-chunk name
+                               (indent-width package.indent))
+                     (mk-chunk package.name
                                (match (highlight-for-health package.health)
                                  hl hl
                                  nil (let [[verb name] (action-data package)]
@@ -229,7 +229,7 @@
                        any (mk-chunk (fmt " (t %s)" any))
                        _ (mk-chunk "")))
           constraint-col (mk-col
-                           (mk-chunk (tostring constraint)))
+                           (mk-chunk (tostring package.constraint)))
           action-col (mk-col
                        (nice-action package)
                        ;(mk-chunk (fmt " (%s)" package.action))
@@ -252,6 +252,14 @@
                                     :highlight :DiagnosticInfo}
                           [_ true] {:text (workflow-waiting-symbol (vim.loop.gettimeofday))
                                     :highlight :Comment})
+              :logs (match (?. package :git :target :logs)
+                      logs (E.map (fn [line]
+                                    (match (string.match line "^(%x+)%s+(.+)$")
+                                      (sha message) [[(Commit.abbrev-sha sha) :PactComment]
+                                                     [" " :Normal]
+                                                     [message :DiagnosticInfo]]
+                                      _ [[line :PactComment]]))
+                                  logs))
               :last-event package.last-event
               :error package.error
               :action (match package.action
@@ -491,6 +499,10 @@
                               (if mark.last-event
                                 (api.nvim_buf_set_extmark ui.buf ui.ns-meta-id line 0
                                                           {:virt_text [[mark.last-event :PactComment]]}))
+                              (if mark.logs
+                                (api.nvim_buf_set_extmark ui.buf ui.ns-meta-id line 0
+                                                          {:virt_lines mark.logs}))
+
 
                               ;; regular highlights
                               (match mark

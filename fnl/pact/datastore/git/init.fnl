@@ -139,10 +139,25 @@
                           breaking-logs (Git.log-breaking path early.sha late.sha)]
                (<= 1 (length breaking-logs)))))
 
+(λ logs-between [ds-package commit-a commit-b]
+  (task/new #(result-let [{: path} ds-package
+                          _ (validate-git-dir path)
+                          ;; explictly throw result back to result-let
+                          ts-a (Git.sha-timestamp path commit-a.sha)
+                          ts-b (Git.sha-timestamp path commit-b.sha)
+                          ;; then convert if no err
+                          commit-a-ts (tonumber ts-a)
+                          commit-b-ts (tonumber ts-b)
+                          [mod early late] (if (<= commit-a-ts commit-b-ts)
+                                        [1 commit-a commit-b]
+                                        [-1 commit-b commit-a])
+                          logs (Git.log-diff path early.sha late.sha)]
+               logs)))
 {: register
  : fetch-commits
  : setup-commit
  : verify-commit
  : commit-at-path
+ : logs-between
  : distance-between
  : breaking-between?}

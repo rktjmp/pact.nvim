@@ -84,18 +84,17 @@
                     vim.log.levels.INFO)))
 
 (fn exec-keymap-= [ui]
-  (let [[line _] (api.nvim_win_get_cursor ui.win)
-        meta (E.find #(= line $.on-line) ui.plugins-meta)]
-    (if (and meta
-             (or (= :staged meta.state) (= :unstaged meta.state))
-             (= :sync (. meta.action 1)))
-      (if meta.log
-        (do
-          (set meta.log-open (not meta.log-open))
-          (schedule-redraw ui))
-        (do
-          #nil));(exec-diff ui meta)))
-      (vim.notify "May only view diff of staged or unstaged sync-able plugins"))))
+  (match (cursor->package ui)
+    package (match (?. package :git :target :logs)
+              nil (do
+                    (-> (Runtime.Command.get-logs ui.runtime package)
+                        (R.map-err #(vim.notify $ vim.log.levels.ERROR)))
+                    (schedule-redraw ui))
+              any (do
+                    (tset package :git :target :logs nil)
+                    (schedule-redraw ui)))
+    nil (vim.notify "No package under cursor"
+                    vim.log.levels.INFO)))
 
 (fn prepare-interface [ui]
   (fn map [buf mode key cb]

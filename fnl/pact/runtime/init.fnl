@@ -212,14 +212,37 @@
     (set package.action :discard))
   (propagate-down package))
 
+(λ Runtime.Command.get-logs [runtime package]
+  (result-let [dsp (Datastore.package-by-canonical-id runtime.datastore package.canonical-id)
+               from (?. package :git :current :commit)
+               to (?. package :git :target :commit)]
+    (match [from to]
+      [{: sha} {: sha}] (R.err "cant diff without changes")
+      [nil _] (R.err "cant diff without current commit")
+      [_ nil] (R.err "cant diff without target commit")
+      [a b] (let [{: run : await : trace} (require :pact.task)
+                  task (Datastore.Git.logs-between dsp from to)]
+              (run
+                (fn []
+                  (Package.increment-tasks-active package)
+                  (trace "fetching logs")
+                  (-> (run task)
+                      (await)
+                      (R.map (fn [logs]
+                               (print logs)
+                               (Package.decrement-tasks-active package)
+                               (tset package :git :target :logs logs)
+                               (R.ok))
+                             (fn [err]
+                               (Package.decrement-tasks-active package)
+                               (print err)
+                               (R.err err)))))
+                {:traced (fn [msg] (Package.add-event package :logs msg))})
+              (R.ok :task-started))
+      _ (R.err "thinking-face-emoji"))))
+
 (fn Runtime.Command.run-transaction [runtime]
   (let [run-transaction (require :pact.runtime.command.run-transaction)]
     (run-transaction runtime)))
-
-(fn Runtime.dispatch [runtime command]
-  (if command
-    (match (command runtime)
-      (where x (R.err? x)) (vim.notify (R.unwrap x) vim.log.levels.ERROR)))
-  runtime)
 
 (values Runtime)

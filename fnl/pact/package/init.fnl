@@ -59,8 +59,6 @@
 
          :action :unknown
 
-         ;; all paths are kept relative as they will be different for every
-         ;; transaction
          :git {:origin (. spec.source 2)
                :current {:commit nil}
                :target {:commit nil ;; solves to commit
