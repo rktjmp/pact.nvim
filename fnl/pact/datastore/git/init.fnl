@@ -8,7 +8,7 @@
      R :pact.lib.ruin.result
      E :pact.lib.ruin.enum
      FS :pact.fs
-     Git :pact.datastore.git.exec
+     Git :pact.exec.git
      Commit :pact.git.commit
      {: trace :new task/new :await task/await : task?} (require :pact.task)
      Log :pact.log
