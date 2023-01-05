@@ -10,6 +10,7 @@
      {:loop uv} vim)
 
 (fn tasks-iter [tasks]
+  "Depth walk tasks."
   (let [iter (fn []
                (E.each #(E.depth-walk (fn [task parents]
                                         (coroutine.yield task parents))
@@ -18,10 +19,12 @@
     (values (coroutine.wrap iter) 0 0)))
 
 (fn add-child-task [parent-context child-context]
+  "Add child to parent and create association link."
   (table.insert parent-context.tasks child-context)
   (set child-context.parent parent-context))
 
 (fn remove-child-task [task-context child-context]
+  "Remove child from parent."
   (set task-context.tasks (E.reject #(= $.id child-context.id)
                                        task-context.tasks)))
 

@@ -1,3 +1,10 @@
+;;; pact.git.commit
+;;;
+;;; Represents a git commit, which must include a sha, and may include
+;;; additional information regarding tags, branches or versions associated with
+;;; that sha.
+;;;
+
 (import-macros {: ruin!} :pact.lib.ruin)
 (ruin!)
 
@@ -5,11 +12,6 @@
      {:format fmt} string)
 
 (local Commit {})
-
-(fn Commit.abbrev-sha [sha]
-  "Git abbreviate a sha differently between repos, shortest possible, so we
-  manually enforce our own style"
-  (string.sub sha 1 7))
 
 (fn* expand-version
   "Convert partial versions into major.minor.patch"
@@ -91,7 +93,7 @@
                   :tags []
                   :branches []
                   :versions []})
-       ;; need function as ->> -> misbehaves or at least does no function as expected
+       ;; need function as ->> -> misbehaves or at least does not function as expected
        (#(setmetatable $1 {:__tostring to-string})))
   (where _)
   (values nil "commit requires a valid sha and optional list of tags, branches or versions"))
@@ -177,5 +179,10 @@
        (E.map #(string.gsub $ "%srefs/heads/HEAD$" " HEAD"))
        ;; now just act as remotes
        (Commit.remote-refs->commits)))
+
+(fn Commit.abbrev-sha [sha]
+  "Git abbreviate a sha differently between repos, shortest possible, so we
+  manually enforce our own style."
+  (string.sub sha 1 7))
 
 Commit

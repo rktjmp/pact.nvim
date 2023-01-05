@@ -20,6 +20,10 @@
   (match? {: awaiting : awaited? : return} a))
 
 (fn* new-awaitable
+  "We support awaiting a thread, a task or a sequence of tasks, and what we are
+  awaiting effects how we return the value. An awaitable wraps the awaited and
+  provides two helpers to check if we should still await and unpack the value
+  as needed."
   ;; TODO can we check if we called await without run?
   (where [tasks] (and (seq? tasks) (M.task? (. tasks 1))))
   {:awaiting tasks
