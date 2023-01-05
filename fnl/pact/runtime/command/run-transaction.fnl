@@ -24,20 +24,37 @@
   ;; run afters if they exist, these may be defined multiple times,
   ;; so we need to collate them somehow TODO (strings can be compared but functions might just be a pick-one)
   ;; run afters for any newly aligned packages
+  (fn unique-afters [canonical-set]
+    (->> (E.map #(match $.after
+                   (where f (function? f)) f
+                   (where s (string? s)) s
+                   other #(error (fmt "`after` must be function or string, got %s" (type other))))
+                canonical-set)
+         (E.reduce (fn [acc after]
+                     ;; string.dump(f, true) doesn't work for us since we're
+                     ;; passing in locals, so the best we can do is try to pair
+                     ;; f == f together
+                     (match (type after)
+                       :function (E.set$ acc after after)
+                       :string (E.set$ acc after #(vim.cmd after))))
+                   {})))
+
   (->> (E.map #(if (match? {:action :align} $) $)
               #(Package.iter packages))
        (E.filter #$.after)
        (E.group-by #$.canonical-id)
        (E.map (fn [canonical-set canonical-id]
                 (let [[canonical-package] canonical-set
+                      call-chain []
                       pre (if canonical-package.opt?
-                            #(vim.cmd (fmt "packadd! %s" canonical-package.package-name))
-                            #nil)
-                      f (match canonical-package.after
-                          (where f (function? f)) f
-                          (where s (string? s)) #(vim.cmd s)
-                          other #(error (fmt "`after` must be function or string, got %s" (type other)))
-                          nil #nil)
+                            (table.insert call-chain #(vim.cmd (fmt "packadd! %s" canonical-package.package-name))))
+                      afters (unique-afters canonical-set)
+                      _ (if (< 1 (length (E.keys afters)))
+                          (table.insert call-chain 1 #(vim.notify (fmt "%s.after had multiple different definitions, execution order is not guaranteed."
+                                                                       canonical-package.name)
+                                                                  vim.log.levels.WARN)))
+                      _ (E.each #(table.insert call-chain $)
+                                afters)
                       _ (Package.increment-tasks-waiting canonical-package)
                       task #(let [_ (Package.decrement-tasks-waiting canonical-package)
                                   _ (Package.increment-tasks-active canonical-package)
@@ -49,7 +66,7 @@
                                                  :path (Transaction.package-path t canonical-package)}
                                   ;; TODO propagate active to can-set
                                   result (task/await-schedule
-                                           #(match (pcall (fn [] (pre) (f after-helpers)))
+                                           #(match (pcall E.each #($ after-helpers) call-chain)
                                               (true _) (R.ok)
                                               (false err)
                                               (do
@@ -99,7 +116,8 @@
                           _ (Transaction.packages-waiting t (-> (E.keys canonical-sets)
                                                                 (length)))
                           _ (set t.progress.afters.waiting (E.reduce (fn [acc [p]]
-                                                                       (if p.after (+ acc 1) acc))
+                                                                       (if (and (= p.action :align) (not-nil? p.after))
+                                                                         (+ acc 1) acc))
                                                                      0 canonical-sets))
                           _ (set __hack-render #(vim.schedule #(update-win
                                                                  t.progress.packages.waiting
