@@ -128,7 +128,7 @@
           (mk-chunk (indent-with err.indent)
                     :PactComment
                     (indent-width err.indent))
-          (mk-chunk err.name :DiagnosticError)))
+          (mk-chunk err.name :PactPackageFailing)))
       {:error true}))
 
   (fn+ package->columns [package]
@@ -182,13 +182,13 @@
         _ s))
     (fn nice-action [package]
       (let [[verb name] (action-data package)
-            hl (.. :Pact :Action (s->camel verb) (s->camel name))]
+            hl (.. :Pact :Package (s->camel verb) (s->camel name))]
         (mk-chunk name hl)))
     (λ highlight-for-health [h]
       (match h
         ; [:healthy] :DiagnosticInfo
-        [:degraded] :DiagnosticWarn
-        [:failing] :DiagnosticError))
+        [:degraded] :PactPackageDegraded
+        [:failing] :PactPackageFailing))
 
     (let [commits-col (mk-col
                         (if package.git
@@ -205,12 +205,12 @@
                                        :head :HEAD
                                        :commit (Commit.abbrev-sha (Constraint.value constraint))
                                        _ (Constraint.value constraint))
-                                hl #(if breaking? :DiagnosticWarn :DiagnosticInfo)
+                                hl #(if breaking? :PactPackageBreaking :PactPackageText)
                                 warn #(if breaking? "⚠ " "")]
                             (match [from to distance]
                               [nil nil _] (mk-chunk (fmt "%s" :...) :PactComment)
-                              [nil to _] (mk-chunk (fmt "%s" name) :DiagnosticInfo)
-                              [same same _] (mk-chunk (fmt "%s" name) :DiagnosticInfo)
+                              [nil to _] (mk-chunk (fmt "%s" name) :PactPackageText)
+                              [same same _] (mk-chunk (fmt "%s" name) :PactPackageText)
                               [from to count] (let [x (fmt "%s%s (%s %s)" (warn) name (math.abs count) direction)
                                                     ;; correct for /!\ sym
                                                     len (+ (length x) (match (warn) "" 0 _ -2))]
@@ -223,17 +223,14 @@
                      (mk-chunk package.name
                                (match (highlight-for-health package.health)
                                  hl hl
-                                 nil (let [[verb name] (action-data package)]
-                                       (.. :Pact :Action (s->camel verb) (s->camel name)))))
+                                 nil :PactPackageName))
                      (match package.transaction
                        any (mk-chunk (fmt " (t %s)" any))
                        _ (mk-chunk "")))
           constraint-col (mk-col
                            (mk-chunk (tostring package.constraint)))
           action-col (mk-col
-                       (nice-action package)
-                       ;(mk-chunk (fmt " (%s)" package.action))
-                       )
+                       (nice-action package))
           latest-col (mk-col
                        (match [(?. package :git :latest :commit)
                                (?. package :git :target :commit)]
@@ -249,15 +246,15 @@
        :meta {:uid package.uid
               :workflow (match [package.working? package.waiting?]
                           [true _] {:text (workflow-active-symbol spinner-frame)
-                                    :highlight :DiagnosticInfo}
+                                    :highlight :PactSignWorking}
                           [_ true] {:text (workflow-waiting-symbol (vim.loop.gettimeofday))
-                                    :highlight :Comment})
+                                    :highlight :PactSignWaiting})
               :logs (match (?. package :git :target :logs)
                       logs (E.map (fn [line]
                                     (match (string.match line "^(%x+)%s+(.+)$")
                                       (sha message) [[(Commit.abbrev-sha sha) :PactComment]
                                                      [" " :Normal]
-                                                     [message :DiagnosticInfo]]
+                                                     [message :PactPackageText]]
                                       _ [[line :PactComment]]))
                                   logs))
               :last-event package.last-event
@@ -278,8 +275,8 @@
                         )
               :health (match package.health
                          [:healthy] nil
-                         [:degraded msg] {:text (tostring msg) :highlight :DiagnosticWarn}
-                         [:failing msg] {:text (tostring msg) :highlight :DiagnosticError})}}))
+                         [:degraded msg] {:text (tostring msg) :highlight :PactPackageDegraded}
+                         [:failing msg] {:text (tostring msg) :highlight :PactPackageFailing})}}))
 
   ;; convert each package into a collection of columns, into a collection of lines
   (E.map #(package->columns $) ui-data))
@@ -315,7 +312,7 @@
 (λ intersperse-column-gutters [rows]
   "Add gaps between columns"
   (E.map #{:meta $.meta
-           :content (E.intersperse $.content [{:text " " :highlight "@comment"}])}
+           :content (E.intersperse $.content [{:text " " :highlight "PactComment"}])}
          rows))
 
 (fn row->column-widths [row]
@@ -420,15 +417,15 @@
         header-rows [(mk-row
                        (mk-content
                          (mk-col
-                           (mk-chunk "action" :PactColumnHeader))
+                           (mk-chunk "action" :PactColumnTitle))
                          (mk-col
-                           (mk-chunk "package" :PactColumnHeader))
+                           (mk-chunk "package" :PactColumnTitle))
                          (mk-col
-                           (mk-chunk "target" :PactColumnHeader))
+                           (mk-chunk "target" :PactColumnTitle))
                          (mk-col
-                           (mk-chunk "solved" :PactColumnHeader))
+                           (mk-chunk "solved" :PactColumnTitle))
                          (mk-col
-                           (mk-chunk "(latest)" :PactColumnHeader))))]
+                           (mk-chunk "(latest)" :PactColumnTitle))))]
         ;; get the max widths of every section, then the max width between sections
         ;; which will then dictate the padding needed across all lines.
         column-widths (->> (E.map #(->> (E.map row->column-widths $)
@@ -448,15 +445,11 @@
                         (intersperse-column-gutters))
         ;; Generate title lines. These dont follow the strict alignment and need us to know
         ;; the row counts before creation.
-        title-map {:unstaged {:t "Unstaged" :hl "Unstaged"}
-                   :staged {:t "Staged" :hl "Staged"}
-                   :aligned {:t "In Sync" :hl "InSync"}
-                   :waiting {:t "Discovering Facts" :hl "Waiting"}}
         titles (E.reduce (fn [acc section id]
                            (E.set$ acc id [(mk-row
                                              (mk-content
-                                               (mk-col (mk-chunk (string.upper id) :PactTitle)
-                                                       (mk-chunk (fmt " (%s)" (length section))))))]))
+                                               (mk-col (mk-chunk (string.upper id) :PactSectionTitle)
+                                                       (mk-chunk (fmt " (%s)" (length section)) :PactComment))))]))
                       {} rows)]
     ;; Clear extmarks so we don't have them all pile up. We have to re-make
     ;; then each draw as the lines are re-drawn.
