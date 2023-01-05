@@ -83,7 +83,8 @@
                                   (trace "git add-worktree %s %s -> %s" repo-path commit.short worktree-path)
                                   (Git.add-worktree repo-path worktree-path sha)
                                   (trace "git checkout %s" commit.short-sha)
-                                  (Git.checkout-sha worktree-path sha)))]
+                                  (Git.checkout-sha worktree-path sha)
+                                  (trace "git checked-out %s" commit.short-sha)))]
                (R.ok worktree-path))))
 
 (λ verify-commit [ds-package commit]
