@@ -15,8 +15,28 @@
 (λ new-transaction [id datastore prefix]
   {: id
    : datastore
+   :progress {:packages {:waiting 0
+                         :running 0
+                         :done 0}
+              :afters {:waiting 0
+                       :running 0
+                       :done 0}}
    :path {:root (FS.join-path prefix id)
           :head (FS.join-path prefix :HEAD)}})
+
+(λ Transaction.packages-waiting [t n]
+  (set t.progress.packages.waiting n)
+  t)
+
+(λ Transaction.package-waiting->package-running [t]
+  (set t.progress.packages.waiting (- t.progress.packages.waiting 1))
+  (set t.progress.packages.running (+ t.progress.packages.running 1))
+  t)
+
+(λ Transaction.package-running->package-done [t]
+  (set t.progress.packages.running (- t.progress.packages.running 1))
+  (set t.progress.packages.done (+ t.progress.packages.done 1))
+  t)
 
 (λ Transaction.new [datastore transactions-prefix]
   "Creates a new transaction. Creating a transaction has no disk effects until

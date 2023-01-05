@@ -18,6 +18,8 @@
       :await-schedule task/await-schedule} :pact.task
      Transaction :pact.runtime.transaction)
 
+(var __hack-render nil)
+
 (λ run-afters [t packages]
   ;; run afters if they exist, these may be defined multiple times,
   ;; so we need to collate them somehow TODO (strings can be compared but functions might just be a pick-one)
@@ -40,6 +42,9 @@
                       task #(let [_ (Package.decrement-tasks-waiting canonical-package)
                                   _ (Package.increment-tasks-active canonical-package)
                                   _ (task/trace "Running after")
+                                  _ (set t.progress.afters.waiting (- t.progress.afters.waiting 1))
+                                  _ (set t.progress.afters.running (+ t.progress.afters.running 1))
+                                  _ (__hack-render)
                                   after-helpers {:trace task/trace
                                                  :path (Transaction.package-path t canonical-package)}
                                   ;; TODO propagate active to can-set
@@ -54,6 +59,9 @@
                                                             vim.log.levels.ERROR)
                                                 (R.err err))))
                                   _ (set canonical-package.transaction :done)
+                                  _ (set t.progress.afters.running (- t.progress.afters.running 1))
+                                  _ (set t.progress.afters.done (+ t.progress.afters.done 1))
+                                  _ (__hack-render)
                                   _ (Package.decrement-tasks-active canonical-package)]
                               result)]
                   (task/run task {:traced #(Package.add-event canonical-package :transaction-after $)}))))
@@ -61,6 +69,8 @@
 
 (λ transact-package-set [transaction canonical-set]
   (let [[canonical-package] canonical-set]
+    (Transaction.package-waiting->package-running transaction)
+    (__hack-render)
     (E.each (fn [p]
               (set p.transaction :start)
               (Package.decrement-tasks-waiting p)
@@ -76,14 +86,29 @@
                 (set p.transaction :done))
               (Package.decrement-tasks-active p))
             canonical-set)
+    (__hack-render)
+    (Transaction.package-running->package-done transaction)
     result))
 
-(fn run-transaction [runtime]
+(λ run-transaction [runtime update-win]
   (task/run #(result-let [t (Transaction.new runtime.datastore runtime.path.data)
                           _ (Transaction.prepare t)
                           ;; TODO topological sort these as a combined graph
                           canonical-sets (E.group-by #(values $.canonical-id $)
                                                      #(Package.iter runtime.packages))
+                          _ (Transaction.packages-waiting t (-> (E.keys canonical-sets)
+                                                                (length)))
+                          _ (set t.progress.afters.waiting (E.reduce (fn [acc [p]]
+                                                                       (if p.after (+ acc 1) acc))
+                                                                     0 canonical-sets))
+                          _ (set __hack-render #(vim.schedule #(update-win
+                                                                 t.progress.packages.waiting
+                                                                 t.progress.packages.running
+                                                                 t.progress.packages.done
+                                                                 t.progress.afters.waiting
+                                                                 t.progress.afters.running
+                                                                 t.progress.afters.done)))
+                          _ (__hack-render)
                           _ (E.each Package.increment-tasks-waiting
                                     #(Package.iter runtime.packages))
                           package-tasks (E.map (fn [canonical-set canonical-id]

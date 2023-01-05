@@ -32,8 +32,33 @@
 
 (fn exec-keymap-cc [ui]
   ;; TODO dont try if no staged
-  (-> (Runtime.Command.run-transaction ui.runtime)
-      (R.map-err #(vim.notify $ vim.log.levels.ERROR))))
+  (let [buf (api.nvim_create_buf false true)
+        win (api.nvim_open_win buf false {:relative :win
+                                          :win ui.win
+                                          :anchor :SW
+                                          :row (api.nvim_win_get_height ui.win)
+                                          :col 1
+                                          :width (api.nvim_win_get_width ui.win)
+                                          :height 1
+                                          :focusable false
+                                          :style :minimal})
+        x {:open true}
+        update-win (fn [waiting running done after-waiting after-running after-done]
+                     (if x.open
+                       (if (and (= done (+ waiting running done))
+                                (= after-done (+ after-waiting after-running after-done)))
+                         (api.nvim_buf_set_lines buf 0 -1 false ["transaction: finished"])
+                         (let [text (fmt "transaction: apply %s/%s after %s/%s"
+                                         done (+ waiting running done)
+                                         after-done (+ after-waiting after-running after-done))]
+                           (api.nvim_buf_set_lines buf 0 -1 false [text])))))
+        _ (api.nvim_create_autocmd :BufHidden {:buffer ui.buf
+                                               :once true
+                                               :callback (fn []
+                                                           (set x.open false)
+                                                           (api.nvim_win_close win true))})]
+    (-> (Runtime.Command.run-transaction ui.runtime update-win)
+        (R.map-err #(vim.notify $ vim.log.levels.ERROR)))))
 
 (fn exec-keymap-<cr> [ui]
   (let [[line _] (api.nvim_win_get_cursor ui.win)
@@ -44,7 +69,6 @@
                    (vim.cmd (fmt ":new %s" path)))
       [any nil] (vim.notify (fmt "%s has no path to open" any.plugin.name))
       _ nil)))
-
 
 (fn exec-keymap-p [ui]
   (match (cursor->package ui)
@@ -111,7 +135,7 @@
         (api.nvim_buf_set_option :ft :pact))
   (doto ui.buf
         (map :n := #(exec-keymap-= ui))
-        (map :n :<cr> #(exec-keymap-<cr> ui))
+        ; (map :n :<cr> #(exec-keymap-<cr> ui))
         (map :n :cc #(exec-keymap-cc ui))
         (map :n :s #(exec-keymap-s ui))
         (map :n :p #(exec-keymap-p ui))

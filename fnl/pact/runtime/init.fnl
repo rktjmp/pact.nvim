@@ -114,6 +114,7 @@
                         :data data-path ;; where pact stores all its data, repos, transactions, etc
                         :head head-path} ;; link path thats updated to point at current transaction
                  :datastore (Datastore.new data-path)
+                 :transaction nil
                  :packages {}}]
     (legacy-check runtime-path)
     (bootstrap-filesystem runtime)
@@ -241,8 +242,8 @@
               (R.ok :task-started))
       _ (R.err "thinking-face-emoji"))))
 
-(fn Runtime.Command.run-transaction [runtime]
+(fn Runtime.Command.run-transaction [runtime update-win]
   (let [run-transaction (require :pact.runtime.command.run-transaction)]
-    (run-transaction runtime)))
+    (run-transaction runtime update-win)))
 
 (values Runtime)
