@@ -1,15 +1,9 @@
 (import-macros {: ruin!} :pact.lib.ruin)
 (ruin!)
 
-(use {: 'result-let} :pact.lib.ruin.result
-     R :pact.lib.ruin.result
-     inspect :pact.inspect
+(use inspect :pact.inspect
      E :pact.lib.ruin.enum
      FS :pact.fs
-     Git :pact.git
-     PubSub :pact.pubsub
-     Commit :pact.git.commit
-     {: trace : async : await} (require :pact.task)
      Log :pact.log
      {:format fmt} string)
 
@@ -29,6 +23,5 @@
   ;   p p
   ;   nil nil)
   (. ds :packages canonical-id))
-
 
 Datastore

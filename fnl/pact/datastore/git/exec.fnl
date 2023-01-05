@@ -28,8 +28,11 @@
                                             (table.insert pat)
                                             (table.insert bod)))
                                     (table.insert `_#)
-                                    (table.insert `(error (string.format "Unhandled success case for %s %s" ,cmd (inspect _#)))))
-         (code# stdout# stderr#) ,(doto (accumulate [body `(match [code# stdout# stderr#]) _ [pat bod] (ipairs err-bodies)]
+                                    (table.insert `(error (string.format "Unhandled success case for %s %s"
+                                                                         ,cmd
+                                                                         (inspect _#)))))
+         (code# stdout# stderr#) ,(doto (accumulate [body `(match [code# stdout# stderr#])
+                                                     _ [pat bod] (ipairs err-bodies)]
                                           (doto body
                                                 (table.insert pat)
                                                 (table.insert bod)))
