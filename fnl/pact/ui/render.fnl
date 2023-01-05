@@ -417,11 +417,24 @@
                                             (package-tree->ui-data id)
                                             (ui-data->rows id))))
                        {} sections)
+        header-rows [(mk-row
+                       (mk-content
+                         (mk-col
+                           (mk-chunk "action" :PactColumnHeader))
+                         (mk-col
+                           (mk-chunk "package" :PactColumnHeader))
+                         (mk-col
+                           (mk-chunk "target" :PactColumnHeader))
+                         (mk-col
+                           (mk-chunk "solved" :PactColumnHeader))
+                         (mk-col
+                           (mk-chunk "(latest)" :PactColumnHeader))))]
         ;; get the max widths of every section, then the max width between sections
         ;; which will then dictate the padding needed across all lines.
         column-widths (->> (E.map #(->> (E.map row->column-widths $)
                                         (widths->maximum-widths))
                                   (E.filter #(not (?. $ :meta :error)) rows))
+                           (E.concat$ (E.map row->column-widths header-rows))
                            (widths->maximum-widths))
         ;; now that we know column widths we can insert padding chunks into every column
         ;; so they all align.
@@ -430,18 +443,7 @@
                                             (inject-padding-chunks column-widths)
                                             (intersperse-column-gutters))))
                        {} rows)
-        header-rows (-> [(mk-row
-                           (mk-content
-                             (mk-col
-                               (mk-chunk "action" :PactColumnHeader))
-                             (mk-col
-                               (mk-chunk "package" :PactColumnHeader))
-                             (mk-col
-                               (mk-chunk "target" :PactColumnHeader))
-                             (mk-col
-                               (mk-chunk "solved" :PactColumnHeader))
-                             (mk-col
-                               (mk-chunk "(latest)" :PactColumnHeader))))]
+        header-rows (-> header-rows
                         (inject-padding-chunks column-widths)
                         (intersperse-column-gutters))
         ;; Generate title lines. These dont follow the strict alignment and need us to know
