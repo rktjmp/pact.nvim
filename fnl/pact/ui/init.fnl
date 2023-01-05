@@ -125,7 +125,8 @@
     (api.nvim_buf_set_keymap buf mode key "" {:callback cb
                                              :nowait true}))
   (doto ui.win
-        (api.nvim_win_set_option :wrap false))
+        (api.nvim_win_set_option :wrap false)
+        (api.nvim_win_set_option :list false))
   (doto ui.buf
         (api.nvim_buf_set_option :modifiable false)
         (api.nvim_buf_set_option :buftype :nofile)
