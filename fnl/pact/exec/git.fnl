@@ -12,21 +12,6 @@
 (fn dump-err [code err]
   (fmt "git-error: return-code: %s std-err: %s" code (inspect err)))
 
-
-
-; ;; git clone -n git://path/to/the_repo.git --depth 1
-; ;; cd the_repo
-; ;; git fetch --filter=blob:none --tags
-; (fn empty-clone [repo-url path]
-;   (match-run :git [:clone :--no-checkout :--sq :HEAD] repo-root const.ENV
-;     (where-ok? [_ [line] _]) (match (string.match line "([%x]+)")
-;                                  nil (values nil "could not find command output=")
-;                                  sha (values sha))
-;     (where-err? [code _ err]) (err err)))
-
-;; TODO: can this be bare? Do we gain anything? It probably makes worktree idea
-;; more complicated as everything would be an actual clone, fetching in a
-;; worktree wouldn't propagate to the shared repo.
 (fn M.create-stub-clone [repo-url repo-path]
   "Creates a blank clone of the remote repo. This contains enough data to see
   logs and interact with tags and branches, but contains no blobs or trees."
@@ -39,8 +24,6 @@
   ;; TODO sense check filtering here. In tests we dont need it, and if
   ;; the shared repo is no-checkout then also probably not, but in some
   ;; cases it may end up pulling in data.
-  ;; We actually could force pulling these refs into their own namespace but
-  ;; probably not much to gain by that at the moment.
   (match-run ["git fetch --filter=tree:0" {:cwd repo-path :env const.ENV}]
     (where-ok? [_ lines _]) (values true)
     (where-err? [code out err]) (values nil (dump-err code [out err]))))

@@ -6,12 +6,7 @@
      E :pact.lib.ruin.enum
      FS :pact.fs
      inspect :pact.inspect
-     Datastore :pact.datastore
-     Solver :pact.solver
-     PubSub :pact.pubsub
      Package :pact.package
-     Commit :pact.git.commit
-     Constraint :pact.plugin.constraint
      {:format fmt} string
      {:new task/new :run task/run :await task/await
       :trace task/trace
