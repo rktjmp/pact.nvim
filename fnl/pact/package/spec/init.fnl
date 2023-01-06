@@ -4,8 +4,8 @@
 (ruin!)
 (use {: ok : err : map-err : 'result-let} :pact.lib.ruin.result
      E :pact.lib.ruin.enum
-     git-source :pact.plugin.source.git
-     constraints :pact.plugin.constraint
+     git-source :pact.package.spec.source.git
+     constraints :pact.package.spec.constraint
      inspect (or vim.inspect print)
      {: valid-sha? : valid-version-spec?} :pact.valid
      {: join-path} :pact.fs

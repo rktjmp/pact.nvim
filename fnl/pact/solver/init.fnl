@@ -6,7 +6,7 @@
      {: trace : async : await} (require :pact.task)
      E :pact.lib.ruin.enum
      Commit :pact.git.commit
-     Constraint :pact.plugin.constraint
+     Constraint :pact.package.spec.constraint
      {:format fmt} string)
 
 (local Solver {})

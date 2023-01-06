@@ -1,7 +1,7 @@
 (import-macros {: describe : it : must : rerequire} :pact.lib.ruin.test)
 
 (local v-sha "96de9a8bd862faab6c812148cd5fa95c2b793fb6")
-(local constraint (rerequire :pact.plugin.constraint))
+(local constraint (rerequire :pact.package.spec.constraint))
 (local Commit (rerequire :pact.git.commit))
 
 (local commit (Commit.new "96de9a8bd862faab6c812148cd5fa95c2b793fb6"

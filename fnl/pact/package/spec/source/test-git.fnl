@@ -1,7 +1,7 @@
 (import-macros {: describe : it : must : rerequire} :pact.lib.ruin.test)
 
 (local v-sha "96de9a8bd862faab6c812148cd5fa95c2b793fb6")
-(local git (rerequire :pact.plugin.source.git))
+(local git (rerequire :pact.package.spec.source.git))
 
 (describe "git provider"
   (it "constructs raw git"

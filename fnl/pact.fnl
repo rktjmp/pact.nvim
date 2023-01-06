@@ -21,7 +21,7 @@
     (let [plugin-id (fmt "%s/%s" name (. [...] 1))]
       (let [arg-v [...]
             arg-c (select :# ...)
-            unproxy-fn #(let [mod (require :pact.plugin)
+            unproxy-fn #(let [mod (require :pact.package.spec)
                               f (. mod name)]
                           (f (unpack arg-v 1 arg-c)))]
         unproxy-fn))))

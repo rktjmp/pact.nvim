@@ -10,7 +10,7 @@
      Solver :pact.solver
      PubSub :pact.pubsub
      Package :pact.package
-     Constraint :pact.plugin.constraint
+     Constraint :pact.package.spec.constraint
      Transaction :pact.runtime.transaction
      {:format fmt} string)
 

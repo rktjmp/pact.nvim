@@ -108,7 +108,7 @@
   (where [[:git :branch branch] commit])
   (E.any? #(= branch $) commit.branches)
   (where [[:git :version version-spec] commit])
-  (let [{: satisfies?} (require :pact.plugin.constraint.version)]
+  (let [{: satisfies?} (require :pact.package.spec.constraint.version)]
     (E.any? #(satisfies? version-spec $) commit.versions))
   (where [[:git :head _] commit])
   (= true commit.HEAD?)
@@ -123,7 +123,7 @@
 
 (fn+ Constraint.solve
   (where [constraint commits] (and (Constraint.version? constraint) (seq? commits)))
-  (let [{: solve} (require :pact.plugin.constraint.version)
+  (let [{: solve} (require :pact.package.spec.constraint.version)
         spec (Constraint.value constraint)
         ;; version solve can already take n-versions
         possible-versions (-> (E.map #$.versions commits)
