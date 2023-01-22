@@ -90,8 +90,16 @@
       (set opts.canonical-id (url->canonical-id url))
       (ok opts))
     (catch
-      [:error e] (err e)
-      _ (err "invalid git plugin spec")))
+      [:error e] (err (fmt "%s %s"
+                           (or opts.name
+                               opts.url
+                               "unknown-package")
+                           e))
+      _ (err (fmt "%s %s"
+                  (or opts.name
+                      opts.url
+                      "unknown-name")
+                  "invalid git plugin spec"))))
   (where _)
   (err "requires url and constraint/options table"))
 
