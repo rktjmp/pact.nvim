@@ -14,7 +14,7 @@
 (fn* git)
 
 (fn+ git (where [url] (string? url))
-  (git url {:constraint [:git :HEAD true]}))
+  (git url {:constraint "*"}))
 
 (fn+ git (where [url constraint] (and (string? url)
                                       (string? constraint)))
