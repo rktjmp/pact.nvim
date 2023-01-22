@@ -76,7 +76,7 @@ if vim.loop.fs_stat(vim.fn.stdpath("data") .. "/site/pack/pact/start/pact.nvim")
     'git',
     'clone',
     '--depth', '1',
-    '--branch', 'v0.0.9',
+    '--branch', 'v0.0.10',
     'https://github.com/rktjmp/pact.nvim',
     pactstrap_path .. "/opt/pact.nvim"
   })
@@ -90,8 +90,10 @@ And somewhere in your configuration,
 
 ```lua
 local pact = require("pact")
-local github = pact.github
-github("rktjmp/pact.nvim", ">= 0.0.0")
+pact.make_pact(
+  pact.github("rktjmp/pact.nvim", ">= 0.0.0"),
+  pact.github("rktjmp/shenzhen-solitaire.nvim")
+)
 ```
 
 Then run `:Pact` to open `pact` (and probably update `pact`).
