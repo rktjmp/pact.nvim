@@ -88,7 +88,6 @@
     ; (must match :3 (y 1 1 1))
     ; (must match :2+ (y 1 1))
     ; (must match :2+ (y 1 1 1 1))
-    
     )
 
   (it "accepts ... as only argument"
@@ -98,6 +97,36 @@
     (must match true (y))
     (must match true (y 1 2 nil 2 3))
     (must match true (y nil))))
+
+(describe "fn* [x [y & rest]]"
+  (it "is supported"
+    (fn* x
+      (where [a [b & rest]]) rest
+      (where _) :other)
+    (must match :other (x 10))
+    ;; & rest is greedy
+    (must match [nil] (x 1 [2]))
+    (must match [nil] (x 1 [2 nil]))
+    (must match [3 4 5] (x 1 [2 3 4 5]))
+    (must match [3 nil] (x 1 [2 3]))
+
+    (fn* y
+      (where [a [b]]) b
+      (where [a [b & rest]]) rest
+      (where _) :other)
+    (must match 2 (y 1 [2]))
+    (must match 2 (y 1 [2 nil]))
+    (must match 2 (y 1 [2 3 4 5]))
+    (must match 2 (y 1 [2 3]))
+
+    (fn* z
+      (where [a [b nil]]) b
+      (where [a [b & rest]]) rest
+      (where _) :other)
+    (must match 2 (z 1 [2]))
+    (must match 2 (z 1 [2 nil]))
+    (must match [3 4 5] (z 1 [2 3 4 5]))
+    (must match [3] (z 1 [2 3]))))
 
 (describe "fn* scope protection"
   (it "will compile with shared symbols"
