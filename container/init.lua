@@ -10,7 +10,7 @@ if vim.loop.fs_stat(vim.fn.stdpath("data") .. "/site/pack/pact/start/pact.nvim")
     'git',
     'clone',
     '--depth', '1',
-    '--branch', 'v0.0.10',
+    '--branch', 'master',
     'https://github.com/rktjmp/pact.nvim',
     pactstrap_path .. "/opt/pact.nvim"
   })
