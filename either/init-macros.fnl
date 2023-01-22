@@ -78,7 +78,7 @@ See also `%s', `%s'%s.")
            ,right-match (,data.fns.right ,right-value)
            _# (let [view# (match (pcall require :fennel)
                             (true {:view view#}) view#
-                            (false _) tostring)]
+                            (false _#) tostring)]
                 (error (string.format "attempted to create %s but did not match any spec (%q)"
                                     ,data.name (view# arguments)))))))))
 
@@ -144,7 +144,7 @@ Has `:n` key storing the number of values (after 1, the id).")
        (let [val# (pack ...)
              tos# #(let [view# (match (pcall require :fennel)
                                  (true {:view view#}) view#
-                                 (false _) tostring)
+                                 (false _#) tostring)
                          val-str# (fcollect [i# 1 val#.n]
                                     (view# (. val# i#) {:prefer-colon? true}))]
                      (.. "@" ,type-name "<" (table.concat val-str# ",") :>))
