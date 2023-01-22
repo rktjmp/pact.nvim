@@ -10,7 +10,6 @@
      Solver :pact.solver
      PubSub :pact.pubsub
      Package :pact.package
-     Constraint :pact.package.spec.constraint
      Transaction :pact.runtime.transaction
      {:format fmt} string)
 
@@ -25,6 +24,7 @@
   This means what we get given to the initial UI is actually a list of
   functions that need to be expanded into specs."
 
+  (print (inspect proxies))
   (fn unproxy-spec-graph [proxies]
     ;; TODO rewrite doc
     "Given a graph of proxies from user-defined plugins, unpack into
@@ -47,8 +47,10 @@
       (match (proxy)
         (where r (R.ok? r))
         (let [spec (R.unwrap r)
+              ; _ (print (inspect spec))
               package (Package.userspec->package spec)
-              dependencies (->> (E.map #(unroll $1) spec.dependencies)
+              ; _ (print (inspect package))
+              dependencies (->> (E.map #(unroll $1) package.depends-on)
                                 ;; set backlink in dependencies to parent for
                                 ;; ease of use
                                 (E.map #(E.set$ $ :depended-by package)))]

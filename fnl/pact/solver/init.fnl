@@ -6,7 +6,7 @@
      {: trace : async : await} (require :pact.task)
      E :pact.lib.ruin.enum
      Commit :pact.git.commit
-     Constraint :pact.package.spec.constraint
+     Constraint :pact.package.constraint.git
      {:format fmt} string)
 
 (local Solver {})
@@ -58,7 +58,7 @@
       ;; the latest that satisfies all constraints.
       (->> (E.map #$.commit constraints-commits)
            ;; solve will solve n-commits to 1-commit
-           (Constraint.solve (Constraint.git :version "> 0.0.0")))
+           (Constraint.solve (Constraint.version "> 0.0.0")))
       ;; otherwise any commit should be as good as any other
       (-> (E.hd constraints-commits)
           (. :commit)))))

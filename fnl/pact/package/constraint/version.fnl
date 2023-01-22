@@ -82,6 +82,9 @@
                   {} {:major s-maj :minor s-min :patch s-patch})
         (E.set$ :operator s-op))))
 
+(fn str-is-notation? [str]
+  (string.match str "^([%^~><=]+%s?[%d]+%.[%d]+%.[%d]+)$"))
+
 (fn* satisfies?
   (where [spec ver] (and (valid-version-spec? spec) (valid-version? ver)))
   (let [ver (str->ver ver)
@@ -124,4 +127,6 @@
                       b (str->ver $2)]
                   (gt? a b)))))
 
-{: satisfies? : solve}
+{: satisfies?
+ : solve
+ : str-is-notation?}

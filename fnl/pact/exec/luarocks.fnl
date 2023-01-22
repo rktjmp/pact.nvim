@@ -17,9 +17,9 @@
     (where-ok? [_ lines err]) (vim.pretty_print lines err)
     (where-err? [code out err]) (dump-err code [out err])))
 
-(λ M.search-remote [name version]
-  (match-run ["luarocks seach --porcelain $name $version"
-              {: name : version}]
+(λ M.search-remote [name ?version]
+  (match-run ["luarocks search --porcelain $name $version"
+              {: name :version (or ?version "")}]
     (where-ok? [_ lines err]) (vim.pretty_print lines err)
     (where-err? [code out err]) (dump-err code [out err])))
 

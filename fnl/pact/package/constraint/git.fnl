@@ -6,10 +6,58 @@
      {:format fmt} string
      {: valid-version-spec?} :pact.valid)
 
-(local Constraint {})
+(local M {})
 
-(fn one-of? [coll test]
-  (E.any? #(= $ test) coll))
+(fn make [kind val]
+  (let [tos (fn [[a b c]] (fmt "(constraint %s %s %s)" a b c))]
+    (setmetatable [:git kind val] {:__tostring tos
+                                   :__fennelview tos
+                                   :__eq M.equal?
+                                   :__index {:git? true
+                                             :type kind
+                                             :value val}})))
+
+(fn M.head [] [:git :head true])
+
+(fn M.version [ver]
+  (if (valid-version-spec? ver)
+    (make :version ver)
+    (values nil "invalid version spec for version constraint")))
+
+(fn M.version? [c]
+  (match? [:git :version any] c))
+
+(fn M.head []
+  (make :head true))
+
+(fn M.head? [c]
+  (match? [:git :head any] c))
+
+(fn M.commit [sha]
+  (let [{: valid-sha?} (require :pact.git.commit)]
+    (if (valid-sha? sha)
+      (make :commit sha)
+      (values nil "invalid sha for commit constraint, must be 7-40 characters"))))
+
+(fn M.commit? [c]
+  (match? [:git :commit any] c))
+
+(fn tag-or-branch [what v]
+  (if (and (string? v) (string.match v "^[^%s]+$"))
+    (make what v)
+    (values nil (fmt "invalid %s, must be string and contain no whitespace" what))))
+
+(fn M.tag [tag]
+  (tag-or-branch :tag tag))
+
+(fn M.tag? [c]
+  (match? [:git :tag any] c))
+
+(fn M.branch [branch]
+  (tag-or-branch :branch branch))
+
+(fn M.branch? [c]
+  (match? [:git :branch any] c))
 
 (fn set-tostring [t]
   (setmetatable t {:__tostring
@@ -29,78 +77,33 @@
                        ;; strip possible spaces from version spec
                        (.. name (string.gsub datum "%s" ""))))}))
 
-(fn Constraint.constraint? [c]
+(fn M.constraint? [c]
   (match? [:git any-1 any-2] c))
 
-(fn Constraint.equal? [ca cb]
-  (match [ca cb]
+(fn M.equal? [a b]
+  (match [a b]
     [[kind how what] [kind how what]] true
     _ false))
 
-(fn Constraint.commit? [c]
-  (match? [:git :commit any] c))
+(fn M.git? [c]
+  (match c
+    (where (or [:git :head any]
+               [:git :commit any]
+               [:git :version any]
+               [:git :tag any]
+               [:git :branch any])) true
+    _ false))
 
-(fn Constraint.tag? [c]
-  (match? [:git :tag any] c))
-
-(fn Constraint.branch? [c]
-  (match? [:git :branch any] c))
-
-(fn Constraint.version? [c]
-  (match? [:git :version any] c))
-
-(fn Constraint.head? [c]
-  (match? [:git :head _] c))
-
-(fn Constraint.type [c]
+(fn M.type [c]
   (match c
     [:git x _] x))
 
-(fn Constraint.value [c]
+(fn M.value [c]
   (match c
     [:git kind val] val
     _ (error "could not get constraint value!")))
 
-(fn* Constraint.git?
-  ;; we don't currently (?) check validity of contents, just shape
-  (where [[:git kind spec]] (and (one-of? [:head :commit :branch :tag :version] kind)
-                                 (string? spec)))
-  true
-  (where _)
-  false)
-
-(fn* Constraint.git
-  "Create a git constraint, which may match against a commit, tag, branch,
-  version or head.")
-
-(fn+ Constraint.git [:version ver]
-  (match (valid-version-spec? ver)
-    true (set-tostring [:git :version ver])
-    false (values nil "invalid version spec for version constraint")))
-
-(fn+ Constraint.git [:head]
-  (set-tostring [:git :head true]))
-
-(fn valid-sha? [sha]
-  ;; we allow 7-40 chars in a commit spec
-  (and (string? sha)
-       (let [len (or (-?> (string.match sha "^(%x+)$") (length)) 0)]
-         (and (<= 7 len) (<= len 40)))))
-
-(fn+ Constraint.git [:commit sha]
-  (match (valid-sha? sha)
-    true (set-tostring [:git :commit sha])
-    false (values nil "invalid sha for commit constraint, must be 7-40 characters")))
-
-(fn+ Constraint.git [kind spec] (one-of? [:branch :tag] kind)
-  (match (string? spec)
-    true (set-tostring [:git kind spec])
-    false (values nil (fmt "invalid spec for %s constraint, must be string" kind))))
-
-(fn+ Constraint.git [...]
-  (values nil "must provide `commit|branch|tag|version` and appropriate value" ...))
-
-(fn* Constraint.satisfies?
+(fn* M.satisfies?
   (where [[:git :commit sha] commit])
   (not-nil? (string.match commit.sha (fmt "^%s" sha)))
   (where [[:git :tag tag] commit])
@@ -108,7 +111,7 @@
   (where [[:git :branch branch] commit])
   (E.any? #(= branch $) commit.branches)
   (where [[:git :version version-spec] commit])
-  (let [{: satisfies?} (require :pact.package.spec.constraint.version)]
+  (let [{: satisfies?} (require :pact.package.constraint.version)]
     (E.any? #(satisfies? version-spec $) commit.versions))
   (where [[:git :head _] commit])
   (= true commit.HEAD?)
@@ -117,14 +120,14 @@
   (where _)
   (error "satisfies? requires constraint and commit"))
 
-(fn* Constraint.solve
+(fn* M.solve
   "Given a constraint and list of commits, return *best fitting* commit, where
   this is the latest version for version constraints.")
 
-(fn+ Constraint.solve
-  (where [constraint commits] (and (Constraint.version? constraint) (seq? commits)))
-  (let [{: solve} (require :pact.package.spec.constraint.version)
-        spec (Constraint.value constraint)
+(fn+ M.solve
+  (where [constraint commits] (and (M.version? constraint) (seq? commits)))
+  (let [{: solve} (require :pact.package.constraint.version)
+        spec (M.value constraint)
         ;; version solve can already take n-versions
         possible-versions (-> (E.map #$.versions commits)
                               (E.flatten))
@@ -139,8 +142,8 @@
                     (E.reduced commit)))
                 nil commits))))
 
-(fn+ Constraint.solve
-  (where [constraint commits] (and (Constraint.constraint? constraint) (seq? commits)))
-  (E.find #(Constraint.satisfies? constraint $) commits))
+(fn+ M.solve
+  (where [constraint commits] (and (M.constraint? constraint) (seq? commits)))
+  (E.find #(M.satisfies? constraint $) commits))
 
-(values Constraint)
+(values M)

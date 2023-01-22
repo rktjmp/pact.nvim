@@ -65,9 +65,9 @@
        (= 40 (-?> (string.match sha "^(%x+)$") (length)))))
 
 (fn* Commit.new
-  (where [sha] (full-sha? sha))
+  (where [sha]);(full-sha? sha)) ;; TODO we now support short shas but should check semi-valid
   (Commit.new sha [])
-  (where [sha data] (full-sha? sha))
+  (where [sha data]);(full-sha? sha))
   (->> data
        (E.map #(match $
                  [:tag t] [:tags t]
@@ -171,14 +171,20 @@
   ;; tags are shown the same regardless of origin.
   ;; strip out any local heads
   (->> refs
-       ;; drop any local heads, they should not matter
+       ;; drop any local heads as remote is the source of truth
        (E.filter #(not (string.match $ "%srefs/heads.+$")))
-       ;; rename remote heads to local, which is actually what ls-remote views remotes as
-       (E.map #(string.gsub $ "%srefs/remotes/origin" " refs/heads"))
+       ;; rename remote heads to local for ls-remote compatiblity
        ;; also rename refs/heads/HEAD to HEAD
+       (E.map #(string.gsub $ "%srefs/remotes/origin" " refs/heads"))
        (E.map #(string.gsub $ "%srefs/heads/HEAD$" " HEAD"))
        ;; now just act as remotes
        (Commit.remote-refs->commits)))
+
+(fn Commit.valid-sha? [sha]
+  ;; we allow 7-40 chars in a commit spec
+  (and (string? sha)
+       (let [len (or (-?> (string.match sha "^(%x+)$") (length)) 0)]
+         (and (<= 7 len) (<= len 40)))))
 
 (fn Commit.abbrev-sha [sha]
   "Git abbreviate a sha differently between repos, shortest possible, so we

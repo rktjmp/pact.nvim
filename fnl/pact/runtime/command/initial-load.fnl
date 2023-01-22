@@ -11,7 +11,7 @@
       PubSub :pact.pubsub
       Package :pact.package
       Commit :pact.git.commit
-      Constraint :pact.package.spec.constraint
+      Constraint :pact.package.constraint.git
       {:format fmt} string
       {:new task/new :run task/run :await task/await :trace task/trace} :pact.task)
 
@@ -90,7 +90,7 @@
                                                   #(R.ok $)
                                                   #(R.ok nil)))
                                   ;; note the highest version if there is one
-                                  highest-version-constraint (Constraint.git :version "> 0.0.0")
+                                  highest-version-constraint (Constraint.version "> 0.0.0")
                                   _ (match (Solver.solve [highest-version-constraint] commits verify-sha)
                                       [:ok commit]  (E.each #(Package.set-latest-commit $ commit) sibling-packages)
                                       [:err _] nil)

@@ -29,6 +29,10 @@
   ;; Warning: some of these properties are place holders and should be
   ;; filled by another process.
   (let [root spec.canonical-id
+        ;; The name should be something the user recognises, which is normally
+        ;; user/repo, but we may be given something specific.
+        ;; However we can't clone the repo to user/repo, and instead use
+        ;; user-repo.
         package-name (or (string.match spec.name ".+/([^/]-)$")
                          (string.gsub spec.name "/" "-")) ;; TODO this will smell
         rtp-path (FS.join-path (if spec.opt? :opt :start) package-name)]
@@ -59,7 +63,7 @@
 
          :action :unknown
 
-         :git {:origin (. spec.source 2)
+         :git {:origin spec.source
                :current {:commit nil}
                :target {:commit nil ;; solves to commit
                         :distance nil ;;
