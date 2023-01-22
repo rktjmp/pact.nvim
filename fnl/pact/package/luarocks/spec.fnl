@@ -45,7 +45,7 @@
          (set opts.name (or opts.name rock-name))
          (set opts.canonical-id (make-canonical-id opts.server rock-name))
          (set opts.constraint (or opts.constraint opts.version))
-         (ok opts))
+         (ok [:rock opts]))
        (catch
          [:error e] (err (fmt "%s %s"
                               (or rock-name "unknown-rock")

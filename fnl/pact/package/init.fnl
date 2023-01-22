@@ -25,7 +25,7 @@
 
 (local Package {:Health Health})
 
-(fn Package.userspec->package [spec]
+(fn common-spec->package [spec]
   ;; Warning: some of these properties are place holders and should be
   ;; filled by another process.
   (let [root spec.canonical-id
@@ -36,44 +36,52 @@
         package-name (or (string.match spec.name ".+/([^/]-)$")
                          (string.gsub spec.name "/" "-")) ;; TODO this will smell
         rtp-path (FS.join-path (if spec.opt? :opt :start) package-name)]
-    (-> {;; type data
-         :type :plugin
+    {;; package data
+     :uid (gen-id :plugin-package) ;; globally unique between all packages, even those
+     ;; with the same c-id
+     :canonical-id spec.canonical-id ;; shared between packages with same origin
+     :name spec.name ;; generally visible name TODO these need better diferentiated names
+     :package-name package-name ;; installed as-name
+     :depended-by nil
+     :depends-on (or spec.dependencies []) ;; placeholder
+     :install {:path rtp-path} ;; start|opt/<name>
+     :after spec.after
+     :opt? spec.opt?
 
-         ;; package data
-         :uid (gen-id :plugin-package) ;; globally unique between all packages, even those
-                                       ;; with the same c-id
-         :canonical-id spec.canonical-id ;; shared between packages with same origin
-         :name spec.name ;; generally visible name TODO these need better diferentiated names
-         :package-name package-name ;; installed as-name
-         :depended-by nil
-         :depends-on (or spec.dependencies []) ;; placeholder
-         :install {:path rtp-path} ;; start|opt/<name>
-         :after spec.after
-         :opt? spec.opt?
+     ;; general bookkeeping
+     :health (Health.healthy)
+     :ready? false ;; TODO loading?
+     :transacting? false
+     :tasks {:waiting 0
+             :active 0}
 
-         ;; general bookkeeping
-         :health (Health.healthy)
-         :ready? false ;; TODO loading?
-         :transacting? false
-         :tasks {:waiting 0
-                 :active 0}
+     :constraint spec.constraint
+     :events []
 
-         :constraint spec.constraint
-         :events []
+     :action :unknown}))
 
-         :action :unknown
-
-         :git {:origin spec.source
-               :current {:commit nil}
-               :target {:commit nil ;; solves to commit
-                        :distance nil ;;
-                        :breaking? false} ;; any log has breaking in it
-               :latest {:commit nil} ;; latest "version" found
-               }}
-        (setmetatable {:__index (fn [t k]
-                                  (match (. Package k)
-                                    (where f (function? f)) f
-                                    _ nil))}))))
+(fn* Package.spec->package
+  (where [[:git spec]])
+  (let [base (common-spec->package spec)]
+    (set base.kind :git)
+    (set base.git {:origin spec.source
+                   :current {:commit nil}
+                   :target {:commit nil ;; solves to commit
+                            :distance nil ;;
+                            :breaking? false} ;; any log has breaking in it
+                   :latest {:commit nil}}) ;; latest "version" found
+    (setmetatable base {:__index (fn [t k]
+                                   (match (. Package k)
+                                     (where f (function? f)) f
+                                     _ nil))}))
+  (where [[:rock spec]])
+  (let [base (common-spec->package spec)]
+    (set base.kind :rock)
+    (set base.rock {})
+    (setmetatable base {:__index (fn [t k]
+                                   (match (. Package k)
+                                     (where f (function? f)) f
+                                     _ nil))})))
 
 (fn Package.increment-tasks-waiting [package]
   (set package.tasks.waiting (+ package.tasks.waiting 1))

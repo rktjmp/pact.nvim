@@ -88,7 +88,7 @@
       (set opts.source url)
       (set opts.constraint constraint)
       (set opts.canonical-id (url->canonical-id url))
-      (ok opts))
+      (ok [:git opts]))
     (catch
       [:error e] (err (fmt "%s %s"
                            (or opts.name

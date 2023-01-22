@@ -44,7 +44,7 @@
       (R.ok nil))))
 
 (λ process-initial-packages [runtime-prefix datastore all-packages]
-  (fn make-process-task [sibling-packages canonical-id]
+  (fn make-git-process-task [sibling-packages canonical-id]
     ;; solving - perhaps incorrectly - performs checks against commit
     ;; constraints to ensure the commit actually exists, and so needs a proxy
     ;; into the data store to check with.
@@ -128,6 +128,12 @@
                              (Package.add-event :initial-load msg)
                              (PubSub.broadcast :changed))
                         sibling-packages))}])
+
+  (fn make-process-task [sibling-packages canonical-id]
+    (match sibling-packages
+      [{:kind :git}] (make-git-process-task sibling-packages canonical-id)
+      _ #(do)))
+
   (->> (E.group-by #(values $.canonical-id $)
                    #(Package.iter all-packages))
        ;; load and process all packages
