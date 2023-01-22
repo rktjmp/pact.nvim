@@ -47,9 +47,7 @@
       (match (proxy)
         (where r (R.ok? r))
         (let [spec (R.unwrap r)
-              ; _ (print (inspect spec))
               package (Package.userspec->package spec)
-              ; _ (print (inspect package))
               dependencies (->> (E.map #(unroll $1) package.depends-on)
                                 ;; set backlink in dependencies to parent for
                                 ;; ease of use
@@ -232,13 +230,11 @@
                   (-> (run task)
                       (await)
                       (R.map (fn [logs]
-                               (print logs)
                                (Package.decrement-tasks-active package)
                                (tset package :git :target :logs logs)
                                (R.ok))
                              (fn [err]
                                (Package.decrement-tasks-active package)
-                               (print err)
                                (R.err err)))))
                 {:traced (fn [msg] (Package.add-event package :logs msg))})
               (R.ok :task-started))

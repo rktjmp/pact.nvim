@@ -1,6 +1,5 @@
 (import-macros {: describe : it : must : rerequire} :pact.lib.ruin.test)
 
-(local _ (rerequire :pact.valid))
 (local {: satisfies? : solve} (rerequire :pact.package.spec.constraint.version))
 
 (describe "version constraint"

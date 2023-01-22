@@ -4,7 +4,7 @@
 (use {: 'fn* : 'fn+} :pact.lib.ruin.fn
      E :pact.lib.ruin.enum
      {:format fmt} string
-     {: valid-version-spec?} :pact.valid)
+     {: version-spec-string?} :pact.package.constraint.version)
 
 (local M {})
 

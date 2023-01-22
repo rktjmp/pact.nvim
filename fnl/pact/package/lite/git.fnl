@@ -3,8 +3,8 @@
 
 (use {: ok : err} :pact.lib.ruin.result
      E :pact.lib.ruin.enum
-     inspect :pact.inspect
      constraints :pact.package.constraint
+     inspect :pact.inspect
      package :pact.package
      {:format fmt} string)
 
@@ -27,6 +27,7 @@
       false [:error (.. "name must match " pat)])))
 
 (fn url->name [url]
+  ;; When no name is given, we try to get the last section of the url
   (string.match url ".+/(.-)$"))
 
 (fn url->canonical-id [url]
@@ -34,7 +35,8 @@
     (.. :git- clean)))
 
 (fn translate-constraint [str]
-  ;; needs ordered check
+  ;; Constraints come in a semi-structured notation, which we should convert
+  ;; into an actual constraint so package doesn't have to deal with it.
   (local git-pat "[%a%d_%-%./]+")
   (local checks (->> [[:head "^%*$" constraints.git.head]
                       ;; TODO: should validate sha is 8 or 40 chars and also
@@ -44,16 +46,17 @@
                       [:tag (.. "^#([^%^]" git-pat ")$") constraints.git.tag]
                       [:branch (.. "^([^%^]" git-pat ")$") constraints.git.branch]]
                      (E.map (fn [[kind pat make]] [kind #(string.match str pat) make]))))
-  (table.insert checks 1 [:version #(constraints.version.str-is-notation? str) constraints.git.version])
+  (table.insert checks 1 [:version
+                          #(constraints.version.str-is-notation? str)
+                          constraints.git.version])
   (match (E.reduce (fn [_ [kind is? make]]
                      (match (is?)
-                       nil nil
                        any (match (make any)
                              val (E.reduced [:ok val])
                              (nil err) [:error err])))
-                   nil checks)
+                   :ignored checks)
     nil [:error "could not translate constraint spec"]
-    any any))
+     any any))
 
 (fn validate-constraint [opts]
   (match-try

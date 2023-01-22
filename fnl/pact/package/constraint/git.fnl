@@ -4,7 +4,7 @@
 (use {: 'fn* : 'fn+} :pact.lib.ruin.fn
      E :pact.lib.ruin.enum
      {:format fmt} string
-     {: valid-version-spec?} :pact.valid)
+     {: version-spec-string?} :pact.package.constraint.version)
 
 (local M {})
 
@@ -20,7 +20,7 @@
 (fn M.head [] [:git :head true])
 
 (fn M.version [ver]
-  (if (valid-version-spec? ver)
+  (if (version-spec-string? ver)
     (make :version ver)
     (values nil "invalid version spec for version constraint")))
 

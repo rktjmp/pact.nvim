@@ -8,7 +8,7 @@
 (use {: ok : err : map-err : 'result-let} :pact.lib.ruin.result
      E :pact.lib.ruin.enum
      inspect (or vim.inspect print)
-     {: valid-version-spec?} :pact.valid
+     {: version-spec-string?} :pact.package.constraint.version
      {:format fmt} string)
 
 (fn* git)
@@ -56,11 +56,11 @@
   (luarocks rock-name ">0.0.0"))
 
 (fn+ luarocks (where [rock-name version] (and (string? rock-name)
-                                              (valid-version-spec? version)))
+                                              (version-spec-string? version)))
   (luarocks rock-name {:constraint version}))
 
 (fn+ luarocks (where [rock-name version opts] (and (string? rock-name)
-                                                   (valid-version-spec? version)
+                                                   (version-spec-string? version)
                                                    (table? opts)))
   (luarocks rock-name (E.merge$ opts {:constraint version})))
 

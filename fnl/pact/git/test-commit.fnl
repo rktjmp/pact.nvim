@@ -1,7 +1,6 @@
 (import-macros {: describe : it : must : rerequire} :pact.lib.ruin.test)
 
 (local v-sha "96de9a8bd862faab6c812148cd5fa95c2b793fb6")
-(local _ (rerequire :pact.valid))
 (local commit (rerequire :pact.git.commit))
 
  (describe "commit"

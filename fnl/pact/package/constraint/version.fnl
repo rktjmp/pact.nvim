@@ -9,8 +9,17 @@
 (ruin!)
 
 (use E :pact.lib.ruin.enum
-     {:format fmt} string
-     {: valid-version? : valid-version-spec?} :pact.valid)
+     {:format fmt} string)
+
+(fn version-string? [v]
+  (and (string? v)
+       (or (not= nil (string.match v "^(%d+)$"))
+           (not= nil (string.match v "^(%d+%.%d+)$"))
+           (not= nil (string.match v "^(%d+%.%d+%.%d+)$")))))
+
+(fn version-spec-string? [v]
+  (and (string? v)
+       (not= nil (string.match v "^[%^~><=]+%s?%d+%.%d+%.%d+$"))))
 
 (fn compare [a b]
   "compare a to b and return a 3 element table describing
@@ -86,7 +95,7 @@
   (string.match str "^([%^~><=]+%s?[%d]+%.[%d]+%.[%d]+)$"))
 
 (fn* satisfies?
-  (where [spec ver] (and (valid-version-spec? spec) (valid-version? ver)))
+  (where [spec ver] (and (version-spec-string? spec) (version-string? ver)))
   (let [ver (str->ver ver)
         spec (str->spec spec)]
     ;; NOTE these are ver spec, not spec ver!
@@ -106,7 +115,7 @@
   versions which satisfy all given specs, in descending order from most newest
   to oldest."
   ;; 1-spec n-versions
-  (where [spec versions] (and (valid-version-spec? spec)
+  (where [spec versions] (and (version-spec-string? spec)
                               (table? versions)))
   (->> (E.filter #(satisfies? spec $) versions)
        (E.sort #(let [a (str->ver $1)
@@ -129,4 +138,6 @@
 
 {: satisfies?
  : solve
+ : version-string?
+ : version-spec-string?
  : str-is-notation?}

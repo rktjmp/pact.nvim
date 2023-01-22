@@ -65,9 +65,9 @@
        (= 40 (-?> (string.match sha "^(%x+)$") (length)))))
 
 (fn* Commit.new
-  (where [sha]);(full-sha? sha)) ;; TODO we now support short shas but should check semi-valid
+  (where [sha] (string? sha)) ;; TODO we now support short shas but should check semi-valid
   (Commit.new sha [])
-  (where [sha data]);(full-sha? sha))
+  (where [sha data] (string? sha))
   (->> data
        (E.map #(match $
                  [:tag t] [:tags t]
