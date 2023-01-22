@@ -77,7 +77,8 @@
   (where [[:rock spec]])
   (let [base (common-spec->package spec)]
     (set base.kind :rock)
-    (set base.rock {})
+    (set base.rock {:server spec.server
+                    :name spec.rock-name})
     (setmetatable base {:__index (fn [t k]
                                    (match (. Package k)
                                      (where f (function? f)) f
@@ -156,13 +157,19 @@
   "ready for interaction"
   (= true package.ready?))
 
-(λ Package.aligned? [package]
+(fn* Package.aligned?
+  (where [package] package.git)
   (and (not-nil? package.git.target.commit)
        (not-nil? package.git.current.commit)
-       (= package.git.target.commit.sha package.git.current.commit.sha)))
+       (= package.git.target.commit.sha package.git.current.commit.sha))
+  (where [package] package.rock)
+  false)
 
-(λ Package.installed? [package]
-  (not-nil? package.git.current.commit))
+(fn* Package.installed?
+  (where [package] package.git)
+  (not-nil? package.git.current.commit)
+  (where [package] package.rock)
+  false)
 
 ;; TODO retain -> ... dont-change? 
 ;; does it make more sense to describe the states as

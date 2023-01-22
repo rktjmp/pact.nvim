@@ -23,8 +23,6 @@
   needs be required until we actually have to touch the plugin data.
   This means what we get given to the initial UI is actually a list of
   functions that need to be expanded into specs."
-
-  (print (inspect proxies))
   (fn unproxy-spec-graph [proxies]
     ;; TODO rewrite doc
     "Given a graph of proxies from user-defined plugins, unpack into
@@ -47,9 +45,7 @@
       (match (proxy)
         (where r (R.ok? r))
         (let [spec (R.unwrap r)
-              _ (print (inspect spec))
               package (Package.spec->package spec)
-              _ (print (inspect package))
               dependencies (->> (E.map #(unroll $1) package.depends-on)
                                 ;; set backlink in dependencies to parent for
                                 ;; ease of use

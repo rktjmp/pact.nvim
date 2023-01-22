@@ -44,6 +44,34 @@
       (R.ok nil))))
 
 (λ process-initial-packages [runtime-prefix datastore all-packages]
+  (fn make-rock-process-task [sibling-packages canonical-id]
+    (E.each Package.increment-tasks-waiting sibling-packages)
+    [(task/new (fmt :process-package-%s canonical-id)
+               (fn []
+                 (E.each Package.decrement-tasks-waiting sibling-packages)
+                 (E.each Package.increment-tasks-active sibling-packages)
+                 (-> (result-let [;; pull out some information
+                                  {:install {:path install-path}
+                                   :rock {: server : name}} (E.hd sibling-packages)
+                                  dsp (-> (Datastore.Rock.register datastore canonical-id name server)
+                                          (task/run)
+                                          (task/await))]
+                               (E.each (fn [p]
+                                         (set p.action :retain)
+                                         (set p.ready? true)
+                                         (Package.decrement-tasks-active p))
+                                       sibling-packages)
+                                 (R.ok))
+                     (R.map (fn [ok] ok)
+                            (fn [err]
+                              (E.each #(Package.fail-health $ (inspect err))
+                                      sibling-packages)
+                              err)))))
+     {:traced (fn [msg]
+                (E.each #(-> $
+                             (Package.add-event :initial-load msg)
+                             (PubSub.broadcast :changed))
+                        sibling-packages))}])
   (fn make-git-process-task [sibling-packages canonical-id]
     ;; solving - perhaps incorrectly - performs checks against commit
     ;; constraints to ensure the commit actually exists, and so needs a proxy
@@ -132,8 +160,7 @@
   (fn make-process-task [sibling-packages canonical-id]
     (match sibling-packages
       [{:kind :git}] (make-git-process-task sibling-packages canonical-id)
-      _ #(do)))
-
+      [{:kind :rock}] (make-rock-process-task sibling-packages canonical-id)))
   (->> (E.group-by #(values $.canonical-id $)
                    #(Package.iter all-packages))
        ;; load and process all packages

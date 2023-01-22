@@ -42,7 +42,8 @@
        (validate-constraint opts) :ok
        (do
          (set opts.server (or opts.server :https://luarocks.org))
-         (set opts.name (or opts.name rock-name))
+         (set opts.rock-name rock-name)
+         (set opts.name (or opts.name (.. "luarocks/" rock-name)))
          (set opts.canonical-id (make-canonical-id opts.server rock-name))
          (set opts.constraint (or opts.constraint opts.version))
          (ok [:rock opts]))

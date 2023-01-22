@@ -101,7 +101,7 @@
 (fn M.value [c]
   (match c
     [:git kind val] val
-    _ (error "could not get constraint value!")))
+    _ (error (fmt "could not get constraint value! %s" c))))
 
 (fn* M.satisfies?
   (where [[:git :commit sha] commit])

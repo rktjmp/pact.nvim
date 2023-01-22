@@ -10,11 +10,12 @@
 (local Datastore {})
 
 (set Datastore.Git (require :pact.datastore.git))
+(set Datastore.Rock (require :pact.datastore.rock))
 
 (λ Datastore.new [data-path]
   "Create datastore for given paths."
   {:path {:git (FS.join-path data-path :repos)
-          :luarocks (FS.join-path data-path :rocks)}
+          :rock (FS.join-path data-path :rocks)}
    :packages {}})
 
 (λ Datastore.package-by-canonical-id [ds canonical-id]

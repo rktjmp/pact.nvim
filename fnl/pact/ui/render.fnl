@@ -228,7 +228,12 @@
                        any (mk-chunk (fmt " (t %s)" any))
                        _ (mk-chunk "")))
           constraint-col (mk-col
-                           (mk-chunk (tostring package.constraint)))
+                           (mk-chunk (match (Constraint.type package.constraint)
+                                       :version (Constraint.value package.constraint)
+                                       :head :HEAD
+                                       :commit (.. "^" (Commit.abbrev-sha (Constraint.value package.constraint)))
+                                       :tag (.. "#" (Constraint.value package.constraint))
+                                       _ (Constraint.value package.constraint))))
           action-col (mk-col
                        (nice-action package))
           latest-col (mk-col
@@ -353,6 +358,7 @@
                            (mk-basic-row ";; pact has no plugins defined! See `:h pact-usage`")
                            (mk-basic-row ";;")
                            (mk-basic-row ";; Since 0.0.10 you need to wrap your plugins inside `make-pact`/`make_pact`!")
+                           (mk-basic-row ";; You may also have to reinstall your plugins.")
                            (mk-basic-row ";;")]
               :usage [(mk-basic-row "")
                       (mk-basic-row ";; Usage:")
