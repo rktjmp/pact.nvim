@@ -40,6 +40,7 @@
 
 (fn translate-multi-sym [ast]
   (if (varg? ast) (assert-compile false "internal-error: cannot translate ..., please report" ast))
+  (if (= `& ast) (assert-compile false "internal-error: cannot translate &, please report" ast))
   ;; multi-sym only makes sense when pinned
   (if (sym-pinned? ast)
     (let [depinned (depin-sym ast)]
@@ -53,6 +54,7 @@
 
 (fn translate-sym [ast]
   (if (varg? ast) (assert-compile false "internal-error: cannot translate ..., please report" ast))
+  (if (= `& ast) (assert-compile false "internal-error: cannot translate &, please report" ast))
   (if (sym-pinned? ast)
     ;; pinned so we need to match the upval and we'll also pass a blank fn arg
     ;; as upval can be used in place.
@@ -68,7 +70,7 @@
                 ;; ... must be not nested and at the end of the argument list
                 (if (and (varg? ast) (not= 0 depth) (not= index (length bindings)))
                   (assert-compile false "... may only occur at end of arguments" ast))
-                (if (= `& ast)
+                (if (and (= `& ast) (= 0 depth))
                   (assert-compile false "`& rest` syntax not supported in function arg lists" ast))
                 (if (=  `^ ast)
                   (assert-compile false "^ requires symbol" ast)))
@@ -128,13 +130,14 @@
         ;; and the value itself will be avaliable as an upvalue as it's been translated.
         match-bindings (clone bindings)
         renamed-match-bindings {}
+        amp? (fn [ast] (if (= `& ast) ast false))
         _ (depth-walk (fn [[_depth index] ast parent]
                         ;; Plain syms should be translated to an gensym (with same _/? prefix)
                         ;; to avoid scope issues.
                         ;; Pinned ^sym should match an in-scope sym.
                         ;; multi-sym's must be pinned.
-                        (let [trans-fn (or (and (sym? ast) (multi-sym? ast) translate-multi-sym)
-                                           (and (sym? ast) translate-sym)
+                        (let [trans-fn (or (and (sym? ast) (multi-sym? ast) (not (amp? ast)) translate-multi-sym)
+                                           (and (sym? ast) (not (amp? ast)) translate-sym)
                                            nil)]
                           ;; sym can be translated and is not nil or $x
                           (when (and trans-fn
@@ -163,6 +166,7 @@
                                    (not (and (list? parent) (= ast (. parent 1))))
                                    ;; but leave nil, $1 and _G.xyz alone
                                    (not= `nil ast)
+                                   (not (amp? ast))
                                    (not (or (string.match (tostring ast) "^%$")
                                             (string.match (tostring ast) "^_G%."))))
                           ;; If here, we know we have to patch the name, but we
@@ -202,7 +206,7 @@
                         ;; Can't actually match against ... so don't include it in the match pattern
                         (if (varg? ast)
                           (tset parent index nil)
-                          (when (sym? ast)
+                          (when (and (sym? ast) (not (amp? ast)))
                             (tset ast 1 (tostring (. renamed-match-bindings (tostring ast)))))))
                       match-bindings)
         ;; Update fn arg list to drop pinned names as they're pulled from the

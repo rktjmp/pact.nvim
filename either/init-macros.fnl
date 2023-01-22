@@ -76,7 +76,9 @@ See also `%s', `%s'%s.")
            (where [either#] (and (= 1 arguments.n) (,data.fns.either? either#))) (values either#)
            ,left-match (,data.fns.left ,left-value)
            ,right-match (,data.fns.right ,right-value)
-           _# (let [{:view view#} (require :fennel)]
+           _# (let [view# (match (pcall require :fennel)
+                            (true {:view view#}) view#
+                            (false _) tostring)]
                 (error (string.format "attempted to create %s but did not match any spec (%q)"
                                     ,data.name (view# arguments)))))))))
 
@@ -140,7 +142,9 @@ Has `:n` key storing the number of values (after 1, the id).")
   (let [type-name (sym :type-name)]
     `(fn __M.gen-type [,type-name ...]
        (let [val# (pack ...)
-             tos# #(let [{:view view#} (require :fennel)
+             tos# #(let [view# (match (pcall require :fennel)
+                                 (true {:view view#}) view#
+                                 (false _) tostring)
                          val-str# (fcollect [i# 1 val#.n]
                                     (view# (. val# i#) {:prefer-colon? true}))]
                      (.. "@" ,type-name "<" (table.concat val-str# ",") :>))
