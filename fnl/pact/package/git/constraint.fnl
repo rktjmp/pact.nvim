@@ -4,7 +4,7 @@
 (use {: 'fn* : 'fn+} :pact.lib.ruin.fn
      E :pact.lib.ruin.enum
      {:format fmt} string
-     {: version-spec-string?} :pact.package.constraint.version)
+     {: version-spec-string?} :pact.package.version)
 
 (local M {})
 
@@ -111,7 +111,7 @@
   (where [[:git :branch branch] commit])
   (E.any? #(= branch $) commit.branches)
   (where [[:git :version version-spec] commit])
-  (let [{: satisfies?} (require :pact.package.constraint.version)]
+  (let [{: satisfies?} (require :pact.package.version)]
     (E.any? #(satisfies? version-spec $) commit.versions))
   (where [[:git :head _] commit])
   (= true commit.HEAD?)
@@ -126,7 +126,7 @@
 
 (fn+ M.solve
   (where [constraint commits] (and (M.version? constraint) (seq? commits)))
-  (let [{: solve} (require :pact.package.constraint.version)
+  (let [{: solve} (require :pact.package.version)
         spec (M.value constraint)
         ;; version solve can already take n-versions
         possible-versions (-> (E.map #$.versions commits)

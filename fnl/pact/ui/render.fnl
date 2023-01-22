@@ -7,7 +7,7 @@
      R :pact.lib.ruin.result
      Log :pact.log
      Package :pact.package
-     Constraint :pact.package.constraint.git
+     Constraint :pact.package.git.constraint
      Commit :pact.git.commit
      inspect :pact.inspect
      api vim.api

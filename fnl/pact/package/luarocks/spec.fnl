@@ -3,7 +3,7 @@
 (use {: ok : err : map-err : 'result-let} :pact.lib.ruin.result
      E :pact.lib.ruin.enum
      inspect (or vim.inspect print)
-     {: version-spec-string?} :pact.package.constraint.version
+     {: version-spec-string?} :pact.package.version
      {:format fmt} string)
 
 (fn make [rock-name opts]

@@ -11,7 +11,7 @@
       PubSub :pact.pubsub
       Package :pact.package
       Commit :pact.git.commit
-      Constraint :pact.package.constraint.git
+      Constraint :pact.package.git.constraint
       {:format fmt} string
       {:new task/new :run task/run :await task/await :trace task/trace} :pact.task)
 
