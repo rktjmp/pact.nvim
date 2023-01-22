@@ -5,7 +5,7 @@
      R :pact.lib.ruin.result
      {: trace : async : await} (require :pact.task)
      E :pact.lib.ruin.enum
-     Commit :pact.git.commit
+     Commit :pact.package.git.commit
      Constraint :pact.package.git.constraint
      {:format fmt} string)
 

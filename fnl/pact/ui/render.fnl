@@ -8,7 +8,7 @@
      Log :pact.log
      Package :pact.package
      Constraint :pact.package.git.constraint
-     Commit :pact.git.commit
+     Commit :pact.package.git.commit
      inspect :pact.inspect
      api vim.api
      {: mk-row : mk-col : mk-chunk : mk-content : mk-basic-row

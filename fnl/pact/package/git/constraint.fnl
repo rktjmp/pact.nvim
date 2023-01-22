@@ -34,7 +34,7 @@
   (match? [:git :head any] c))
 
 (fn M.commit [sha]
-  (let [{: valid-sha?} (require :pact.git.commit)]
+  (let [{: valid-sha?} (require :pact.package.git.commit)]
     (if (valid-sha? sha)
       (make :commit sha)
       (values nil "invalid sha for commit constraint, must be 7-40 characters"))))
@@ -64,7 +64,7 @@
                    (fn [[_ kind spec]]
                      (let [datum (match kind
                                    :head :HEAD
-                                   :commit (let [{: abbrev-sha} (require :pact.git.commit)]
+                                   :commit (let [{: abbrev-sha} (require :pact.package.git.commit)]
                                              (abbrev-sha spec))
                                    any spec)
                            name (match kind

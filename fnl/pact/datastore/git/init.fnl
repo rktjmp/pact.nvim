@@ -8,8 +8,8 @@
      R :pact.lib.ruin.result
      E :pact.lib.ruin.enum
      FS :pact.fs
-     Git :pact.exec.git
-     Commit :pact.git.commit
+     Git :pact.package.git.exec
+     Commit :pact.package.git.commit
      {: trace :new task/new :await task/await : task?} (require :pact.task)
      Log :pact.log
      {:format fmt} string)

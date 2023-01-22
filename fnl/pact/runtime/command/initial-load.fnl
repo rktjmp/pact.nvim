@@ -10,7 +10,7 @@
       Solver :pact.solver
       PubSub :pact.pubsub
       Package :pact.package
-      Commit :pact.git.commit
+      Commit :pact.package.git.commit
       Constraint :pact.package.git.constraint
       {:format fmt} string
       {:new task/new :run task/run :await task/await :trace task/trace} :pact.task)
