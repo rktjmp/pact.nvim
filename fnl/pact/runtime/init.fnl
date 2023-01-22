@@ -47,7 +47,9 @@
       (match (proxy)
         (where r (R.ok? r))
         (let [spec (R.unwrap r)
+              _ (print (inspect spec))
               package (Package.userspec->package spec)
+              _ (print (inspect package))
               dependencies (->> (E.map #(unroll $1) package.depends-on)
                                 ;; set backlink in dependencies to parent for
                                 ;; ease of use

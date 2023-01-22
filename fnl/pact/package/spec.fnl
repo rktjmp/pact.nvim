@@ -12,4 +12,5 @@
 {: git
  : github
  : gitlab
- : sourcehut :srht sourcehut}
+ : sourcehut :srht sourcehut
+ : luarocks :rock luarocks}

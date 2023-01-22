@@ -6,8 +6,20 @@
      {: version-spec-string?} :pact.package.version
      {:format fmt} string)
 
-(fn make [rock-name opts]
-  (error "not done"))
+(fn make-canonical-id [server rock]
+  (let [s (string.gsub server "[^%w]+" "-")
+        r (string.gsub server "[^%w]+" "-")]
+    (.. :rock- s :- r)))
+
+(fn validate-name [rock-name]
+  (match (string.match rock-name "[%a%d]+")
+    any :ok
+    nil [:error "invalid rock name"]))
+
+(fn validate-constraint [opts]
+  (match (version-spec-string? (or opts.constraint opts.version ""))
+    true :ok
+    false [:error "constraint must be version"]))
 
 (fn* luarocks)
 
@@ -25,9 +37,21 @@
 
 (fn+ luarocks (where [rock-name opts] (and (string? rock-name)
                                            (table? opts)))
-  (set opts.server (or opts.server :https://luarocks.org))
-  (match opts.constraint
-    (where v (version-spec-string? v)) (make rock-name opts)
-    _ (values nil "invalid luarocks constraint, must be version")))
+     (match-try
+       (validate-name rock-name) :ok
+       (validate-constraint opts) :ok
+       (do
+         (set opts.server (or opts.server :https://luarocks.org))
+         (set opts.name (or opts.name rock-name))
+         (set opts.canonical-id (make-canonical-id opts.server rock-name))
+         (set opts.constraint (or opts.constraint opts.version))
+         (ok opts))
+       (catch
+         [:error e] (err (fmt "%s %s"
+                              (or rock-name "unknown-rock")
+                              e))
+         _ (err (fmt "%s %s"
+                     (or rock-name "unknown-rock")
+                     "invalid rock plugin spec")))))
 
 {: luarocks}

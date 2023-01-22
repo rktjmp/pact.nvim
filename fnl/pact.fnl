@@ -29,8 +29,8 @@
 (local providers {:github (proxy :github)
                   :gitlab (proxy :gitlab)
                   :sourcehut (proxy :sourcehut)
-                  :srht (proxy :sourcehut)
-                  :git (proxy :git)})
+                  :git (proxy :git)
+                  :luarocks (proxy :luarocks)})
 
 (fn open [opts]
   "Open pact in a lower split with an optional configuration table.
@@ -79,4 +79,6 @@
  :github providers.github
  :path providers.path
  :srht providers.sourcehut
- :sourcehut providers.sourcehut}
+ :sourcehut providers.sourcehut
+ :luarocks providers.luarocks
+ :rock providers.luarocks}
