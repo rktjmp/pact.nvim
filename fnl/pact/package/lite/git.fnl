@@ -74,7 +74,7 @@
       nil [:error "must provide constraint"]
       _ [:error "constraint invalid"])))
 
-(fn* git
+(fn* make
   "Define a git source. Must be passed a source url and options table which
   must contain at least a :constraint value."
   (where [url opts] (and (string? url) (table? opts)))
@@ -103,4 +103,45 @@
   (where _)
   (err "requires url and constraint/options table"))
 
-{: git}
+(fn* git)
+
+(fn+ git (where [url] (string? url))
+  (git url {:constraint "*"}))
+
+(fn+ git (where [url constraint] (and (string? url)
+                                      (string? constraint)))
+  (git url {:constraint constraint}))
+
+(fn+ git (where [url constraint opts] (and (string? url)
+                                           (string? constraint)
+                                           (table? opts)))
+  (git url (E.merge$ opts {:constraint constraint})))
+
+(fn+ git (where [url opts] (and (string? url)
+                                (table? opts)))
+  ;; try to set name automatically for forge sources, if not set
+  (if (nil? opts.name)
+    (let [pats ["github.com/(.+)$" "gitlab.com/(.+)$"  "git.sr.ht/~(.+)$"]
+          name (E.reduce (fn [_ pat]
+                           (match (string.match url pat)
+                             name (E.reduced name)))
+                         nil pats)]
+      (set opts.name name)))
+  (make url opts))
+
+(fn github [user-repo ...]
+  (git (.. :https://github.com/ user-repo) ...))
+
+(fn gitlab [user-repo ...]
+  (git (.. :https://gitlab.com/ user-repo) ...))
+
+(fn sourcehut [user-repo ...]
+  (git (.. "https://git.sr.ht/~" user-repo) ...))
+
+(fn srht [...]
+  (sourcehut ...))
+
+{: git
+ : github
+ : gitlab
+ : sourcehut}
