@@ -86,7 +86,7 @@ are described below.
 - Track most latest available artefact.
 - Applies to `git`, git forge and ~~luarocks~~ provider.
 
-~~**`"*"`**~~
+~~**`"\*"`**~~
 - ~~Defer package constraint to any other canonical sibling.~~
 
 ## Providers
@@ -201,10 +201,13 @@ The following options are common to all providers
 
 - `string` Neovim appropriate name to install as, (eg: `pact.nvim` &rarr; `:packadd pact.nvim`, etc)
 
-**`version` `branch` `tag` `commit`**
+**`version` `branch` `tag` `commit` `constraint`**
 
 - Constraints may also be included in the options table. Tags and commits
-  should not include their symbol prefixes.
+  should not include their symbol prefixes when given as a table option.
+- `:constraint "\*"` can be used for `HEAD`.
+- If no constraint is specified `\*` is used.
+- Including multiple constraint options has undefined behaviour
 
 ~~**`force`**~~
 
