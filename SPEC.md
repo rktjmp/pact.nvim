@@ -181,7 +181,8 @@ The following options are common to all providers
 
 **`dependencies` | `deps`**
 
-- a `table` nested packages.
+- a `table` nested packages, each following the same provider options as
+  described.
 
 **`opt?` | `opt`**
 
@@ -207,7 +208,16 @@ The following options are common to all providers
   should not include their symbol prefixes when given as a table option.
 - `:constraint "\*"` can be used for `HEAD`.
 - If no constraint is specified `\*` is used.
-- Including multiple constraint options has undefined behaviour
+- Including multiple constraint options has undefined behaviour.
+- When a package is defined multiple times, `pact` will attempt to cross
+  resolve the constraints (that is, `> 1.0.0` and `= 1.5.0` will resolve to
+  `1.5.0` as both constraints are satisfied, this behaviour is not limited to
+  version constraints).
+  - ~~When a package is defined multiple times, such as a dependency of multiple
+    other packages, any definitions without a constraint are marked as "weakly
+    constrained" and will be ignored when cross resolving. If no package has a
+    constraint then HEAD is used.~~ It's also possible to bind a package to a
+    variable and pass that value as dependencies.
 
 ~~**`force`**~~
 
