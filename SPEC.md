@@ -206,8 +206,8 @@ The following options are common to all providers
 
 - Constraints may also be included in the options table. Tags and commits
   should not include their symbol prefixes when given as a table option.
-- `:constraint "\*"` can be used for `HEAD`.
-- If no constraint is specified `\*` is used.
+- `:constraint "*"` can be used for `HEAD`.
+- If no constraint is specified `*` is used.
 - Including multiple constraint options has undefined behaviour.
 - When a package is defined multiple times, `pact` will attempt to cross
   resolve the constraints (that is, `> 1.0.0` and `= 1.5.0` will resolve to
